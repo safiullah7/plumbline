@@ -15,6 +15,7 @@ source "$ROOT/plugins/plumbline/evals/_fixture/clinic.sh" >/dev/null
 set +e   # the fixture sets -e; the checks below expect non-zero exits
 ready_plan
 
+
 pass=0; failed=0
 ok()   { pass=$((pass+1)); echo "ok    $1"; }
 fail() { failed=$((failed+1)); echo "FAIL  $1"; }
@@ -23,6 +24,17 @@ assert() { # name, command...
   if "$@" >/dev/null 2>&1; then ok "$name"; else fail "$name"; fi
 }
 has() { grep -qF -- "$2" <<<"$1"; }   # text, fixed string
+
+# Before any QA or sign-off docs exist: missing docs are gaps, with no stray errors.
+out=$(bash "$G/signoff-check.sh" 2>&1); rc=$?
+assert "signoff-check: missing docs are gaps" test "$rc" = 1
+assert "signoff-check: names the missing signoff.md" has "$out" "signoff.md is missing"
+assert "signoff-check: no stray shell errors" test -z "$(grep -i 'no such file' <<<"$out")"
+mv "$P/acceptance-criteria.md" "$T/ac.md"
+out=$(bash "$G/status.sh" 2>&1)
+assert "status: says when no ACs are written" has "$out" "ACs: none written yet"
+assert "status: says when there's no QA verdict" has "$out" "QA verdict: none yet"
+mv "$T/ac.md" "$P/acceptance-criteria.md"
 
 # ac-json: one entry per AC row, status from qa-report's Traceability results.
 cat > "$P/qa-report.md" <<'EOF'

@@ -15,13 +15,19 @@ tested=$( { git ls-files; git ls-files -o --exclude-standard; } 2>/dev/null | tr
   | while IFS= read -r f; do matches_globs "$f" "$TEST_GLOBS" && printf '%s\0' "$f"; done \
   | xargs -0 -r grep -ohE 'AC-[0-9]+-[0-9]+' 2>/dev/null | sort -u)
 missing=$(comm -23 <(printf '%s\n' "$ids") <(printf '%s\n' "$tested") | grep .)
-echo "ACs: $(count "$ids") · with a test: $(( $(count "$ids") - $(count "$missing") )) · without: ${missing:+$(echo $missing)}"
-[[ -z "$missing" ]] && echo "  (every AC has a test)"
+if [[ -z "$ids" ]]; then
+  echo "ACs: none written yet"
+elif [[ -z "$missing" ]]; then
+  echo "ACs: $(count "$ids") · every one has a test"
+else
+  echo "ACs: $(count "$ids") · with a test: $(( $(count "$ids") - $(count "$missing") )) · without: $(echo $missing)"
+fi
 
 md_table "$dir/qa-report.md" Bugs 2>/dev/null | awk -F'\t' '
   $1 != "" && toupper($4) !~ /^(FIXED|VERIFIED|WONTFIX|CLOSED)$/ { c[tolower($3)]++ }
   END { printf "Open bugs: critical %d · high %d · medium %d · low %d\n", c["critical"], c["high"], c["medium"], c["low"] }'
-echo "QA verdict: $(grep -m1 -iE '^Verdict:' "$dir/qa-report.md" 2>/dev/null | tr -d '\r' | sed -E 's/^[Vv]erdict:[[:space:]]*//' || true)"
+verdict=$(grep -m1 -iE '^Verdict:' "$dir/qa-report.md" 2>/dev/null | tr -d '\r' | sed -E 's/^[Vv]erdict:[[:space:]]*//')
+echo "QA verdict: ${verdict:-none yet}"
 
 q=$(md_table "$dir/questions.md" 2>/dev/null)
 esc=$(awk -F'\t' 'toupper($6) == "ESCALATED"' <<<"$q")

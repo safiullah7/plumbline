@@ -9,6 +9,12 @@ dir=$(phase_dir) || { echo "Signoff check: no active phase (.claude/current-phas
 rel=$(phase_rel)
 gaps=()
 
+# A phase doc that doesn't exist can't pass its checks; say so instead of
+# letting an empty file list slip through.
+for f in acceptance-criteria.md test-plan.md qa-report.md signoff.md; do
+  [[ -f "$dir/$f" ]] || gaps+=("$f is missing")
+done
+
 passing=$(md_table "$dir/test-plan.md" Traceability 2>/dev/null \
   | awk -F'\t' 'tolower($4) ~ /pass/ { print $1 }' | grep -oE 'AC-[0-9]+-[0-9]+')
 for id in $(md_table "$dir/acceptance-criteria.md" 2>/dev/null | awk -F'\t' '$1 ~ /^AC-[0-9]+-[0-9]+$/ { print $1 }' | sort -u); do
@@ -32,7 +38,7 @@ while IFS= read -r f; do [[ -n "$f" ]] && gaps+=("$f (questions.md)"); done < <(
 
 while IFS= read -r line; do
   [[ -n "$line" ]] && gaps+=("unticked sign-off box: $(sed -E 's/^[[:space:]]*- \[ \][[:space:]]*//' <<<"$line") (signoff.md)")
-done < <(tr -d '\r' < "$dir/signoff.md" 2>/dev/null | grep -E '^[[:space:]]*- \[ \]' | grep -viE 'phase pr|merged')
+done < <({ tr -d '\r' < "$dir/signoff.md"; } 2>/dev/null | grep -E '^[[:space:]]*- \[ \]' | grep -viE 'phase pr|merged')
 
 if (( ${#gaps[@]} == 0 )); then
   echo "Signoff check: no gaps in $rel."
