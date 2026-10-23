@@ -12,5 +12,7 @@ What is slow, painful or impossible today.
 What we always and never do in this product.
 
 ## Phases
-| Phase | Goal | Status |
-| --- | --- | --- |
+Each phase is named by the outcome it changes for a user, and picked from
+evidence: open findings, bugs, metrics and questions from earlier phases.
+| Phase | Goal | Outcome (measurable) | Why next | Status |
+| --- | --- | --- | --- | --- |

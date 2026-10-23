@@ -2,6 +2,8 @@
 
 Status: READY (approved 2026-10-24; corrected after verification, see
 "Corrections after verification")
+Progress: v0.1.2 merged (PR #2). v0.2 built; evals 0.84 → 1.00 with no case
+below baseline (docs/evals/eval-v0.2.md); team token benchmark pending.
 Owner: Safi. Written 2026-10-23 from the plugin review and the live smoke test.
 
 ## Goals

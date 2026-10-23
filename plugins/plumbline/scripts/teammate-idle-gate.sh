@@ -36,13 +36,10 @@ session=$(jqr '.session_id // empty' <<<"$input")
 globs=$(owned_globs "$who") || exit 0
 [[ -z "$globs" ]] && exit 0
 
-cd "$PROJECT_DIR" || exit 0
-set -f   # treat globs as patterns, never expand them against the disk
-dirty=$(git status --porcelain --untracked-files=all | tr -d '\r' | awk '{print $NF}' | while read -r f; do
+dirty=$(dirty_files | while IFS= read -r f; do
   shared_path "$f" && continue
-  for g in $globs; do [[ "$f" == $g ]] && { echo "$f"; break; }; done
+  matches_globs "$f" "$globs" && echo "$f"
 done)
-set +f
 
 state="$(norm_path "${CLAUDE_PLUGIN_DATA:-${TMPDIR:-/tmp}}")/plumbline-idle"
 mkdir -p "$state" 2>/dev/null

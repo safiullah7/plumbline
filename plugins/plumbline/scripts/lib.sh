@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Shared helpers for the Plumbline hooks. Runs in bash on macOS and Linux, and in
-# Git Bash on Windows.
+# Shared helpers for the Plumbline hooks and scripts. Runs in bash on macOS and
+# Linux, and in Git Bash on Windows.
 
 # Forward slashes, and /c/... instead of C:\... on Windows, so paths compare.
 # Going through the Windows form first gives every folder a single spelling, even
@@ -33,6 +33,21 @@ phase_dir() {
   [[ -f "$f" ]] && echo "$PROJECT_DIR/$(head -n1 "$f" | tr -d '\r')"
 }
 
+# Phase folder relative to the repo root, for messages.
+phase_rel() {
+  local dir
+  dir=$(phase_dir) || return 1
+  printf '%s\n' "${dir#"$PROJECT_DIR"/}"
+}
+
+# The dev plan's Status value (DRAFT, READY, ...), empty when there's no plan.
+plan_status() {
+  local dir
+  dir=$(phase_dir) || return 1
+  grep -m1 -iE '^Status:' "$dir/dev-plan.md" 2>/dev/null | tr -d '\r' \
+    | sed -E 's/^[Ss][Tt][Aa][Tt][Uu][Ss]:[[:space:]]*//'
+}
+
 # True once the lead has marked the dev plan "Status: READY".
 # Gates are enforced only from then on, so discovery and planning run freely.
 build_active() {
@@ -41,30 +56,61 @@ build_active() {
   grep -qiE '^Status:[[:space:]]*READY' "$dir/dev-plan.md" 2>/dev/null
 }
 
+# Data rows of a Markdown table, one per line, cells trimmed and tab-separated.
+# With a heading, only tables under the "## <heading>" section; without one, every
+# table in the file. Header and separator rows are skipped.
+md_table() { # file [heading]
+  [[ -f "$1" ]] || return 1
+  awk -v h="${2:-}" '
+    { sub(/\r$/, "") }
+    /^#+ / { if (h != "") sec = (index($0, "## " h) == 1); inrow = 0; next }
+    h == "" { sec = 1 }
+    !/^\|/ { inrow = 0; next }
+    !sec { next }
+    {
+      if (!inrow) { inrow = 1; next }             # header row of a new table
+      if ($0 ~ /^\|[ :|-]+$/) next                 # separator row
+      n = split($0, c, "|"); out = ""
+      last = (c[n] ~ /^ *$/) ? n - 1 : n
+      for (i = 2; i <= last; i++) {
+        gsub(/^ +| +$/, "", c[i]); out = out (i > 2 ? "\t" : "") c[i]
+      }
+      print out
+    }' "$1"
+}
+
 # Files anyone may write and nobody owns committing (repo-relative path): the
-# phase Q&A log and agent memory. The ownership guard lets everyone edit them,
-# and the idle gate doesn't count them as anyone's uncommitted work.
+# phase Q&A log, progress notes, generated briefs and AC lists, and agent memory.
+# The ownership guard lets everyone edit them, and the idle gate doesn't count
+# them as anyone's uncommitted work.
 shared_path() {
   case "$1" in
-    */questions.md|.claude/agent-memory/*) return 0 ;;
+    */questions.md|*/progress.md|*/briefs/*|*/acceptance-criteria.json|.claude/agent-memory/*) return 0 ;;
   esac
   return 1
 }
 
 # Space-separated globs a teammate owns, from the dev plan's Ownership table.
 owned_globs() {
-  local dir plan who="$1"
+  local dir who="$1"
   dir=$(phase_dir) || return 1
-  plan="$dir/dev-plan.md"
-  [[ -f "$plan" ]] || return 1
-  awk -v who="$who" '
-    { sub(/\r$/, "") }
-    /^## / { own = ($0 ~ /^## Ownership/); next }
-    own && /^\|/ {
-      split($0, c, "|"); name = c[2]; globs = c[3]
-      gsub(/^ +| +$/, "", name); gsub(/^ +| +$/, "", globs)
-      if (name == who) { print globs; exit }
-    }' "$plan"
+  [[ -f "$dir/dev-plan.md" ]] || return 1
+  md_table "$dir/dev-plan.md" Ownership | awk -F'\t' -v who="$who" '$1 == who { print $2; exit }'
+}
+
+# Uncommitted files in the repo (modified, staged or untracked), one repo-relative
+# path per line. Handles spaces and renames.
+dirty_files() {
+  git -C "$PROJECT_DIR" status --porcelain --untracked-files=all 2>/dev/null | tr -d '\r' \
+    | cut -c4- | sed -e 's/.* -> //' -e 's/^"\(.*\)"$/\1/'
+}
+
+# True if a repo-relative path matches one of the space-separated globs.
+matches_globs() { # path globs
+  local - g
+  set -f   # treat globs as patterns, never expand them against the disk
+  for g in $2; do [[ "$1" == $g ]] && return 0; done
+  return 1
 }
 
 # Teammate name for a hook's agent_id (and agent_type). Tries, in order:
