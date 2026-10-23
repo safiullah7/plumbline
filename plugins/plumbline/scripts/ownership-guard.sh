@@ -8,11 +8,12 @@ build_active || exit 0
 require_jq
 file=$(jqr '.tool_input.file_path // .tool_input.notebook_path // empty' <<<"$input")
 agent_id=$(jqr '.agent_id // empty' <<<"$input")
+agent_type=$(jqr '.agent_type // empty' <<<"$input")
 [[ -z "$file" || -z "$agent_id" ]] && exit 0      # the lead's own session, or no path
 file=$(norm_path "$file")
 [[ "$file" != "$PROJECT_DIR"/* ]] && exit 0       # scratch files outside the repo
 
-who=$(teammate_name_for "$agent_id")
+who=$(teammate_name_for "$agent_id" "$agent_type")
 [[ -z "$who" ]] && exit 0                         # a plain subagent, not a teammate
 
 rel="${file#"$PROJECT_DIR"/}"

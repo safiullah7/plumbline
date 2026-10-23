@@ -54,13 +54,26 @@ owned_globs() {
     }' "$plan"
 }
 
-# Teammate name for a hook's agent_id, looked up in the team config.
+# Teammate name for a hook's agent_id (and agent_type). Tries, in order:
+# 1. the team config, when it lists the teammate;
+# 2. the agent ID itself: teammates get IDs like aeng-a-e0e49e4975cf862f
+#    (a + name + - + 16 hex), while plain subagents get a + hex only;
+# 3. agent_type, which is the name for teammates spawned without an agent type.
 teammate_name_for() {
-  local id="$1" dir
+  local id="$1" type="${2:-}" dir name=""
+  [[ -n "$id" ]] || return 1
   dir="$(norm_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/teams"
-  [[ -n "$id" && -d "$dir" ]] || return 1
-  jqr --arg id "$id" '.members[]? | select(.agentId == $id) | .name' \
-    "$dir"/*/config.json 2>/dev/null | head -n1
+  if [[ -d "$dir" ]]; then
+    name=$(jqr --arg id "$id" '.members[]? | select(.agentId == $id) | .name' \
+      "$dir"/*/config.json 2>/dev/null | head -n1)
+  fi
+  if [[ -z "$name" && "$id" =~ ^a(.+)-[0-9a-f]{16}$ ]]; then
+    name="${BASH_REMATCH[1]}"
+  fi
+  if [[ -z "$name" && -n "$type" && -n "$(owned_globs "$type")" ]]; then
+    name="$type"
+  fi
+  [[ -n "$name" ]] && printf '%s\n' "$name"
 }
 
 debug_log() {
