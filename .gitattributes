@@ -1,0 +1,2 @@
+# Keep shell scripts LF on every platform; bash can't run CRLF scripts.
+*.sh text eol=lf

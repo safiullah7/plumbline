@@ -1,0 +1,27 @@
+{
+  "description": "Plumbline phase gates",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ownership-guard.sh\"" }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/task-completed-gate.sh\"", "timeout": 900 }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/teammate-idle-gate.sh\"" }
+        ]
+      }
+    ]
+  }
+}
