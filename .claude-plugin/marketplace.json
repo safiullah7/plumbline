@@ -1,0 +1,16 @@
+{
+  "name": "plumbline",
+  "owner": {
+    "name": "Safi"
+  },
+  "metadata": {
+    "description": "Plumbline: phase-by-phase product delivery by a Claude Code agent team"
+  },
+  "plugins": [
+    {
+      "name": "plumbline",
+      "source": "./plugins/plumbline",
+      "description": "Phase-by-phase product delivery by an agent team: product engineer, UI/UX engineer, lead, engineers and QA, with quality gates"
+    }
+  ]
+}
