@@ -64,6 +64,7 @@ idle() { echo "{\"session_id\":\"s1\",\"teammate_name\":\"$1\"}"; }
 
 check "draft: foreign edit allowed"        0 ownership-guard.sh "$(edit $ENG "$T/repo/apps/web/x.ts")"
 check "draft: task without AC allowed"     0 task-completed-gate.sh '{"task_subject":"x","teammate_name":"eng-api"}'
+check "draft: untagged task creation allowed" 0 task-created-gate.sh '{"task_subject":"x"}'
 
 # Mark the plan READY and give it Windows (CRLF) line endings, as git may on Windows.
 # Commit the fixture so only the files each case creates count as uncommitted work.
@@ -93,6 +94,28 @@ check "ready: task without AC blocked"     2 task-completed-gate.sh '{"task_subj
 check "ready: task with passing AC"        0 task-completed-gate.sh '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}'
 check "ready: task with failing AC"        2 task-completed-gate.sh '{"task_subject":"[AC-01-002] x","teammate_name":"eng-api"}'
 check "ready: task outside a team"         0 task-completed-gate.sh '{"task_subject":"x"}'
+check "ready: [chore] task completes without AC tests" 0 task-completed-gate.sh '{"task_subject":"[chore] Land contracts","teammate_name":"eng-api"}'
+assert "ready: gate timing hidden by default" \
+  test -z "$(echo '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}' | bash "$G/task-completed-gate.sh" 2>&1)"
+export PLUMBLINE_HOOK_TIMING=1
+check_out "ready: gate timing shown when asked" 0 task-completed-gate.sh '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}' "Task gate passed: typecheck"
+unset PLUMBLINE_HOOK_TIMING
+
+# Task creation gate: lead-created tasks have no teammate_name, so all are gated.
+check_out "ready: untagged task creation refused" 2 task-created-gate.sh '{"task_subject":"Polish the UI"}' "names no AC IDs"
+check "ready: tagged task creation allowed"   0 task-created-gate.sh '{"task_subject":"[AC-01-002] Duplicate names","teammate_name":"eng-api"}'
+check "ready: [chore] task creation allowed"  0 task-created-gate.sh '{"task_subject":"[chore] Land contracts"}'
+
+# Context injection: the lead (SessionStart) and teammates (SubagentStart).
+ctx() { echo "$1" | bash "$G/context.sh" 2>/dev/null; }
+out=$(ctx '{"hook_event_name":"SessionStart","session_id":"s1","source":"startup"}')
+assert "context: lead gets valid JSON" jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' <<<"$out"
+assert "context: lead sees phase and status" grep -q "$P (dev plan: READY)" <<<"$(jq -r .hookSpecificOutput.additionalContext <<<"$out")"
+out=$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$ENG\",\"agent_type\":\"plumbline:senior-engineer\"}")
+assert "context: teammate sees its ownership" grep -q "You are eng-api. You own: apps/api/\*\*" <<<"$(jq -r .hookSpecificOutput.additionalContext <<<"$out")"
+assert "context: plain subagent gets nothing" test -z "$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"Explore\"}")"
+assert "context: plumbline agent without a row gets the phase" grep -q "Plumbline phase" <<<"$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"plumbline:code-reviewer\"}")"
+assert "context: silent without an active phase" test -z "$(cd "$T/home" && CLAUDE_PROJECT_DIR="$T/home" ctx '{"hook_event_name":"SessionStart"}')"
 
 # Idle gate. Hook state lives in CLAUDE_PLUGIN_DATA, which Claude Code passes as a Windows path.
 data="$T/data"; command -v cygpath >/dev/null 2>&1 && data=$(cygpath -m "$T/data")
@@ -110,7 +133,14 @@ assert "ready: give-up logs one ESCALATED row naming the file" \
 check "ready: idle again after giving up"  0 teammate-idle-gate.sh "$(idle eng-api)"
 assert "ready: no duplicate ESCALATED row" test "$(grep -c 'ESCALATED |' "$Q" 2>/dev/null)" = 1
 echo >> "$Q"   # make sure questions.md is uncommitted work inside design's folder
-check "ready: dirty questions.md doesn't bounce its owner" 0 teammate-idle-gate.sh "$(idle design)"
+mkdir -p "$P/briefs" && echo x > "$P/briefs/eng-api.md" && echo x > "$P/progress.md"
+check "ready: dirty shared files don't bounce their owner" 0 teammate-idle-gate.sh "$(idle design)"
+out=$(ctx '{"hook_event_name":"SessionStart"}' | jq -r .hookSpecificOutput.additionalContext)
+assert "context: lead sees the escalation" grep -q "1 escalated" <<<"$out"
+assert "context: stays within 60 lines and 10,000 chars" test "$(wc -l <<<"$out")" -le 60 -a "${#out}" -lt 10000
+rm -f apps/api/a.ts
+mkdir -p "apps/api/with space" && echo x > "apps/api/with space/b.ts"
+check "ready: dirty file with a space in its path counts" 2 teammate-idle-gate.sh "$(idle eng-api)"
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

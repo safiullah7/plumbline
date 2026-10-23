@@ -3,3 +3,5 @@
 # Docs, templates and manifests too, so Windows clones copy LF templates into new phases.
 *.md text eol=lf
 *.json text eol=lf
+*.yaml text eol=lf
+*.png binary
