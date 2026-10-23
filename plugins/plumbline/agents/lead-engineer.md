@@ -15,7 +15,9 @@ Dev plan (dev-plan.md):
   complexity. Complexity is HIGH for tenant isolation, auth/permissions, billing,
   data migrations, concurrency and cross-module refactors; otherwise NORMAL.
 - Write the Team and Ownership tables exactly in the template's format; the
-  hooks read them. Keep rows for product and design (docs only).
+  hooks read them. Keep rows for product and design (docs only) and for qa
+  (docs plus its own e2e test folder); without a row, the hooks block every
+  write that teammate makes.
 - Engineer models: NORMAL work -> sonnet. A workstream with HIGH tasks -> opus.
 - Leave the plan at "Status: DRAFT". Change it to "Status: READY" only after the
   user approves the plan. From then on the hooks enforce ownership and task gates.

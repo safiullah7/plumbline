@@ -1,2 +1,5 @@
 # Keep shell scripts LF on every platform; bash can't run CRLF scripts.
 *.sh text eol=lf
+# Docs, templates and manifests too, so Windows clones copy LF templates into new phases.
+*.md text eol=lf
+*.json text eol=lf
