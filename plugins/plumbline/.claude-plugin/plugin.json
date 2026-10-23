@@ -1,6 +1,7 @@
 {
   "name": "plumbline",
   "description": "Phase-by-phase product delivery by an agent team, with quality gates",
-  "version": "0.1.1",
-  "author": { "name": "Safi" }
+  "version": "0.1.2",
+  "author": { "name": "Safi" },
+  "license": "MIT"
 }

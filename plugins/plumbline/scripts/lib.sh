@@ -3,10 +3,13 @@
 # Git Bash on Windows.
 
 # Forward slashes, and /c/... instead of C:\... on Windows, so paths compare.
+# Going through the Windows form first gives every folder a single spelling, even
+# one Git Bash mounts under two names (/tmp and /c/Users/<you>/AppData/Local/Temp).
 norm_path() {
-  local p="${1//\\//}"
+  local p="${1//\\//}" w
   if command -v cygpath >/dev/null 2>&1; then
-    p=$(cygpath -u "$p" 2>/dev/null || printf '%s' "$p")
+    w=$(cygpath -m "$p" 2>/dev/null) || w="$p"
+    p=$(cygpath -u "$w" 2>/dev/null || printf '%s' "$p")
   fi
   printf '%s\n' "${p%/}"
 }
@@ -36,6 +39,16 @@ build_active() {
   local dir
   dir=$(phase_dir) || return 1
   grep -qiE '^Status:[[:space:]]*READY' "$dir/dev-plan.md" 2>/dev/null
+}
+
+# Files anyone may write and nobody owns committing (repo-relative path): the
+# phase Q&A log and agent memory. The ownership guard lets everyone edit them,
+# and the idle gate doesn't count them as anyone's uncommitted work.
+shared_path() {
+  case "$1" in
+    */questions.md|.claude/agent-memory/*) return 0 ;;
+  esac
+  return 1
 }
 
 # Space-separated globs a teammate owns, from the dev plan's Ownership table.

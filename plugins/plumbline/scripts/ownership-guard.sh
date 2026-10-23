@@ -17,9 +17,7 @@ who=$(teammate_name_for "$agent_id" "$agent_type")
 [[ -z "$who" ]] && exit 0                         # a plain subagent, not a teammate
 
 rel="${file#"$PROJECT_DIR"/}"
-case "$rel" in
-  */questions.md|.claude/agent-memory/*) exit 0 ;;  # everyone may log Q&A and memory
-esac
+shared_path "$rel" && exit 0                      # everyone may log Q&A and memory
 
 globs=$(owned_globs "$who")
 if [[ -z "$globs" ]]; then
