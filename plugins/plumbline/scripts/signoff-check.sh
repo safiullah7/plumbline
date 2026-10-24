@@ -27,6 +27,22 @@ while IFS= read -r b; do [[ -n "$b" ]] && gaps+=("open bug $b (qa-report.md)"); 
   md_table "$dir/qa-report.md" Bugs 2>/dev/null | awk -F'\t' '
     $1 != "" && toupper($4) !~ /^(FIXED|VERIFIED|WONTFIX|CLOSED)$/ && tolower($3) ~ /^(high|critical)$/ { print $1 " (" tolower($3) "): " $5 }')
 
+# Accessibility: serious or critical violations block, and so do missing
+# results, unless the scan was explicitly waived (the tools are optional).
+a11y=$(md_table "$dir/qa-report.md" Accessibility 2>/dev/null)
+while IFS=$'\t' read -r screen width crit ser _; do
+  [[ -n "$screen" ]] || continue
+  if ! [[ "$crit" =~ ^[0-9]+$ && "$ser" =~ ^[0-9]+$ ]]; then
+    gaps+=("accessibility results for $screen at $width aren't counts (scan not run?) (qa-report.md)")
+  elif (( crit + ser > 0 )); then
+    gaps+=("accessibility: $screen at $width has $crit critical and $ser serious violation(s) (qa-report.md)")
+  fi
+done <<<"$a11y"
+screens=$(md_table "$dir/ux.md" "Screen inventory" 2>/dev/null | awk -F'\t' '$1 != ""' | grep -c .)
+if [[ -z "$a11y" && "$screens" -gt 0 ]] && ! grep -qiE '^Accessibility waived:' "$dir/qa-report.md" 2>/dev/null; then
+  gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or add \"Accessibility waived: <reason> (approved by <who>)\" (qa-report.md)")
+fi
+
 closed='^(FIXED|RESOLVED|CLOSED|WONTFIX|VERIFIED|DONE)$'
 while IFS= read -r f; do [[ -n "$f" ]] && gaps+=("open product finding $f (signoff.md)"); done < <(
   md_table "$dir/signoff.md" "Product findings" 2>/dev/null | awk -F'\t' -v c="$closed" '$1 != "" && toupper($4) !~ c { print "#" $1 ": " $3 }')

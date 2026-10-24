@@ -85,15 +85,16 @@ exactly.
 6. Then run both of these here and keep the output:
    bash /d/Repos/plumbline/plugins/plumbline/scripts/status.sh
    bash /d/Repos/plumbline/plugins/plumbline/scripts/signoff-check.sh; echo "exit $?"
+   bash /d/Repos/plumbline/plugins/plumbline/scripts/phase-evidence.sh; echo "exit $?"
 Wait for both teammates to finish, then shut them down.
 
 PART 4 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Part 1, state: CLEAN; MATCHES REMOTE; NO INSTALLED COPY; the version matches
-  the branch name (branch v0.2 means version 0.2.x); show the tree hash
+  the branch name (branch v0.3 means version 0.3.x); show the tree hash
 - Part 1, checks: "Validation passed" for the plugin and for the marketplace;
   every self-test run ends "0 failed"
 - Step 0: eng-a quotes "You are eng-a. You own: src/a/**" and eng-b quotes
-  "You are eng-b. You own: src/b/**"
+  "You are eng-b. You own: src/b/**", and both quote a "Plumbline scripts:" line
 - Step 1: blocked with "Ownership guard: eng-a does not own src/b/from-a.txt"
 - Step 2: allowed and committed
 - Step 3a: "[AC-01-001] Passing task" is created and completes
@@ -105,7 +106,8 @@ PART 4 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Step 5: questions.md exists and has exactly one ESCALATED row, from hooks to
   lead, naming src/a/draft.txt
 - Step 6: status.sh shows "1 escalated"; signoff-check.sh exits 1 and lists the
-  ESCALATED question
+  ESCALATED question; phase-evidence.sh prints "Evidence for the next phase" and
+  exits 0
 Then show how many times each hook fired:
 for e in PreToolUse TaskCreated TaskCompleted TeammateIdle SessionStart SubagentStart; do echo "$e $(grep -c "\"hook_event_name\":\"$e\"" /tmp/plumbline-hooks.jsonl)"; done
 For any failed row, also show the last 3 log lines for that hook, each cut to 600

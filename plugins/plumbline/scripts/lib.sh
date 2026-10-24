@@ -16,6 +16,9 @@ norm_path() {
 
 PROJECT_DIR=$(norm_path "${CLAUDE_PROJECT_DIR:-$(pwd)}")
 
+# This plugin's scripts folder, so agents can be told where to run them from.
+PLUMBLINE_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]//\\//}")" && pwd)"
+
 # jq, minus the \r that Windows builds of jq add to every line.
 jqr() { jq -r "$@" | tr -d '\r'; }
 
@@ -79,13 +82,23 @@ md_table() { # file [heading]
     }' "$1"
 }
 
+# Body of a "## <heading>" section (prefix match), without the heading.
+section_body() { # file heading
+  [[ -f "$1" ]] || return 0
+  awk -v h="$2" '{ sub(/\r$/, "") } /^## / { sec = (index($0, "## " h) == 1); next } sec' "$1" \
+    | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+}
+
 # Files anyone may write and nobody owns committing (repo-relative path): the
-# phase Q&A log, progress notes, generated briefs and AC lists, and agent memory.
-# The ownership guard lets everyone edit them, and the idle gate doesn't count
-# them as anyone's uncommitted work.
+# phase Q&A log, progress notes, generated briefs and AC lists, QA screenshots,
+# diffs, accessibility reports and evidence, and agent memory. The ownership
+# guard lets everyone edit them, and the idle gate doesn't count them as anyone's
+# uncommitted work.
 shared_path() {
   case "$1" in
-    */questions.md|*/progress.md|*/briefs/*|*/acceptance-criteria.json|.claude/agent-memory/*) return 0 ;;
+    */questions.md|*/progress.md|*/briefs/*|*/acceptance-criteria.json) return 0 ;;
+    */qa/shots/*|*/qa/diff/*|*/qa/a11y/*|*/qa/evidence/*|*/qa/visual.tsv) return 0 ;;
+    .claude/agent-memory/*) return 0 ;;
   esac
   return 1
 }

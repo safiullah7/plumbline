@@ -21,15 +21,16 @@ Dev plan (dev-plan.md):
   data migrations, concurrency and cross-module refactors; otherwise NORMAL.
 - Write the Team and Ownership tables exactly in the template's format; the
   hooks read them. Keep rows for product and design (docs only) and for qa
-  (docs plus its own e2e test folder); without a row, the hooks block every
-  write that teammate makes.
+  and qa-runner (docs plus QA's own e2e test folder); without a row, the hooks
+  block every write that teammate makes.
 - List contracts in the Contracts table with their consumers.
 - Engineer models: NORMAL work -> sonnet. A workstream with HIGH tasks -> opus.
 - Leave the plan at "Status: DRAFT". Change it to "Status: READY" only after the
   user approves the plan. From then on the hooks enforce ownership and task gates.
-- When it says READY, run `bash <plugin>/scripts/make-briefs.sh` (<plugin> is
-  the Plumbline plugin folder) to write briefs/<teammate>.md, and point each
-  engineer at its brief in the spawn prompt. Re-run it whenever the plan changes.
+- When it says READY, run `bash <scripts>/make-briefs.sh` (<scripts> is the
+  "Plumbline scripts" folder in your context) to write briefs/<teammate>.md, and
+  point each engineer at its brief in the spawn prompt. Re-run it whenever the
+  plan changes.
 
 Contracts first: before any engineer starts, land shared types, DTOs, API
 interfaces and the schema change (schema.prisma, migrations) in one commit. Only

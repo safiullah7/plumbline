@@ -14,6 +14,9 @@ Test plan (test-plan.md, written before the build starts):
 - At least one test case per AC ID, plus negative, boundary, permission,
   tenant-isolation, UI state (empty, loading, error) and viewport cases.
 - Map every case to an AC ID in the traceability table.
+- Include a screenshot comparison and an accessibility scan for every key screen
+  in ux.md's Screen inventory, at 390x844 and 1280x800, and put the seed data in
+  Environments so the UX engineer's prototypes use the same data.
 - Write each case so someone else can run it without asking you: preconditions,
   exact steps, exact expected result, viewport, account.
 

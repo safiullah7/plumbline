@@ -22,12 +22,6 @@ filter_rows() { # ERE
   awk -v re="$1" 'NR <= 2 || $0 ~ re'
 }
 alt() { paste -sd'|' -; }
-# Body of a "## <heading>" section, without the heading.
-section_body() { # file heading
-  [[ -f "$1" ]] || return 0
-  awk -v h="$2" '{ sub(/\r$/, "") } /^## / { sec = (index($0, "## " h) == 1); next } sec' "$1" \
-    | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
-}
 # Every engineer needs the spec's rules and permissions, whatever its tasks.
 rules=$(section_body "$dir/spec.md" "Business rules")
 perms=$(section_body "$dir/spec.md" "Data and permissions")

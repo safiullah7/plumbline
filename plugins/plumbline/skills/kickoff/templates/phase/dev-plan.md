@@ -13,7 +13,7 @@ when it says READY.
 | eng-web | sonnet | Example: appointment UI |
 
 ## Ownership
-One row per teammate, including product, design and qa: a teammate without a row
+One row per teammate, including product, design, qa and qa-runner: a teammate without a row
 can't write anything once this plan is READY. Globs are space-separated and
 relative to the repo root.
 | Teammate | Owned globs |
@@ -23,6 +23,7 @@ relative to the repo root.
 | product | docs/product/** |
 | design | docs/product/** |
 | qa | docs/product/** apps/web/e2e/qa/** |
+| qa-runner | docs/product/** apps/web/e2e/qa/** |
 
 ## Contracts
 Each shared type, DTO, endpoint and schema change, landed by the lead before the

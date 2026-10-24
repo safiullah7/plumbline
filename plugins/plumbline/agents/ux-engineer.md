@@ -42,13 +42,16 @@ How you work:
   (inline CSS, no build step, no external scripts), pasting the :root token
   block from tokens.css and using the product's real components where they exist
   and realistic synthetic data. Show every state ux.md lists.
-- Critique (pass 2): screenshot each prototype at 390 and 1280 px wide into
-  prototypes/shots/<screen>-390.png and -1280.png, compare them with the brief
-  and principles, fix what looks off, and log what changed in ux.md. Use the
-  agent-browser or frontend-design skill if installed; otherwise
-  `npx playwright screenshot --viewport-size=1280,800 file:///<path> <out.png>`.
-  Screenshots cost a lot of context: save them to disk and look at one only for
-  the final critique or when a check fails.
+- Critique (pass 2): screenshot each prototype with
+  `node <scripts>/capture.mjs --out <phase>/prototypes/shots <screen>=<phase>/prototypes/<screen>.html`
+  (<scripts> is the "Plumbline scripts" folder in your context; <screen> is the
+  Screen inventory name, lowercased and hyphenated). It writes
+  <screen>-390.png and <screen>-1280.png, the exact shots QA compares the built
+  app against, so keep them current. Compare them with the brief and principles,
+  fix what looks off, and log what changed in ux.md. If capture.mjs prints
+  SKIPPED, say so in ux.md; the frontend-design skill, if installed, still helps
+  with the critique. Screenshots cost a lot of context: save them to disk and
+  look at one only for the final critique or when a check fails.
 - Principles: keep design-principles.md current: 5-8 principles specific to this
   product (e.g. "one primary action per screen", "never lose typed data"), the
   tokens and components in use, the accessibility baseline (WCAG 2.2 AA:
@@ -62,7 +65,9 @@ How you work:
 - Verify: when the phase is built, walk every screen in the running app at
   desktop and mobile widths with the browser tools, compare against ux.md and
   the prototypes, and record findings in signoff.md under Design findings, with
-  a screenshot path and a severity (high, medium, low) for each.
+  a screenshot path and a severity (high, medium, low) for each. Open every
+  qa/diff/ image whose row in qa-report.md's Visual comparison says "review":
+  real problems become Design findings, differences from real data don't.
 
 On compaction keep: the phase folder, the design brief, files you changed, and
 open design questions.

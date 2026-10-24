@@ -111,6 +111,7 @@ ctx() { echo "$1" | bash "$G/context.sh" 2>/dev/null; }
 out=$(ctx '{"hook_event_name":"SessionStart","session_id":"s1","source":"startup"}')
 assert "context: lead gets valid JSON" jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' <<<"$out"
 assert "context: lead sees phase and status" grep -q "$P (dev plan: READY)" <<<"$(jq -r .hookSpecificOutput.additionalContext <<<"$out")"
+assert "context: lead is told where the scripts are" grep -qE "^Plumbline scripts: .*plugins/plumbline/scripts$" <<<"$(jq -r .hookSpecificOutput.additionalContext <<<"$out")"
 out=$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$ENG\",\"agent_type\":\"plumbline:senior-engineer\"}")
 assert "context: teammate sees its ownership" grep -q "You are eng-api. You own: apps/api/\*\*" <<<"$(jq -r .hookSpecificOutput.additionalContext <<<"$out")"
 assert "context: plain subagent gets nothing" test -z "$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"Explore\"}")"
@@ -133,7 +134,8 @@ assert "ready: give-up logs one ESCALATED row naming the file" \
 check "ready: idle again after giving up"  0 teammate-idle-gate.sh "$(idle eng-api)"
 assert "ready: no duplicate ESCALATED row" test "$(grep -c 'ESCALATED |' "$Q" 2>/dev/null)" = 1
 echo >> "$Q"   # make sure questions.md is uncommitted work inside design's folder
-mkdir -p "$P/briefs" && echo x > "$P/briefs/eng-api.md" && echo x > "$P/progress.md"
+mkdir -p "$P/briefs" "$P/qa/shots" "$P/qa/a11y" && echo x > "$P/briefs/eng-api.md" && echo x > "$P/progress.md"
+echo x > "$P/qa/shots/rooms-390.png" && echo '{}' > "$P/qa/a11y/rooms-390.json"
 check "ready: dirty shared files don't bounce their owner" 0 teammate-idle-gate.sh "$(idle design)"
 out=$(ctx '{"hook_event_name":"SessionStart"}' | jq -r .hookSpecificOutput.additionalContext)
 assert "context: lead sees the escalation" grep -q "1 escalated" <<<"$out"
