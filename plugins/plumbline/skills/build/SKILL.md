@@ -10,7 +10,8 @@ You run in the main session, the only place that can ask the user anything:
 subagents can't. <plugin> is the folder two levels above this SKILL.md. When a
 step says "ask", use AskUserQuestion with your recommended option first; if
 that tool isn't available, ask in plain text and end your turn until they reply.
-If the user chooses to stop at any point, run step 8's cleanup and stop.
+Run every dispatch in the foreground and wait for its result before the next
+step. If the user chooses to stop at any point, run step 8's cleanup and stop.
 
 1. **Settings.**
    - Confirm mode: the `Confirm:` line of docs/product/project.md if that file

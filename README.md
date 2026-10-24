@@ -11,15 +11,16 @@
 
 <p align="center">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-e9c46a?style=flat-square">
+  <img alt="Version 0.4.0-alpha" src="https://img.shields.io/badge/version-0.4.0--alpha-e9c46a?style=flat-square">
   <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="111 self-tests passing" src="https://img.shields.io/badge/self--tests-111%20passing-2a9d8f?style=flat-square">
+  <img alt="354 self-tests passing" src="https://img.shields.io/badge/self--tests-354%20passing-2a9d8f?style=flat-square">
   <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
 </p>
 
 <p align="center">
-  <a href="#how-it-works">How it works</a> ·
+  <a href="#size-the-work">Quick, Standard, Full</a> ·
+  <a href="#how-it-works-full">How it works</a> ·
   <a href="#the-team">The team</a> ·
   <a href="#quality-gates">Quality gates</a> ·
   <a href="#visual-and-accessibility-checks">Visual checks</a> ·
@@ -51,7 +52,53 @@ with structure.
 | Unanswered questions become guesses | The product engineer escalates; signoff refuses to pass with an open escalation |
 | The UI drifts from the design | Screenshots of the built app are compared with the prototype, and every screen gets an accessibility scan |
 
-## How it works
+## Size the work
+
+Most requests don't need ten documents and a team. Start with
+**`/plumbline:build <request>`**. The product engineer reads your docs and code, picks a
+size, and prints its decision before anything is created. This is an **example** of that
+block (the values are illustrative, not measured):
+
+```text
+Plumbline triage
+Size: Quick
+Module: rooms (existing)
+Folder: none
+UX: no
+Engineers: 1
+Docs: none
+Team: no
+Why: one rule changes in one module; no new screen, schema or shared contract
+```
+
+| | **Quick** | **Standard** | **Full** |
+| --- | --- | --- | --- |
+| Fits | One module, up to 3 criteria, no new screen or flow, no schema or shared-contract change | Anything between | A module built from scratch, 3+ screens, a data migration, an auth, permissions or billing change, cross-module work, or about 10+ criteria |
+| Produces | A `quick/<yymmdd>-<slug>` branch, tests named after 1-3 criteria (`AC-<yymmdd>-<nn>`), the check, a review, a PR. **No folder.** | A slim feature folder (spec, criteria, test plan, dev plan, plus `ux.md` and mockups when a screen changes) | The whole process below, with an agent team |
+| People | One engineer and a reviewer | 1-2 engineers, one plan approval from you | Product, UX, QA, lead and engineers |
+| Agent team | No | Only with 2 engineers and teams enabled | Yes (needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) |
+
+**When Plumbline asks you something:** when the request is too vague for observable
+criteria, when triage can't decide the size or the module, always before Full work, and
+when `PLUMBLINE_CONFIRM=always`. Before
+any branch or file it lists the commands it will run (git, `gh`, your tests) and asks once;
+Claude Code asks you to approve any it doesn't already allow. Standard also asks one
+question: approve the plan, or change it. Otherwise it goes straight on.
+
+The quality bars hold at every size: observable acceptance criteria, tests named after
+them, a script check, a review, and a PR you merge. Quick runs its check
+with `ac-check.sh` (typecheck, lint and the AC-named tests), because subagents aren't covered
+by the task hooks.
+
+**Only you can waive.** An agent can't write an `Evidence waived:` or
+`Accessibility waived:` line: the ownership guard blocks it, for every agent and at every
+size. When evidence or an accessibility scan can't be produced, the main session asks
+you, and writes the line only after your explicit yes.
+
+## How it works (Full)
+
+This is the whole process, used for Full work or when you start it by hand with
+`/plumbline:kickoff`. Standard keeps a slim version of it; Quick skips the folder.
 
 ```mermaid
 flowchart LR
@@ -71,7 +118,8 @@ flowchart LR
     class B gate;
 ```
 
-1. **`/plumbline:kickoff <area> <phase>`** creates the feature's docs from templates and a branch.
+1. **`/plumbline:kickoff <module> <feature-slug>`** (or `/plumbline:build`, for Full work) creates
+   the feature's docs from templates and a branch.
 2. **`/plumbline:discover`** interviews you, then drafts `spec.md` from your answers.
 3. The **UX engineer** writes a design brief, journeys and screen states, and builds
    self-contained HTML prototypes. The **QA engineer** writes the test plan from the docs,
@@ -247,7 +295,8 @@ Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
 
 Every release is also checked by:
 
-- **111 self-tests**: 45 for the hooks, run in two Windows path modes; 66 for the scripts,
+- **354 self-tests** (`bash tests/run-all.sh`): 107 for the hooks, run in two Windows path modes;
+  67 for the shared helpers; 90 for kickoff and the layouts; 90 for the scripts,
   including the PNG decoder against a real browser screenshot.
 - **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
   creation gate, `[chore]` tasks, idle escalation, injected context, status and signoff.
@@ -259,13 +308,21 @@ Every release is also checked by:
 claude plugin marketplace add safiullah7/plumbline
 claude plugin install plumbline@plumbline --scope project
 
-# 2. Start Claude Code with agent teams enabled
+# 2. Start Claude Code (agent teams are needed only for Full-size work)
 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
 ```
 
 ```text
-# 3. Inside Claude Code
-/plumbline:kickoff clinic phase-01      # docs from templates, a branch, the current phase
+# 3. Inside Claude Code: describe the work, Plumbline sizes it and runs the matching process
+/plumbline:build make the double-booking check ignore cancelled bookings
+```
+
+`/plumbline:build` shows its triage block, asks only what it must, and ends with a PR
+you merge. The step-by-step skills are the manual path, for when you want to drive a
+Full feature yourself:
+
+```text
+/plumbline:kickoff clinic scheduling    # module form: docs from templates, a branch, the current feature
 /plumbline:discover                     # interview → spec.md
 …                                       # product, design, QA and the lead fill in the docs
 /plumbline:status                       # where things stand
@@ -273,8 +330,10 @@ CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
 /plumbline:phase-next                   # what to build next, from evidence
 ```
 
+(`/plumbline:kickoff clinic phase-01` still creates the legacy phase layout.)
+
 **Requirements:**
-- Claude Code with agent teams;
+- Claude Code, with agent teams for Full-size work;
 - `jq`;
 - Git Bash on Windows;
 - for the task gate, your repo's `typecheck`, `lint` and `test:ac` npm scripts.
@@ -287,7 +346,8 @@ CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
 
 | Command | What it does |
 | --- | --- |
-| `/plumbline:kickoff <area> <phase-id>` | Creates the feature's docs from templates, marks it current, branches |
+| `/plumbline:build <request>` | Sizes the request (Quick, Standard or Full), shows the triage, runs the matching process to a PR |
+| `/plumbline:kickoff <module> <feature-slug> [--profile standard/full] [--no-ux]` | Creates the feature's docs from templates, marks it current, branches. `/plumbline:kickoff <area> phase-NN` creates the legacy layout |
 | `/plumbline:discover [idea]` | Interviews you, then drafts `spec.md` from your answers |
 | `/plumbline:status` | Plan status, AC test coverage, open bugs, questions, uncommitted work per owner |
 | `/plumbline:handoff` | Records progress, commits the docs, prints a prompt to resume in a fresh session |
@@ -305,6 +365,7 @@ CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
 | `PLUMBLINE_TEST_AC` | `npm run -s test:ac --` | Runs the tests for the given AC IDs |
 | `PLUMBLINE_VISUAL_THRESHOLD` | `20` | Percent of content blocks that may differ before a screen is flagged for review |
 | `PLUMBLINE_TEST_GLOBS` | `*.test.* *.spec.* …` | Which files count as tests for `/plumbline:status` coverage |
+| `PLUMBLINE_CONFIRM` | `auto` | `always` makes `/plumbline:build` confirm its triage block even when it is clear |
 | `PLUMBLINE_HOOK_TIMING` | off | Print how long each gate check took |
 | `PLUMBLINE_HOOK_DEBUG` | off | Log every hook payload to `$TMPDIR/plumbline-hooks.jsonl` |
 
@@ -315,12 +376,18 @@ Set them in the `env` block of `.claude/settings.json`. For long builds,
 <details>
 <summary><b>What a feature looks like on disk</b></summary>
 
+Docs are organised by **module** (a product area such as `clinic`), then by feature.
+Feature numbers are one sequence across the whole repo, so `AC-<nn>-<nnn>` IDs never
+collide between modules.
+
 ```text
 docs/product/clinic/
-├── vision.md               who it's for, problem, principles, feature roadmap
+├── vision.md               who it's for, problem, principles, and the Features table (the roadmap)
 ├── design-principles.md    principles, tokens, accessibility baseline, patterns to avoid
 ├── decisions.md            decisions later features must respect
-└── phases/phase-01/
+├── changes.md              one row per Quick change: date, request, ACs, PR
+└── 01-scheduling/          <nn>-<feature-slug>/
+    ├── .plumbline          metadata written by kickoff.sh: module, number, profile, ux
     ├── spec.md             goal, research, P0/P1/P2, rules, permissions, Non-Goals, metrics
     ├── acceptance-criteria.md   AC-01-001 … observable, exact, prioritised
     ├── ux.md               brief, journeys (Mermaid), screen inventory, states, critique
@@ -332,6 +399,13 @@ docs/product/clinic/
     ├── signoff.md          verification, findings, success metrics results
     ├── contracts/  prototypes/  briefs/  qa/
 ```
+
+A Standard feature gets the same folder with a slimmer `spec.md` and `test-plan.md`, and
+no `ux.md` or `prototypes/` when no screen changes. Quick changes get no folder.
+
+Repos from v0.3 keep working: the older `docs/product/<area>/phases/phase-NN/` layout is
+still read by every script, nothing is moved, and new features in such an area go into its
+`phases/` folder.
 </details>
 
 ## Roadmap
@@ -341,8 +415,9 @@ docs/product/clinic/
 | **v0.1** | ✅ shipped | The agent team, ownership and task gates, kickoff and signoff |
 | **v0.1.2** | ✅ shipped | Windows path fix, visible escalations, QA ownership |
 | **v0.2** | ✅ shipped | A method for every role, the creation gate, injected context, briefs, the eval suite (0.84 → 1.00) |
-| **v0.3** | 🔍 in review | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
-| **v0.4** | 🗺️ planned | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
+| **v0.3** | ✅ shipped | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
+| **v0.4a** | 🛠️ built, evals and live test pending | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
+| **v0.4b** | 🗺️ planned | Project awareness: the plugin learns what kind of software you are building and adapts roles and evidence to it |
 
 The full plan, with every task and its acceptance check, is in [`docs/dev-plan.md`](docs/dev-plan.md).
 
@@ -352,7 +427,7 @@ The full plan, with every task and its acceptance check, is in [`docs/dev-plan.m
 .claude-plugin/marketplace.json      marketplace entry
 plugins/plumbline/
 ├── agents/                          seven role definitions
-├── skills/                          kickoff, discover, status, handoff, signoff, phase-next (+ templates)
+├── skills/                          build, kickoff, discover, status, handoff, signoff, phase-next (+ templates)
 ├── hooks/hooks.json                 gates and context injection
 ├── scripts/                         the gates and tools (bash + jq; Node for screenshots and diffs)
 └── evals/                           plugin eval cases and their shared fixture
@@ -363,8 +438,11 @@ docs/                                the roadmap and eval results
 ## Contributing and testing
 
 ```bash
+bash tests/run-all.sh                 # every self-test suite, one summary line each
 bash tests/hooks-selftest.sh          # hook gates
 bash tests/scripts-selftest.sh        # status, signoff, briefs, evidence, image diff
+bash tests/kickoff-selftest.sh        # kickoff.sh in both layouts
+bash tests/lib-selftest.sh            # shared helpers, ac-check
 claude plugin validate ./plugins/plumbline --strict
 claude plugin eval ./plugins/plumbline --scaffold --allow-tools Write Edit --ablation none --no-publish
 ```

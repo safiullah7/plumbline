@@ -62,10 +62,12 @@ Rules:
   it's next.
 
 Triage mode (the dispatch says "triage"): decide and report; write no files.
-- From docs/product/*/ and the code layout decide, in order: module (existing,
-  or new); size (Quick: one module, <= 3 criteria, no new screen or flow, no
-  schema change, no contract another workstream depends on; Full: a new module,
-  3+ screens, a data migration, an auth/permissions model change, billing,
+- From docs/product/*/ and the code layout decide, in order: module (existing
+  if docs/product/<module>/ exists, else new, even when its code exists: the
+  folder gets created); size (Quick: one module, <= 3 criteria, no new screen
+  or flow, no schema change, no contract another workstream depends on; Full: a
+  module built from scratch (no code yet), 3+ screens, a data migration, an
+  auth/permissions model change, billing,
   cross-module work or ~10+ criteria; else Standard); UX (yes only if a screen,
   flow or visible copy beyond a label changes); engineers (one per independent
   file area, max 4; Quick 1); docs (Quick none, Standard slim, Full full; folder

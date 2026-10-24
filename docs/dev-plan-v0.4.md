@@ -112,7 +112,7 @@ before it's relied on.
 | --- | --- | --- | --- | --- |
 | **Quick** | All of: one module, ≤ 3 criteria, no new screen or flow, no schema change, no change to a contract another workstream depends on | Product (triage + criteria) → lead → 1 engineer → reviewer | None. Criteria, tests and review in the PR body; one row in the module's `changes.md` only if that folder already exists | Subagents only (main → lead → engineer and reviewer, depth 2) |
 | **Standard** | Otherwise | Product, lead, 1–2 engineers, QA runner; UX only for UI surfaces with screen, flow or visible-copy changes | Feature subfolder in the module (slim profile); the module folder is created first if missing | Subagents; a team only if 2 engineers and the TeamCreate tool is available, else sequential subagents |
-| **Full** | Any of: a new module, 3+ screens, a data migration, an auth/permissions model change, billing, cross-module work, ~10+ criteria | Everyone the surfaces need | New module folder + feature subfolder, or a feature subfolder in an existing module (full profile) | Agent team with all gates |
+| **Full** | Any of: a module built from scratch (no code yet), 3+ screens, a data migration, an auth/permissions model change, billing, cross-module work, ~10+ criteria | Everyone the surfaces need | New module folder + feature subfolder, or a feature subfolder in an existing module (full profile) | Agent team with all gates |
 
 **Escalation:** if Quick or Standard work grows past its rule, the lead stops and
 re-triages. It never quietly expands the scope.
@@ -273,7 +273,8 @@ Sensitive data: none
 docs → team.
 
 - **Module:** match the request against `docs/product/*/` names and the code
-  layout. Answer `existing` or `new (<name>)`. Ask when two modules fit, or when
+  layout. Answer `existing` or `new (<name>)`; `new` means `docs/product/<module>/`
+  doesn't exist yet, even when the module's code does. Ask when two modules fit, or when
   it's unclear whether it's new.
 - **Size:** the rules in §6.1. Ask when it can't decide between two sizes.
 - **Surfaces (v0.4b):** the profile surfaces whose Paths the change touches.
