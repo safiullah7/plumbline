@@ -21,6 +21,8 @@ TMPDIR="/c/Users/$USERNAME/AppData/Local/Temp" bash tests/hooks-selftest.sh | ta
 bash tests/scripts-selftest.sh | tail -n 1
 bash tests/lib-selftest.sh | tail -n 1
 bash tests/kickoff-selftest.sh | tail -n 1
+bash tests/profile-selftest.sh | tail -n 1
+bash tests/adapters-selftest.sh | tail -n 1
 )
 
 PART 2 - The fixture. In this folder: git init, write these files exactly, and
@@ -144,7 +146,8 @@ R=$(mktemp -d) && git init -q --bare "$R" && git remote add origin "$R" && git p
 /plumbline:build can only be started by the user, so stop here and tell me
 exactly: "Type: /plumbline:build make greet() return "Hello, friend" when
 called with no name". When the build skill asks something (a question, or a
-command approval), I'll pick its recommended option; this is a test. When it
+command approval), I'll pick its recommended option; for the project profile
+question I'll answer "use it as is". This is a test. When it
 has finished and I say "continue Part 6", run and keep the output:
 git branch --list 'quick/*'
 git log --oneline -n 5
@@ -156,10 +159,12 @@ quote the triage block and the ac-check line (ac-check: pass ...) as printed.
 
 PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Part 1, state: CLEAN; MATCHES REMOTE; NO INSTALLED COPY; the version matches
-  the branch name (branch v0.3 means version 0.3.x; branch v0.4a means 0.4.0-alpha);
+  the branch name (branch v0.3 means version 0.3.x; branch v0.4a means 0.4.0-alpha; branch v0.4b
+  means 0.4.0);
   show the tree hash
 - Part 1, checks: "Validation passed" for the plugin and for the marketplace;
-  every self-test run ends "0 failed"
+  every self-test run ends "0 failed" (hooks twice, scripts, lib, kickoff,
+  profile and adapters)
 - Step 0: eng-a quotes "You are eng-a. You own: src/a/**" and eng-b quotes
   "You are eng-b. You own: src/b/**", and both quote a "Plumbline scripts:" line
 - Step 1: blocked with "Ownership guard: eng-a does not own src/b/from-a.txt"
@@ -197,7 +202,8 @@ PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
   no PR is possible) the report says the branch was pushed
 - Part 6, no team: the only agents were product (triage), the lead, one senior
   engineer and a code reviewer; no other engineers or teammates
-- Part 6, no folder: docs/product holds no new folder for this change (only demo and shop)
+- Part 6, no folder: docs/product holds no new folder for this change (only demo and
+  shop; a project.md file is fine, the profile is written on first use)
 - Part 6, cleanup: .claude/plumbline-quick no longer exists
 Then show how many times each hook fired:
 for e in PreToolUse TaskCreated TaskCompleted TeammateIdle SessionStart SubagentStart; do echo "$e $(grep -c "\"hook_event_name\":\"$e\"" /tmp/plumbline-hooks.jsonl)"; done

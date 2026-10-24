@@ -11,15 +11,16 @@
 
 <p align="center">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
-  <img alt="Version 0.4.0-alpha" src="https://img.shields.io/badge/version-0.4.0--alpha-e9c46a?style=flat-square">
+  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e9c46a?style=flat-square">
   <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="524 self-tests passing" src="https://img.shields.io/badge/self--tests-524%20passing-2a9d8f?style=flat-square">
+  <img alt="846 self-tests passing" src="https://img.shields.io/badge/self--tests-846%20passing-2a9d8f?style=flat-square">
   <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
 </p>
 
 <p align="center">
   <a href="#size-the-work">Quick, Standard, Full</a> ·
+  <a href="#works-with">Works with</a> ·
   <a href="#how-it-works-full">How it works</a> ·
   <a href="#the-team">The team</a> ·
   <a href="#quality-gates">Quality gates</a> ·
@@ -94,6 +95,133 @@ by the task hooks.
 `Accessibility waived:` line: the ownership guard blocks it, for every agent and at every
 size. When evidence or an accessibility scan can't be produced, the main session asks
 you, and writes the line only after your explicit yes.
+
+## Works with
+
+Plumbline reads what kind of software you are building and adapts. The kinds are
+**surfaces**: `web-ui`, `mobile-ui`, `desktop-ui`, `api`, `service`, `cli`, `library`,
+`data`, `ai` and `infra`. One product can have several; a feature takes the union of what
+its surfaces need.
+
+| Surface | UX engineer | QA produces (evidence) | The reviewer adds | Accessibility at signoff |
+| --- | --- | --- | --- | --- |
+| `web-ui` | Yes | `screenshots`, `axe`, `journeys` | UI states, keyboard, contrast, XSS | axe rows, or a waiver |
+| `mobile-ui` | Yes: device-size mockups, platform conventions | `screenshots`, `flow-tests`, `checklist` | Offline and flaky network, permissions, lifecycle, battery, store rules | checklist rows, or a waiver |
+| `desktop-ui` | Yes | `screenshots`, `checklist` | Window states, keyboard, updates | checklist rows, or a waiver |
+| `api` | No (the lead reviews API design) | `contract`, `authz`, `negative`, `transcripts` | Authorization on every endpoint, validation, idempotency, migrations; tenant scoping when `Multi-tenant: yes` | exempt |
+| `service` | No | `job-tests`, `failure-cases` | Idempotency, retries, dead letters, observability | exempt |
+| `cli` | Light: product specifies help, flags and exit codes | `golden-output` | Exit codes, stdout and stderr, `--help`, no prompts in non-interactive paths | exempt |
+| `library` | No | `doc-examples`, `api-diff` | Breaking changes, naming, error types | exempt |
+| `data` | No | `sample-run`, `idempotency` | PII, backfills, partial failure | exempt |
+| `ai` | Only with a conversational UI | `eval-set`, `injection` | Prompt injection, data leakage, eval coverage, fallbacks, cost | exempt (UI rules apply to its UI) |
+| `infra` | No | `plan-output` | Blast radius, secrets, rollback | exempt |
+
+The QA runner records each piece of evidence as a row in `qa-report.md`'s `## Evidence`
+table (kind, surface, location, result). Signoff blocks on a required kind with no `pass`
+row, unless you waive it: `Evidence waived: <kind> (<surface>) - <reason> (approved by
+<who>)`. Only you can waive; an agent can't write that line.
+
+### The project profile: `docs/product/project.md`
+
+On the first `/plumbline:build`, if there is no `docs/product/project.md`, the plugin runs
+`scripts/detect-project.sh` on your manifests (`package.json`, `pyproject.toml`, `go.mod`,
+`pubspec.yaml`, `Cargo.toml`) and shows you its proposal. You answer once: use it as is,
+edit it, or skip it. The plugin then writes the file with a `Confirmed by:` line, and
+triage, the gates and QA read it from then on. Weak signals (an LLM SDK, dbt, Terraform,
+a native app folder, Electron, Tauri) come as `(check)` rows that you keep or delete.
+Edit the file any time the product changes shape. This is an **example**:
+
+```markdown
+# Project profile
+
+Confirmed by: Safi on 2026-10-25. Edit it when the product changes shape.
+Confirm: auto
+Multi-tenant: no
+Sensitive data: none
+
+## Surfaces
+| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| web-ui | Next.js | apps/web/** | npm run dev -w apps/web (http://localhost:3000) | npm run -s typecheck -w apps/web | npm run -s lint -w apps/web | node --dir apps/web |
+| api | Go | services/api/** | go run ./cmd/api (http://localhost:8080) | go vet ./... | golangci-lint run | go --dir services/api |
+```
+
+`Confirm:` is `auto` or `always` (confirm every triage). `Multi-tenant:` and
+`Sensitive data:` are read by the reviewer and product agents. Cells never contain a `|`.
+
+### Test adapters
+
+The **AC tests** cell says how to run the tests named after acceptance-criteria IDs.
+Adapters live in `plugins/plumbline/scripts/ac-tests/`. Each prints one line per ID
+(`pass`, `fail` or `missing`) and fails when an ID has no passing test, so a runner that
+passes on an empty match can't fake it.
+
+| Adapter | Runs |
+| --- | --- |
+| `node` | node:test, jest or vitest (vitest, then jest, else node:test) |
+| `pytest` | pytest, selected by `-k` on the lowercase ID (`ac_01_001`) |
+| `go` | `go test` with `-run`, on test names such as `TestAC_01_001` |
+| `generic` | Any command you write in project.md; see below |
+
+Add `--dir <path>` for a package in a subfolder. Any other command in the cell gets the AC
+IDs as its last argument.
+
+**Generic recipes.** For other stacks, set the cell to `generic` and put the command in a
+`### <surface>` block under `## Generic commands`. `{ids_regex}` becomes
+`AC[-_]01[-_]001|AC[-_]01[-_]002`; `{ids_underscored}` becomes `AC_01_001 AC_01_002`. The
+block runs with `bash -c` from the repo root. A generic command proves only its exit
+code, not that each ID has a test, and the adapter says so on stderr. Name your tests
+after the IDs (`AC_01_001`) so the filters below match. These recipes are documentation,
+not shipped scripts. Each filter flag was checked against the tool's current docs in
+October 2026. The Rust and Swift docs don't spell out repeated filters, so run a recipe
+once against a failing test before you rely on it.
+
+Rust (`cargo test`: libtest takes substring filters after `--`, case-sensitive, so the
+IDs are lowercased; name tests `ac_01_001_...`):
+
+````markdown
+### library
+```
+cargo test -- $(echo '{ids_underscored}' | tr 'A-Z' 'a-z')
+```
+````
+
+.NET (`dotnet test --filter`: `~` means contains, `|` means or, matching ignores case):
+
+````markdown
+### api
+```
+dotnet test --filter "$(echo '{ids_underscored}' | sed 's/^/FullyQualifiedName~/; s/ /|FullyQualifiedName~/g')"
+```
+````
+
+Gradle (`--tests` can repeat and takes `*` wildcards):
+
+````markdown
+### service
+```
+args=(); for id in {ids_underscored}; do args+=(--tests "*$id*"); done
+./gradlew test "${args[@]}"
+```
+````
+
+Flutter (`flutter test --name` takes a regular expression):
+
+````markdown
+### mobile-ui
+```
+flutter test --name '{ids_regex}'
+```
+````
+
+Swift (`swift test --filter` takes a regular expression):
+
+````markdown
+### mobile-ui
+```
+swift test --filter '{ids_regex}'
+```
+````
 
 ## How it works (Full)
 
@@ -295,9 +423,11 @@ Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
 
 Every release is also checked by:
 
-- **524 self-tests** (`bash tests/run-all.sh`): 219 for the hooks, run in two Windows path modes;
-  76 for the shared helpers; 121 for kickoff and the layouts; 108 for the scripts,
-  including the PNG decoder against a real browser screenshot.
+- **846 self-tests** (`bash tests/run-all.sh`, each suite counted once): 234 for the hooks
+  (run in two Windows path modes); 109 for the shared helpers; 182 for kickoff and the
+  layouts; 170 for the scripts, including the PNG decoder against a real browser
+  screenshot and the visual checks; 85 for project detection and the profile; 66 for the
+  test adapters.
 - **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
   creation gate, `[chore]` tasks, idle escalation, injected context, status and signoff.
 
@@ -416,8 +546,8 @@ still read by every script, nothing is moved, and new features in such an area g
 | **v0.1.2** | ✅ shipped | Windows path fix, visible escalations, QA ownership |
 | **v0.2** | ✅ shipped | A method for every role, the creation gate, injected context, briefs, the eval suite (0.84 → 1.00) |
 | **v0.3** | ✅ shipped | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
-| **v0.4a** | 🔍 in review | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
-| **v0.4b** | 🗺️ planned | Project awareness: the plugin learns what kind of software you are building and adapts roles and evidence to it |
+| **v0.4a** | ✅ shipped | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
+| **v0.4b** | 🔍 in review | **Project awareness:** a confirmed project profile, ten surfaces, test adapters (node, pytest, go, generic), QA evidence per surface checked at signoff, and agents that adapt to each surface. Evals and live smoke test pending |
 
 The full plan, with every task and its acceptance check, is in [`docs/dev-plan.md`](docs/dev-plan.md).
 
@@ -427,7 +557,7 @@ The full plan, with every task and its acceptance check, is in [`docs/dev-plan.m
 .claude-plugin/marketplace.json      marketplace entry
 plugins/plumbline/
 ├── agents/                          seven role definitions
-├── skills/                          build, kickoff, discover, status, handoff, signoff, phase-next (+ templates)
+├── skills/                          build, kickoff, discover, status, handoff, signoff, phase-next (+ templates, surface overlays)
 ├── hooks/hooks.json                 gates and context injection
 ├── scripts/                         the gates and tools (bash + jq; Node for screenshots and diffs)
 └── evals/                           plugin eval cases and their shared fixture
@@ -443,6 +573,8 @@ bash tests/hooks-selftest.sh          # hook gates
 bash tests/scripts-selftest.sh        # status, signoff, briefs, evidence, image diff
 bash tests/kickoff-selftest.sh        # kickoff.sh in both layouts
 bash tests/lib-selftest.sh            # shared helpers, ac-check
+bash tests/profile-selftest.sh        # project detection and the profile
+bash tests/adapters-selftest.sh       # node, pytest, go and generic test adapters
 claude plugin validate ./plugins/plumbline --strict
 claude plugin eval ./plugins/plumbline --scaffold --allow-tools Write Edit --ablation none --no-publish
 ```

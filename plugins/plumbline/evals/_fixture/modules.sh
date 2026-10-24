@@ -13,6 +13,7 @@
 # templates of the plugin version under test.
 set -e
 FIXTURE_TEMPLATES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../skills/kickoff/templates" && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/profile.sh"
 
 git init -q -b main
 git config user.name eval
@@ -22,6 +23,12 @@ git config core.autocrlf false
 M=docs/product/rooms
 F=$M/01-room-management
 mkdir -p "$F/contracts" "$F/briefs" "$F/prototypes" apps/api/rooms apps/web/rooms
+
+# The project profile (v0.4b): an api and a web-ui surface. Clinics are tenants.
+# Run, Typecheck and Lint stay empty because the demo app has no such scripts;
+# an empty cell skips that check.
+project_profile yes none "| api | Node | apps/api/** | | | | node --dir apps/api |
+| web-ui | React | apps/web/** | | | | |"
 
 # Module docs, filled in as kickoff.sh would.
 for name in design-principles decisions changes; do

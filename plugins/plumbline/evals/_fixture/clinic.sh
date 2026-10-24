@@ -11,6 +11,7 @@
 # templates of the plugin version under test.
 set -e
 FIXTURE_TEMPLATES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../skills/kickoff/templates" && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/profile.sh"
 
 # Copy a phase template into the phase folder, as kickoff would.
 phase_template() { sed 's/<phase>/01/g' "$FIXTURE_TEMPLATES/phase/$1" > "$P/$1"; }
@@ -59,6 +60,12 @@ A=docs/product/clinic
 P=$A/phases/phase-01
 mkdir -p "$P/contracts" "$P/prototypes" .claude apps/api/rooms apps/web/rooms
 echo "$P" > .claude/current-phase
+
+# The project profile (v0.4b): an api and a web-ui surface. Clinics are tenants.
+# Run, Typecheck and Lint stay empty because the demo app has no such scripts;
+# an empty cell skips that check.
+project_profile yes none "| api | Node | apps/api/** | | | | node --dir apps/api |
+| web-ui | React | apps/web/** | | | | |"
 
 cat > "$A/vision.md" <<'EOF'
 # Clinic vision
