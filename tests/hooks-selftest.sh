@@ -62,9 +62,44 @@ json_path() { local p="$1"; printf '%s' "${p//\\/\\\\}"; }
 edit() { echo "{\"session_id\":\"s1\",\"agent_id\":\"$1\",\"agent_type\":\"${3:-}\",\"tool_input\":{\"file_path\":\"$(json_path "$2")\"}}"; }
 idle() { echo "{\"session_id\":\"s1\",\"teammate_name\":\"$1\"}"; }
 
+# Hook input for a tool call: $1 = agent_id (empty for the main session), $2 = tool_input as JSON.
+mk() { jq -nc --arg id "$1" --argjson ti "$2" 'if $id == "" then {tool_input: $ti} else {agent_id: $id, agent_type: "", tool_input: $ti} end'; }
+N="$T/repo/apps/api/notes.md"   # a file eng-api owns, so only the content can get a case blocked
+ti_write() { jq -nc --arg f "$N" --arg c "$1" '{file_path: $f, content: $c}'; }
+ti_edit()  { jq -nc --arg f "$N" --arg c "$1" '{file_path: $f, old_string: "x", new_string: $c}'; }
+ti_multi() { jq -nc --arg f "$N" --arg c "$1" '{file_path: $f, edits: [{old_string: "a", new_string: "b"}, {old_string: "x", new_string: $c}]}'; }
+WAIVER=$'Result: fail\nAccessibility waived: no screen reader on this surface (approved by Sam)\n'
+
+# The locks that apply to any agent, the plan READY or not: $1 labels the cases.
+lock_cases() {
+  local k a ti
+  for a in "$ENG" "$SUBAGENT"; do
+    k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
+    check "$1: waiver line blocked, $k Write"     2 ownership-guard.sh "$(mk "$a" "$(ti_write "$WAIVER")")"
+    check "$1: waiver line blocked, $k Edit"      2 ownership-guard.sh "$(mk "$a" "$(ti_edit "$WAIVER")")"
+    check "$1: waiver line blocked, $k MultiEdit" 2 ownership-guard.sh "$(mk "$a" "$(ti_multi "$WAIVER")")"
+  done
+  check_out "$1: waiver refusal says who can approve" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write "$WAIVER")")" "Only the user can approve a waiver"
+  check "$1: waiver line allowed in the main session" 0 ownership-guard.sh "$(mk "" "$(ti_write "$WAIVER")")"
+  check "$1: Evidence waived blocked"     2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'Evidence waived: transcript (api) - no network (approved by Sam)')")"
+  check "$1: list-marker variant blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'- Evidence waived: contract (api) - n/a (approved by Sam)')")"
+  check "$1: indented variant blocked"    2 ownership-guard.sh "$(mk "$SUBAGENT" "$(ti_write $'  - Accessibility waived: none (approved by Sam)')")"
+  check "$1: lowercase variant blocked"   2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'accessibility waived: none (approved by Sam)')")"
+  ti='If axe cannot run, record that here as "Accessibility waived: <reason> (approved by <who>)".'
+  check "$1: mid-sentence mention allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write "$ti")")"
+  check "$1: placeholder-only line allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'Accessibility waived: <reason> (approved by <who>)')")"
+  check "$1: Evidence placeholder line allowed" 0 ownership-guard.sh "$(mk "$SUBAGENT" "$(ti_write $'- Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)')")"
+  check "$1: .plumbline write blocked, teammate" 2 ownership-guard.sh "$(mk "$ENG" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","content":"profile=full"}')"
+  check "$1: .plumbline edit blocked, subagent" 2 ownership-guard.sh "$(mk "$SUBAGENT" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","old_string":"a","new_string":"b"}')"
+  check_out "$1: .plumbline refusal names kickoff.sh" 2 ownership-guard.sh "$(mk "$ENG" '{"file_path":"C:\\repo\\x\\.plumbline","content":"a"}')" "written by kickoff.sh"
+  check "$1: .plumbline write allowed in the main session" 0 ownership-guard.sh "$(mk "" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","content":"profile=full"}')"
+  check "$1: a file merely named like .plumbline-x allowed" 0 ownership-guard.sh "$(mk "$ENG" '{"file_path":"'"$T"'/repo/apps/api/.plumbline-notes","content":"a"}')"
+}
+
 check "draft: foreign edit allowed"        0 ownership-guard.sh "$(edit $ENG "$T/repo/apps/web/x.ts")"
 check "draft: task without AC allowed"     0 task-completed-gate.sh '{"task_subject":"x","teammate_name":"eng-api"}'
 check "draft: untagged task creation allowed" 0 task-created-gate.sh '{"task_subject":"x"}'
+lock_cases draft
 
 # Mark the plan READY and give it Windows (CRLF) line endings, as git may on Windows.
 # Commit the fixture so only the files each case creates count as uncommitted work.
@@ -79,6 +114,7 @@ check "ready: named by agent_type, blocked" 2 ownership-guard.sh "$(edit other-i
 check "ready: plain subagent allowed"      0 ownership-guard.sh "$(edit $SUBAGENT "$T/repo/apps/web/x.ts")"
 check "ready: questions.md allowed"        0 ownership-guard.sh "$(edit $ENG "$T/repo/$P/questions.md")"
 check "ready: lead main thread allowed"    0 ownership-guard.sh "{\"tool_input\":{\"file_path\":\"$T/repo/apps/web/x.ts\"}}"
+lock_cases ready
 if command -v cygpath >/dev/null 2>&1; then
   check "ready: Windows path, own file"       0 ownership-guard.sh "$(edit $ENG "$(cygpath -w "$T/repo/apps/api/a.ts")")"
   check "ready: Windows path, foreign file"   2 ownership-guard.sh "$(edit $ENG "$(cygpath -w "$T/repo/apps/web/x.ts")")"
@@ -117,6 +153,29 @@ assert "context: teammate sees its ownership" grep -q "You are eng-api. You own:
 assert "context: plain subagent gets nothing" test -z "$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"Explore\"}")"
 assert "context: plumbline agent without a row gets the phase" grep -q "Plumbline phase" <<<"$(ctx "{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"plumbline:code-reviewer\"}")"
 assert "context: silent without an active phase" test -z "$(cd "$T/home" && CLAUDE_PROJECT_DIR="$T/home" ctx '{"hook_event_name":"SessionStart"}')"
+ctx_text() { jq -r '.hookSpecificOutput.additionalContext // empty' | tr -d '\r'; }
+SESSION='{"hook_event_name":"SessionStart","session_id":"s1","source":"startup"}'
+TEAMMATE_START="{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$ENG\",\"agent_type\":\"plumbline:senior-engineer\"}"
+REVIEWER_START="{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"plumbline:code-reviewer\"}"
+EXPLORE_START="{\"hook_event_name\":\"SubagentStart\",\"agent_id\":\"$SUBAGENT\",\"agent_type\":\"Explore\"}"
+assert "context: legacy phase gets its folder name as Module" grep -qx "Module: demo" <<<"$(ctx "$SESSION" | ctx_text)"
+printf 'profile=lean\nmodule=room-schedules\n' > "$P/.plumbline"
+assert "context: lead sees Module from .plumbline" grep -qx "Module: room-schedules" <<<"$(ctx "$SESSION" | ctx_text)"
+assert "context: Module follows the phase line" test "$(ctx "$SESSION" | ctx_text | sed -n 2p)" = "Module: room-schedules"
+assert "context: teammate sees Module" grep -qx "Module: room-schedules" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
+rm -f "$P/.plumbline"
+# A Quick change swaps the feature context for a one-line notice and keeps the scripts line.
+printf 'branch=quick/fix-typo\nids=AC-01-001\n' > .claude/plumbline-quick
+for case_in in "lead|$SESSION" "teammate|$TEAMMATE_START" "plumbline agent|$REVIEWER_START"; do
+  out=$(ctx "${case_in#*|}" | ctx_text); k="${case_in%%|*}"
+  assert "context: Quick marker names the branch ($k)" grep -qxF "Plumbline Quick change in progress (branch quick/fix-typo): no feature folder; don't write phase docs." <<<"$out"
+  assert "context: Quick marker keeps the scripts line ($k)" grep -qE "^Plumbline scripts: .*plugins/plumbline/scripts$" <<<"$out"
+  assert "context: Quick marker hides the feature ($k)" test -z "$(grep -E 'Plumbline phase|Module:|docs/product|You own' <<<"$out")"
+done
+assert "context: Quick marker, plain subagent still gets nothing" test -z "$(ctx "$EXPLORE_START")"
+assert "context: Quick marker, valid JSON for SubagentStart" jq -e '.hookSpecificOutput.hookEventName == "SubagentStart"' <<<"$(ctx "$TEAMMATE_START")"
+rm -f .claude/plumbline-quick
+assert "context: feature context returns once the marker is gone" grep -q "Plumbline phase: $P" <<<"$(ctx "$SESSION" | ctx_text)"
 
 # Idle gate. Hook state lives in CLAUDE_PLUGIN_DATA, which Claude Code passes as a Windows path.
 data="$T/data"; command -v cygpath >/dev/null 2>&1 && data=$(cygpath -m "$T/data")
@@ -129,6 +188,7 @@ assert "ready: idle state kept in CLAUDE_PLUGIN_DATA" test -f "$T/data/plumbline
 check_out "ready: idle, 2nd push names the lead" 2 teammate-idle-gate.sh "$(idle eng-api)" "SendMessage the lead"
 check "ready: idle, dirty file, gives up"  0 teammate-idle-gate.sh "$(idle eng-api)"
 assert "ready: give-up creates questions.md with its header" grep -q '^| # | From | To | Question | Answer | Status |' "$Q"
+assert "ready: legacy phase folder keeps '# Phase 01 questions'" test "$(head -n1 "$Q" | tr -d '\r')" = "# Phase 01 questions"
 assert "ready: give-up logs one ESCALATED row naming the file" \
   test "$(grep -c 'ESCALATED |' "$Q" 2>/dev/null)" = 1 -a "$(grep -c 'apps/api/a.ts' "$Q" 2>/dev/null)" = 1
 check "ready: idle again after giving up"  0 teammate-idle-gate.sh "$(idle eng-api)"
@@ -143,6 +203,26 @@ assert "context: stays within 60 lines and 10,000 chars" test "$(wc -l <<<"$out"
 rm -f apps/api/a.ts
 mkdir -p "apps/api/with space" && echo x > "apps/api/with space/b.ts"
 check "ready: dirty file with a space in its path counts" 2 teammate-idle-gate.sh "$(idle eng-api)"
+
+# A new-layout feature folder: the questions.md header comes from the folder name.
+P2=docs/product/demo/07-x; mkdir -p "$P2"; echo "$P2" > .claude/current-phase
+sed 's/^Status: DRAFT/Status: READY/' > "$P2/dev-plan.md" <<'PLAN'
+# 07-x dev plan
+
+Status: DRAFT
+
+## Ownership
+| Teammate | Owned globs |
+| --- | --- |
+| eng-api | apps/api/** |
+PLAN
+idle2() { echo "{\"session_id\":\"s2\",\"teammate_name\":\"$1\"}"; }
+check "new layout: idle, 1st push"   2 teammate-idle-gate.sh "$(idle2 eng-api)"
+check "new layout: idle, 2nd push"   2 teammate-idle-gate.sh "$(idle2 eng-api)"
+check "new layout: idle, gives up"   0 teammate-idle-gate.sh "$(idle2 eng-api)"
+assert "new layout: questions.md header is the folder name" test "$(head -n1 "$P2/questions.md" | tr -d '\r')" = "# 07-x questions"
+assert "new layout: questions.md has the table and one ESCALATED row" \
+  test "$(grep -c '^| # | From | To | Question | Answer | Status |' "$P2/questions.md")" = 1 -a "$(grep -c 'ESCALATED |' "$P2/questions.md")" = 1
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

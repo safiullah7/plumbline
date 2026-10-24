@@ -5,7 +5,7 @@
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "No active phase: .claude/current-phase is missing."; exit 1; }
 cd "$PROJECT_DIR" || exit 1
-TEST_GLOBS="${PLUMBLINE_TEST_GLOBS:-*.test.* *.spec.* */e2e/* */tests/* */test/* e2e/* tests/* test/*}"
+TEST_GLOBS="${PLUMBLINE_TEST_GLOBS:-*.test.* *.spec.* */e2e/* */tests/* */test/* e2e/* tests/* test/* *_test.go test_*.py */test_*.py *_test.py *_test.dart *Tests.swift *Tests.cs}"
 count() { grep -c . <<<"$1"; }
 
 echo "Phase $(phase_rel) · dev plan: $(plan_status || echo none)"

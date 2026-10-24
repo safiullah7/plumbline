@@ -159,6 +159,18 @@ bash "$G/signoff-check.sh" >/dev/null; rc=$?
 assert "signoff-check: an explicit waiver clears it" test "$rc" = 0
 cp "$T/qa-report.bak" "$P/qa-report.md"
 
+# signoff-check: the PR boxes stay unticked, whatever the layout calls them.
+cp "$P/signoff.md" "$T/signoff.bak"
+printf '%s\n' '- [ ] Feature PR opened: #12' '- [ ] Phase PR opened: #13' >> "$P/signoff.md"
+out=$(bash "$G/signoff-check.sh"); rc=$?
+assert "signoff-check: unticked Feature PR and Phase PR boxes ignored" test "$rc" = 0
+printf '%s\n' '- [ ] Release notes written' >> "$P/signoff.md"
+out=$(bash "$G/signoff-check.sh"); rc=$?
+assert "signoff-check: other unticked boxes still flagged" test "$rc" = 1
+assert "signoff-check: names the unticked box" has "$out" "unticked sign-off box: Release notes written"
+assert "signoff-check: PR boxes not named beside it" test -z "$(grep -iE 'PR opened' <<<"$out")"
+cp "$T/signoff.bak" "$P/signoff.md"
+
 # phase-evidence: what shipped with problems, what was left out, unmet metrics.
 add_row "$P/qa-report.md" Bugs "| BUG-01-003 | AC-01-005 | medium | WONTFIX | Empty state icon misaligned | shots/empty.png |"
 add_row "$P/signoff.md" "Design findings" "| 1 | Rooms list | Badge colour too close to brand blue | medium | OPEN | shots/badge.png |"
@@ -170,6 +182,45 @@ assert "phase-evidence: open medium design finding" has "$out" "design #1 (mediu
 assert "phase-evidence: Non-Goals (Out of scope in older specs)" has "$out" "Booking appointments into rooms (phase 03)"
 assert "phase-evidence: leaves out verified high bugs" test -z "$(grep BUG-01-001 <<<"$out")"
 assert "phase-evidence: at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+
+# phase-evidence on the new layout (<module>/<nn>-<slug>/) and on a mixed module
+# (legacy phases/phase-01 beside 02-x), listed in number order.
+printf '%s\n' "$(head -n1 .claude/current-phase)" > "$T/current-phase.bak"
+bug_report() { # file id severity: a qa-report.md with one open bug
+  printf '# QA report\n\nVerdict: PASS\n\n## Bugs\n| ID | AC ID | Severity | Status | Summary | Evidence |\n| --- | --- | --- | --- | --- | --- |\n| %s | AC-01-001 | %s | OPEN | Problem in %s | - |\n' "$2" "$3" "$2" > "$1"
+}
+mkdir -p docs/product/shop/04-a docs/product/shop/05-b
+bug_report docs/product/shop/04-a/qa-report.md BUG-04-001 low
+bug_report docs/product/shop/05-b/qa-report.md BUG-05-001 medium
+echo "docs/product/shop/05-b" > .claude/current-phase
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: new layout names the module" has "$out" "Evidence for the next feature in docs/product/shop."
+assert "phase-evidence: new layout points to vision.md and decisions.md" has "$out" "docs/product/shop/vision.md and docs/product/shop/decisions.md"
+assert "phase-evidence: new layout lists the first feature" has "$out" "BUG-04-001 (low, open): Problem in BUG-04-001"
+assert "phase-evidence: new layout lists the second feature" has "$out" "BUG-05-001 (medium, open): Problem in BUG-05-001"
+assert "phase-evidence: new layout in number order" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## 04-a ## 05-b "
+assert "phase-evidence: new layout at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+mkdir -p docs/product/old/phases/phase-01 docs/product/old/02-x
+bug_report docs/product/old/phases/phase-01/qa-report.md BUG-01-009 low
+bug_report docs/product/old/02-x/qa-report.md BUG-02-001 low
+echo "docs/product/old/02-x" > .claude/current-phase
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: mixed module lists the legacy phase" has "$out" "BUG-01-009 (low, open)"
+assert "phase-evidence: mixed module lists the new feature" has "$out" "BUG-02-001 (low, open)"
+assert "phase-evidence: mixed module in number order" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## phase-01 ## 02-x "
+assert "phase-evidence: mixed module at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+echo "docs/product/old/phases/phase-01" > .claude/current-phase
+assert "phase-evidence: same module from a legacy feature" has "$(bash "$G/phase-evidence.sh")" "BUG-02-001 (low, open)"
+cp "$T/current-phase.bak" .claude/current-phase
+rm -rf docs/product/shop docs/product/old
+
+# status: test files named the Go, Python, Dart, Swift and C# way count too.
+mkdir -p apps/api/svc
+echo "func TestAC_01_004(t *testing.T) {} // AC-01-004" > apps/api/svc/rooms_test.go
+echo "def test_room(): pass  # AC-01-005" > apps/api/svc/test_rooms.py
+out=$(bash "$G/status.sh")
+assert "status: AC IDs in _test.go and test_*.py files count as covered" has "$out" "ACs: 5 · every one has a test"
+rm -rf apps/api/svc
 
 # make-briefs: one brief per engineer, holding only its own ACs.
 out=$(bash "$G/make-briefs.sh")
