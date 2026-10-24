@@ -233,6 +233,11 @@ Branch `v0.2`. Six workstreams; W2–W5 can run in parallel, W6 after W2, W7 las
 
 ## Release 4: v0.4 — adaptive delivery (right-size every task)
 
+**The detailed, step-by-step plan for this release is
+[`docs/dev-plan-v0.4.md`](dev-plan-v0.4.md).** It has the exact formats,
+script interfaces, build order, tests and definition of done; this section is
+the summary.
+
 **Problem.** Every request gets the full process today:
 - kickoff creates 10+ documents;
 - product, UX, lead, engineers and QA all take part;
@@ -242,10 +247,14 @@ Branch `v0.2`. Six workstreams; W2–W5 can run in parallel, W6 after W2, W7 las
 A one-line bug fix pays for all of that.
 
 **Goal.** One entry point, `/plumbline:build <request>`. The product engineer
-triages the request and the plugin picks the process to match. It decides
-whether UX is needed, how many engineers, whether to keep docs, and team or
-subagents. It asks the user only when it's genuinely unclear. Quality bars hold
-at every size: observable acceptance criteria, tests named after them, a review
+triages the request and the plugin picks the process to match: the size of the
+work (Quick, Standard, Full) **and** the kind of software it touches (its
+surfaces: web, mobile, API, CLI, library, data, AI, infra; see "Project
+awareness" below). From those it decides which roles take part, whether UX is
+needed, how many engineers, what evidence QA must produce, whether to keep docs,
+and team or subagents. It asks the user only when it's genuinely unclear.
+Quality bars hold at every size and for every surface: observable acceptance
+criteria, tests named after them, evidence that fits the surface, a review
 before done, and a PR the user merges.
 
 ### Verified constraints (Claude Code docs, 2026-10-24)
@@ -352,7 +361,9 @@ docs/product/
   Size: Quick | Standard | Full
   Module: <name> (existing | new)
   Folder: none | docs/product/<module>/<nn>-<feature-slug>/
-  UX: yes | no
+  Surfaces: <from project.md, e.g. api, web-ui>
+  Roles: <e.g. product, lead, 2 engineers, UX (web-ui), QA runner>
+  Evidence: <per surface, e.g. contract tests; browser screenshots + axe>
   Engineers: <n>
   Docs: none | slim | full
   Team: no | yes
@@ -393,7 +404,126 @@ docs/product/
      created.
    - If teams are off, it stops with the launch command.
 
-### Tasks
+### Project awareness: any kind of software, not just a web app
+
+**Problem (from an audit of every agent, template and script, 2026-10-24).**
+The gates, docs and evidence model are general, but *what counts as evidence*
+and *which roles take part* are hard-coded for a web app:
+
+- the QA runner and QA engineer assume browser journeys at 390/1280 px,
+  Playwright, URLs and axe;
+- the UX engineer assumes HTML prototypes, `tokens.css` and WCAG via axe;
+- the reviewer's checklist starts with tenant isolation and "patient data";
+- the lead's examples are `schema.prisma`, `apps/web/e2e` and appointments;
+- the task gate defaults to `npm run typecheck/lint/test:ac`, one command for
+  the whole repo;
+- the signoff accessibility rule assumes axe results.
+
+A mobile app, an API, a CLI, a data pipeline or an AI feature would get the wrong
+instructions, or none.
+
+**Goal.** The plugin knows what kind of software the repo is (its *surfaces*),
+picks the roles for each task from the size **and** the surfaces, and every
+role adapts its practice to the surface: the right prototype, the right
+evidence, the right checks, the right review. Web stays first-class; nothing
+about it is assumed.
+
+#### Surfaces
+
+| Surface | Examples | UX engineer | QA evidence (what the test plan must produce) | Reviewer focus, added to the base checklist |
+| --- | --- | --- | --- | --- |
+| **web-ui** | React, Next, Vue, server-rendered pages | Yes: HTML prototypes, CSS tokens | Browser screenshots vs prototype (`capture.mjs`, `visual-diff.mjs`), axe scan, journey tests | UI states, keyboard, contrast, XSS |
+| **mobile-ui** | iOS, Android, React Native, Flutter | Yes: device-size mockups, platform conventions (HIG / Material) | Simulator or emulator screenshots (`xcrun simctl io … screenshot`, `adb exec-out screencap`) fed to `visual-diff.mjs`; flow tests (Maestro, Detox, XCUITest, Espresso, Flutter integration tests); a platform accessibility checklist | Offline and flaky network, permissions, lifecycle and background, battery, store rules |
+| **desktop-ui** | Electron, Tauri, native | Yes | App screenshots through its test harness; accessibility checklist | Window states, keyboard, updates |
+| **api** | REST, GraphQL, gRPC services | No (the lead reviews API design) | Contract tests against the schema (OpenAPI, GraphQL SDL, proto), negative and authorization tests, recorded request/response transcripts as evidence | Authorization on every endpoint, input validation, idempotency, migrations, tenant scoping when multi-tenant |
+| **service** | Workers, jobs, queues | No | Job-level tests with recorded inputs/outputs, retry and failure cases | Idempotency, retries, dead-letter handling, observability |
+| **cli** | Command-line tools | Light: the product engineer specifies help text, flags, exit codes, error messages | Golden-output tests, recorded sessions, non-interactive runs | Exit codes, stdout/stderr discipline, `--help`, no interactive prompts in scripts |
+| **library** | SDKs, packages | No | Runnable doc examples, unit tests, a public-API diff (semver) | Breaking changes, naming consistency, error types |
+| **data** | Pipelines, ETL, warehouse models | No | Runs on a sample dataset with row counts and schema diffs as evidence; re-run proves idempotency | PII handling, idempotency, backfills, partial failure |
+| **ai** | Prompts, model calls, agents, RAG | Only when there's a conversational UI | An **eval set** (inputs with expected outputs or a rubric) with a pass threshold, a regression run on a golden set, prompt-injection cases, cost and latency budgets; non-determinism handled by seeded runs and pass-every-time | Prompt injection, data leakage, eval coverage, fallback behaviour, cost |
+| **infra** | Terraform, Kubernetes, CI | No | Plan or dry-run output, policy checks | Blast radius, secrets, rollback |
+
+A feature can span surfaces (an API plus a web screen). Roles and evidence are
+the union.
+
+#### Design
+
+1. **Project profile:** `docs/product/project.md`, one per repo. A Surfaces
+   table: `| Surface | Stack | Paths | Run / preview | Typecheck | Lint | AC tests | Evidence |`,
+   plus `Multi-tenant: yes/no` and `Sensitive data: <kinds>`. It's the single
+   place that says what the product is made of and how to check it.
+2. **Detection, then confirmation:** `scripts/detect-project.sh` scans the repo
+   (package.json and its framework dependencies, `pubspec.yaml`, `android/`,
+   `*.xcodeproj`, `Package.swift`, `pyproject.toml`, `go.mod`, `Cargo.toml`,
+   `*.csproj`, `build.gradle`, Dockerfiles, Terraform, notebooks, prompt and
+   model folders) and proposes the table. The first run of `/plumbline:build`
+   or `/plumbline:kickoff` shows the proposal and the user confirms or edits it
+   in the main session; it's never guessed silently. Later runs read it.
+3. **Roles from size × surfaces:** the triage block gains `Surfaces:` and
+   `Roles:` lines (for example `Surfaces: api, web-ui` →
+   `Roles: product, lead, 2 engineers, UX (web-ui), QA runner`). The build skill
+   dispatches exactly those.
+4. **Every agent gets a "By surface" section** in place of web-only text:
+   - **QA engineer:** writes the Evidence column of the test plan from the
+     table above, per AC; browser screenshots only for web-ui.
+   - **QA runner:** executes per surface; for mobile it captures from the
+     simulator or emulator and feeds the same `visual-diff.mjs`; for API it
+     records transcripts; for AI it runs the eval set; it never asks for a URL
+     when there isn't one, and records "not run" honestly when a tool is missing.
+   - **UX engineer:** takes part only for UI surfaces; mobile prototypes are
+     device-size mockups with platform conventions; accessibility by checklist
+     where axe doesn't apply.
+   - **Code reviewer:** base checklist (validation, errors, tests, security,
+     readability) plus the surface rows; tenant isolation only when
+     `Multi-tenant: yes`.
+   - **Lead:** per-workstream checks from the profile; HIGH-risk list by
+     surface; generic examples.
+   - **Product engineer:** verification by the surface's evidence, not "walk
+     the browser"; examples drawn from the project, not a clinic.
+   - **Senior engineer:** tests named after ACs in the stack's convention
+     (`AC-01-001` in strings, `AC_01_001` where identifiers can't contain dashes).
+5. **Gate adapters per stack:** `scripts/ac-tests/<stack>.sh "<IDs>"` for
+   node, pytest, go, cargo, dotnet, gradle, flutter and swift, plus a generic one
+   that takes a command template. Each translates the IDs into the runner's
+   filter, runs it, and fails when any ID has no passing test. The task gate and
+   `ac-check.sh` pick the workstream's checks from the profile (by the files the
+   workstream owns), so a Flutter + Go monorepo is gated per workstream.
+6. **Templates by surface:** `templates/surface/<surface>/` overlays that
+   kickoff applies for the feature's surfaces: a mobile `ux.md` (device sizes,
+   platform conventions) and accessibility checklist; an API `contracts/`
+   section with the schema; an AI `test-plan.md` eval-set section and a `spec.md`
+   model/prompt section; a CLI usage spec. Web keeps today's templates.
+7. **Signoff accessibility rule by surface:** web-ui needs axe rows or a waiver;
+   mobile-ui and desktop-ui need checklist result rows or a waiver; surfaces
+   with no UI are exempt.
+8. **Visual comparison for mobile:** `visual-diff.mjs` already compares any two
+   PNGs of the same size, so emulator screenshots work as they are; a
+   `capture-mobile.sh` helper wraps `xcrun simctl` and `adb` when present.
+9. **Generic wording:** clinic, patient, receptionist and appointment examples
+   leave the agent bodies; they stay only in the eval fixture.
+
+#### Tasks (project awareness)
+
+| ID | Task | Acceptance |
+| --- | --- | --- |
+| PL-094 | `templates/project.md` and `scripts/detect-project.sh`: proposes the Surfaces table from manifests; `project_surfaces()` and `surface_checks()` in `lib.sh` | Self-test on fixture repos: Node web, Flutter, Go API, Python data, a Node API + web monorepo, an AI service; each yields the right surfaces and checks |
+| PL-095 | Gate adapters `scripts/ac-tests/{node,pytest,go,cargo,dotnet,gradle,flutter,swift,generic}.sh`; the task gate and `ac-check.sh` pick checks per workstream from the profile | Self-test per adapter where the toolchain is installed (Node, Python and Go at least), skipped with a note otherwise; each proves pass, fail and no-test |
+| PL-096 | Triage adds surfaces and roles: the product engineer's triage mode reads `project.md`, the fixed block gains `Surfaces:` and `Roles:`, the build skill dispatches those roles | Triage evals per surface (below) |
+| PL-097 | QA engineer and QA runner by surface: the evidence matrix in the QA engineer's body; the runner's per-surface execution, mobile capture, API transcripts, AI eval sets; `capture-mobile.sh` | Evals: a mobile feature's test plan asks for emulator screenshots and flow tests, not URLs; an API feature's plan has contract and authorization tests; an AI feature's plan has an eval set with a threshold |
+| PL-098 | UX engineer by surface: UI surfaces only, mobile mockups and platform conventions, checklist-based accessibility | Eval: a mobile screen gets device-size mockups and a checklist, no axe |
+| PL-099 | Code reviewer by surface: base checklist plus surface rows; tenant isolation only when the profile says multi-tenant | Evals: an API diff missing authorization is Critical; a CLI diff that prompts interactively is flagged; a single-tenant repo isn't told about tenants |
+| PL-100 | Lead, product and senior engineer by surface: per-workstream checks, HIGH-risk list, verification by evidence, AC naming conventions; generic examples replace the clinic ones | Review; existing evals ≥ v0.3 |
+| PL-101 | Surface template overlays (mobile, api, ai, cli) and the signoff accessibility rule by surface | Self-tests: kickoff with each surface produces its overlay; signoff passes a mobile feature with a checklist and no axe, and an API feature with no UI |
+| PL-102 | Fixtures and evals for the surfaces: Flutter, Go API, Python data, AI service and CLI fixtures under `evals/_fixture/`; the cases above | New cases recorded at ≥ 2/3; all existing cases ≥ v0.3 |
+| PL-103 | README: "Works with" section (surfaces and stacks), the evidence table; smoke test adds an API-only Quick task | Smoke rows PASS |
+
+**Verification notes:** the mobile, API and AI commands in the adapters and
+the runner's guidance are checked against the tools' current documentation
+during implementation, and each adapter has a fixture test. The browser,
+simulator and emulator parts can't run in evals; the self-tests and the live
+smoke test cover them.
+
+### Tasks (adaptive sizing and docs layout)
 
 | ID | Task | Acceptance |
 | --- | --- | --- |
@@ -454,15 +584,25 @@ On a fresh repo (`D:\Repos\plumbline-e2e`): a tiny Node/TS app with one table (e
 2. v0.2: W7 evals first, with a recorded v0.1.2 baseline and a baseline mini-phase run; then W2 and W3 (they give the test harness its new checks), then W4/W5/W6, then rerun evals and the mini-phase e2e against the baseline → PR → merge.
 3. v0.3: built and partly evaluated (Safi chose to build before using v0.2 on a
    real phase). Finish its evals, smoke test, then PR and merge.
-4. v0.4, after v0.3 merges:
-   1. record v0.3 as the eval baseline;
-   2. PL-083/084/085/086/092, the deterministic scripts, templates and the
-      module/feature layout, with self-tests on both layouts;
-   3. PL-081/082/087/093, the agents and module language;
-   4. PL-080/088, the build skill;
-   5. PL-089 evals; any existing case below its v0.3 score is fixed or reverted;
-   6. PL-090/091 docs, smoke and measurement;
-   7. PR, then stop for review.
+4. v0.4, after v0.3 merges, as two PRs on one release so each half gets its
+   own evals and smoke test:
+   - **v0.4a, sizing and layout:**
+     1. record v0.3 as the eval baseline;
+     2. PL-083/084/085/086/092, the deterministic scripts, templates and the
+        module/feature layout, with self-tests on both layouts;
+     3. PL-081/082/087/093, the agents and module language;
+     4. PL-080/088, the build skill;
+     5. PL-089 evals; any existing case below its v0.3 score is fixed or reverted;
+     6. PL-090/091 docs, smoke and measurement;
+     7. PR, then stop for review.
+   - **v0.4b, project awareness:**
+     1. PL-094/095, the project profile, detection and gate adapters, with
+        self-tests on fixture repos;
+     2. PL-101, surface templates and the signoff rule;
+     3. PL-096/097/098/099/100, triage and every agent by surface;
+     4. PL-102 evals on the new fixtures; existing cases ≥ v0.4a;
+     5. PL-103 README and smoke;
+     6. PR, then stop for review.
 
 ## Risks
 
@@ -480,3 +620,7 @@ On a fresh repo (`D:\Repos\plumbline-e2e`): a tiny Node/TS app with one table (e
 | (v0.4) AC IDs collide across modules (tests are named after them) | Feature numbers are a repo-wide sequence, so `AC-<nn>-<nnn>` is unique across modules; Quick uses `AC-<yymmdd>-<nn>` |
 | (v0.4) Triage puts work in the wrong module | The module is shown in the triage block before anything is created; it asks when two modules fit; folders are created only after that |
 | (v0.4) Existing repos use the old `<area>/phases/<phase>/` layout | Scripts read both layouts; nothing is moved; new features in an old-layout area go into its `phases/` folder until the user chooses to migrate |
+| (v0.4b) Detection guesses a surface wrong and the wrong roles or evidence follow | The proposal is confirmed by the user on first run and stored in `project.md`; triage shows surfaces and roles before work starts; a surface can be edited any time |
+| (v0.4b) A stack's test runner has no name filter, so AC-tagged tests can't be run alone | The generic adapter runs the whole suite and parses results for the AC IDs; the gate still fails when an ID has no passing test |
+| (v0.4b) Mobile and AI evidence can't run in evals or on a CI box without tools | The runner records "not run" with the exact reason; signoff needs an explicit waiver; the fixture tests cover the adapter logic without the devices |
+| (v0.4b) The agent bodies grow and quality drops elsewhere | Surface sections are short tables, loaded for the feature's surfaces only; every existing eval must hold |
