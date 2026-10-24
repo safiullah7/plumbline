@@ -71,7 +71,8 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   cross-module work or ~10+ criteria; else Standard); UX (yes only if a screen,
   flow or visible copy beyond a label changes); engineers (one per independent
   file area, max 4; Quick 1); docs (Quick none, Standard slim, Full full; folder
-  <nn> = highest feature or phase number in docs/product/ + 1, two digits);
+  <nn> = highest feature or phase number in docs/product/ + 1, two digits; a
+  module with a phases/ folder gets docs/product/<module>/phases/phase-<nn>/);
   team (Full yes; Standard only with 2 engineers and teams available; Quick no).
 - Return this block exactly, one chosen value per line:
   ```

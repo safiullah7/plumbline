@@ -133,6 +133,20 @@ assert "signoff-check: serious checklist failure named" has "$(bash "$G/signoff-
 printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
 bash "$G/qa-summary.sh" >/dev/null
 
+# Checklist rows: result and impact are compared in lower case, an unknown impact on a
+# fail counts as serious, and a header row or an unfilled result is not a row.
+printf 'screen\twidth\tcheck\tresult\timpact\tevidence\nhome\t390\tcontrast\tFail\tCritical\tqa/shots/a.png\nhome\t390\tlabels\tFAIL\tmoderate\tqa/shots/b.png\nhome\t390\ttargets\tfail\thigh\tqa/shots/c.png\nhome\t390\tfocus\tfail\t\tqa/shots/d.png\nhome\t390\tzoom\tPass\tserious\tqa/shots/e.png\nhome\t390\ttodo\t\t\tqa/shots/f.png\nhome\t390\tmaybe\tn/a\tcritical\tqa/shots/g.png\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+report=$(cat "$P/qa-report.md")
+assert "qa-summary: Fail/Critical in any case is counted, unknown impacts are serious" has "$report" "| home | 390 | 1 | 2 | 1 | 0 | qa/a11y-checklist.tsv | checklist |"
+assert "qa-summary: header row is not a screen" test -z "$(grep -i '^| screen |' <<<"$report" | grep -v 'Screen | Width')"
+assert "qa-summary: unfilled and n/a results add nothing" test "$(grep -c '| home | 390 |' "$P/qa-report.md")" = 1
+printf 'screen\twidth\tcheck\tresult\timpact\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: a header-only checklist writes no rows" test -z "$(grep 'checklist |' "$P/qa-report.md")"
+printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+
 sed -i 's/| Fail |/| Pass |/' "$P/test-plan.md"
 echo "| AC-01-005 | TC-01-005 | e2e | Pass |" >> "$P/test-plan.md"
 sed -i 's/^Verdict: PENDING/Verdict: PASS/; s/| high | OPEN |/| high | VERIFIED |/' "$P/qa-report.md"
@@ -154,9 +168,37 @@ add_after() { # file line-regex text: insert text after the first matching line
 add_row() { # file section text: add a row right after that section's table separator
   awk -v sec="## $2" -v text="$3" '/^## / { in_sec = ($0 == sec) } { print } in_sec && /^[|] ---/ { print text; in_sec = 0 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
 }
+assert "signoff-check: gap message doesn't hand out a waiver line to paste" test -z "$(bash "$G/signoff-check.sh" | grep 'Accessibility waived:')"
+assert "signoff-check: gap message says to ask the user" has "$(bash "$G/signoff-check.sh")" "ask the user to waive it"
+cp "$P/qa-report.md" "$T/qa-nowaiver.bak"
+for w in "Accessibility waived: <reason> (approved by <who>)" \
+         "Accessibility waived: no browser in CI (approved by <who>)" \
+         "Accessibility waived: <reason> (approved by product)" \
+         "Accessibility waived: no browser in CI" \
+         "Accessibility waived: no browser in CI (approved by )" \
+         "Accessibility waived: no browser in CI (approved by)" \
+         "Accessibility waived: no browser in CI (approved by product) and more"; do
+  cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
+  add_after "$P/qa-report.md" '^Verdict: PASS$' "$w"
+  bash "$G/signoff-check.sh" >/dev/null; rc=$?
+  assert "signoff-check: not a waiver: $w" test "$rc" = 1
+done
+cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
 add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"
 bash "$G/signoff-check.sh" >/dev/null; rc=$?
 assert "signoff-check: an explicit waiver clears it" test "$rc" = 0
+cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
+add_after "$P/qa-report.md" '^Verdict: PASS$' "accessibility waived: no browser in CI (Approved by Dana Smith)  "
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: waiver is case-insensitive and may carry a full name" test "$rc" = 0
+sed 's/$/\r/' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: waiver in a CRLF file counts" test "$rc" = 0
+cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
+sed -i 's/^Verdict: PASS/Verdict: pass/' "$P/qa-report.md"
+add_after "$P/qa-report.md" '^Verdict: pass$' "Accessibility waived: no browser in CI (approved by product)"
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: a lower-case verdict still passes" test "$rc" = 0
 cp "$T/qa-report.bak" "$P/qa-report.md"
 
 # signoff-check: the PR boxes stay unticked, whatever the layout calls them.
@@ -209,6 +251,12 @@ assert "phase-evidence: mixed module lists the legacy phase" has "$out" "BUG-01-
 assert "phase-evidence: mixed module lists the new feature" has "$out" "BUG-02-001 (low, open)"
 assert "phase-evidence: mixed module in number order" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## phase-01 ## 02-x "
 assert "phase-evidence: mixed module at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+mkdir -p docs/product/old/phases/hotfix docs/product/old/phases/archive
+bug_report docs/product/old/phases/hotfix/qa-report.md BUG-HF-001 low
+bug_report docs/product/old/phases/archive/qa-report.md BUG-AR-001 low
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: non-numeric legacy folder is listed" has "$out" "BUG-HF-001 (low, open)"
+assert "phase-evidence: numbered features first, then non-numeric folders by name" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## phase-01 ## 02-x ## archive ## hotfix "
 echo "docs/product/old/phases/phase-01" > .claude/current-phase
 assert "phase-evidence: same module from a legacy feature" has "$(bash "$G/phase-evidence.sh")" "BUG-02-001 (low, open)"
 cp "$T/current-phase.bak" .claude/current-phase

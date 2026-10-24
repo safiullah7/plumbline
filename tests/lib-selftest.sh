@@ -175,6 +175,36 @@ for a in "" "--bogus AC-01-001" "no ids here" "AC-01-001 --surface"; do
   eq "ac-check: usage exit 2 for '${a}'" "$rc" 2
 done
 assert "ac-check: usage message" has "$(ac 2>&1)" "usage: ac-check.sh"
+checks true true ""
+out=$(ac AC-01-001 2>&1); rc=$?
+eq "ac-check: an empty AC test command is refused, not a pass" "$rc/$out" "1/ac-check: no AC test command configured"
+checks "" "" 'f(){ [ "$1" = "AC-01-001" ]; }; f'
+out=$(ac AC-01-001 2>&1); rc=$?
+eq "ac-check: empty typecheck and lint may still be skipped" "$rc" 0
+assert "ac-check: ...and the timing names only the tests" grep -qE '^ac-check: pass \(tests [0-9]+s\)$' <<<"$out"
+unset PLUMBLINE_TEST_AC
+out=$(PLUMBLINE_TYPECHECK="" PLUMBLINE_LINT="" ac AC-01-001 2>&1 >/dev/null); rc=$?
+assert "ac-check: unset AC test command falls back to the npm default (runs, not refused)" test -z "$(grep 'no AC test command' <<<"$out")"
+
+# Without CLAUDE_PROJECT_DIR the root is the git root, else the current folder, so
+# a Bash that has cd'd into apps/api still runs the checks at the root.
+if command -v git >/dev/null 2>&1; then
+  mkdir -p "$T/gitroot/apps/api" "$T/plain/sub"
+  (cd "$T/gitroot" && git init -q) >/dev/null 2>&1
+  touch "$T/gitroot/marker"
+  root=$(norm_path "$T/gitroot")
+  eq "project root: git root from a subfolder" \
+    "$(cd "$T/gitroot/apps/api" && env -u CLAUDE_PROJECT_DIR bash -c 'source "$1/lib.sh"; echo "$PROJECT_DIR"' _ "$G")" "$root"
+  checks 'test -f marker' 'test -f marker' 'f(){ test -f marker; }; f'
+  out=$(cd "$T/gitroot/apps/api" && env -u CLAUDE_PROJECT_DIR bash "$G/ac-check.sh" AC-01-001 2>&1); rc=$?
+  eq "project root: ac-check from a subfolder runs its checks at the git root" "$rc" 0
+  eq "project root: a folder outside git is its own root" \
+    "$(cd "$T/plain/sub" && env -u CLAUDE_PROJECT_DIR bash -c 'source "$1/lib.sh"; echo "$PROJECT_DIR"' _ "$G")" "$(norm_path "$T/plain/sub")"
+  eq "project root: CLAUDE_PROJECT_DIR still wins" \
+    "$(cd "$T/gitroot/apps/api" && CLAUDE_PROJECT_DIR="$T/plain" bash -c 'source "$1/lib.sh"; echo "$PROJECT_DIR"' _ "$G")" "$(norm_path "$T/plain")"
+else
+  echo "skip  project root fallback tests (git isn't installed)"
+fi
 
 # --- Parity: the task gate and ac-check.sh give the same verdict ---
 current docs/product/rooms/07-room-schedules
@@ -218,6 +248,9 @@ assert "gate: log tail follows the message" test "$(sed -n 2p <<<"$out")" = lint
 checks true true false
 out=$(task "[chore] Land contracts" | bash "$G/task-completed-gate.sh" 2>&1); rc=$?
 eq "gate: [chore] skips the AC tests" "$rc/$out" "0/"
+checks true true ""
+out=$(task "[AC-07-001] x" | bash "$G/task-completed-gate.sh" 2>&1); rc=$?
+eq "gate: an empty AC test command still skips the tests (v0.3)" "$rc/$out" "0/"
 out=$(task "x" | bash "$G/task-completed-gate.sh" 2>&1); rc=$?
 eq "gate: no AC IDs refused" "$rc/$out" \
   "2/Task gate: the task subject has no AC IDs. Ask the lead to prefix it, e.g. [AC-03-004]."

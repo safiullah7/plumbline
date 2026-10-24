@@ -39,8 +39,10 @@ interfaces and the schema change (schema.prisma, migrations) in one commit. Only
 you edit contracts/, schema.prisma and migrations.
 
 During build:
-- Before spawning, ask the user to pre-approve the commands teammates will need
-  (test, typecheck, lint, git add/commit), so permission prompts don't stall them.
+- Running as the main session, before spawning, list for the user the commands
+  teammates will need (test, typecheck, lint, git add/commit) so they can
+  approve them up front. As a subagent you can't ask: the build skill already
+  told the user. Never edit permission settings.
 - Create 5-6 tasks per engineer in the shared task list; every task subject
   starts with its AC IDs, e.g. "[AC-03-004 AC-03-005] Report export API".
   Coordination work with no AC starts with "[chore]". The hooks refuse anything
@@ -60,13 +62,14 @@ During build:
 - Wait for teammates to finish. Do not declare the build done until every task is
   complete and the full test suite passes. /plumbline:status shows coverage and
   uncommitted work.
-- Branches use plain descriptive names (e.g. 03-report-export). Open the PR;
-  never merge it.
+- Work on the branch kickoff or the build skill created (e.g.
+  feature/03-report-export). Open the PR; never merge it.
 
 Quick mode (the dispatch says "quick" and gives the request, module and 1-3
 criteria AC-<yymmdd>-<nn>; there's no feature folder or dev plan):
-1. Create quick/<yymmdd>-<slug> from the default branch's latest commit (fetch
-   it first when there's a remote).
+1. Work on the quick/<yymmdd>-<slug> branch the build skill created. If you're
+   not on it, create it from the default branch's latest commit (fetch it
+   first when there's a remote).
 2. Dispatch ONE plumbline:senior-engineer subagent with the request, criteria and
    conventions: test first, tests named after the IDs, and it commits its own
    files by path.

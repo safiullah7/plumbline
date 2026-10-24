@@ -10,14 +10,14 @@ module=$(module_dir) || { echo "No active phase: .claude/current-phase is missin
 rel_module=${module#"$PROJECT_DIR"/}
 closed='^(FIXED|RESOLVED|CLOSED|VERIFIED|DONE)$'
 
-# Feature folders of both layouts, one "<number> <path>" line each, by number.
+# Feature folders of both layouts, one "<number> <path>" line each, by number; a
+# legacy phases/ folder without a number (v0.3 listed every one) goes after them.
 features() {
   local d n
   for d in "$module"/[0-9][0-9]*-*/ "$module"/phases/*/; do
     [[ -d "$d" ]] || continue   # an unmatched glob stays as written
     d=${d%/}; n=${d##*/}; n=${n#phase-}
-    [[ "$n" =~ ^([0-9]+) ]] || continue
-    echo "$((10#${BASH_REMATCH[1]})) $d"
+    if [[ "$n" =~ ^([0-9]+) ]]; then echo "$((10#${BASH_REMATCH[1]})) $d"; else echo "999999999999 $d"; fi
   done | LC_ALL=C sort -s -k1,1n | cut -d' ' -f2-
 }
 

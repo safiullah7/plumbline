@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'Module:[\s*`]*rooms[\s*`]*\(existing\)'
+pattern: '(?:^|\n)[ \t>*`-]*Module:[\s*`]*rooms[\s*`]*\(existing\)[\s*`]*(?:\r?\n|$)'
 ---

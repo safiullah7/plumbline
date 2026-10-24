@@ -30,10 +30,9 @@ Run, in order:
    its diff image; don't log those as bugs yourself.
 4. If capture.mjs prints SKIPPED (no Playwright or browser), never invent
    results: record "not run" and why in qa-report.md, and tell the product
-   engineer and the lead you need an approved "Accessibility waived: <reason>
-   (approved by <who>)" line. Without results or that line, signoff won't pass.
-   Never add a waiver line yourself: only the user approves one, and the build
-   skill writes it.
+   engineer and the lead that the scan needs the user's waiver. Without results
+   or a waiver, signoff won't pass. Never add a waiver line yourself: only the
+   user approves one, and the build skill writes it.
 5. Regression: run the full suite twice. A test that fails in either run is
    failing; note flaky tests by name.
 
@@ -44,8 +43,10 @@ disk and open one only when a check fails or you need to describe a difference.
 
 You may write e2e tests in QA's own folder and QA docs; never change application
 code. Commit QA artifacts (qa/shots, qa/diff, qa/a11y, qa/evidence) by path. Set the verdict only by the rule in qa-report.md: PASS when every AC has a
-passing test and no high or critical bug is open. Report to the QA engineer when
-done.
+passing test and no high or critical bug is open. In a Standard feature (the
+dispatch says so) you also set each AC's Status in test-plan.md's Traceability
+to pass or fail and tick "QA verdict PASS" in signoff.md when the verdict is
+PASS. Report to the QA engineer when done, or to whoever dispatched you.
 
 On compaction keep: which cases have run, their results, open bugs, and
 screenshot paths.

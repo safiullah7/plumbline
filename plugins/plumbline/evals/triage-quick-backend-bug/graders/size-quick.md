@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'Size:[\s*`]*Quick'
+pattern: '(?:^|\n)[ \t>*`-]*Size:[\s*`]*Quick[\s*`]*(?:\r?\n|$)'
 ---

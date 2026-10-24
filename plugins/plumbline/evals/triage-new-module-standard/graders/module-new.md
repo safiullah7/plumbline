@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'Module:[^\n]*patients[^\n]*\(new\)'
+pattern: '(?:^|\n)[ \t>*`-]*Module:[\s*`]*patients[\s*`]*\(new\)[\s*`]*(?:\r?\n|$)'
 ---

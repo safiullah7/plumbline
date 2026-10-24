@@ -14,7 +14,9 @@ norm_path() {
   printf '%s\n' "${p%/}"
 }
 
-PROJECT_DIR=$(norm_path "${CLAUDE_PROJECT_DIR:-$(pwd)}")
+# Hooks always have CLAUDE_PROJECT_DIR. A script run from a Bash that has cd'd into
+# a subfolder (apps/api) falls back to the git root, then to the current folder.
+PROJECT_DIR=$(norm_path "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}")
 
 # This plugin's scripts folder, so agents can be told where to run them from.
 PLUMBLINE_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]//\\//}")" && pwd)"

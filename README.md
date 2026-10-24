@@ -13,7 +13,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
   <img alt="Version 0.4.0-alpha" src="https://img.shields.io/badge/version-0.4.0--alpha-e9c46a?style=flat-square">
   <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="354 self-tests passing" src="https://img.shields.io/badge/self--tests-354%20passing-2a9d8f?style=flat-square">
+  <img alt="524 self-tests passing" src="https://img.shields.io/badge/self--tests-524%20passing-2a9d8f?style=flat-square">
   <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
 </p>
@@ -81,7 +81,7 @@ Why: one rule changes in one module; no new screen, schema or shared contract
 **When Plumbline asks you something:** when the request is too vague for observable
 criteria, when triage can't decide the size or the module, always before Full work, and
 when `PLUMBLINE_CONFIRM=always`. Before
-any branch or file it lists the commands it will run (git, `gh`, your tests) and asks once;
+any branch or file it lists the commands it will run (git, `gh`, your tests);
 Claude Code asks you to approve any it doesn't already allow. Standard also asks one
 question: approve the plan, or change it. Otherwise it goes straight on.
 
@@ -295,8 +295,8 @@ Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
 
 Every release is also checked by:
 
-- **354 self-tests** (`bash tests/run-all.sh`): 107 for the hooks, run in two Windows path modes;
-  67 for the shared helpers; 90 for kickoff and the layouts; 90 for the scripts,
+- **524 self-tests** (`bash tests/run-all.sh`): 219 for the hooks, run in two Windows path modes;
+  76 for the shared helpers; 121 for kickoff and the layouts; 108 for the scripts,
   including the PNG decoder against a real browser screenshot.
 - **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
   creation gate, `[chore]` tasks, idle escalation, injected context, status and signoff.

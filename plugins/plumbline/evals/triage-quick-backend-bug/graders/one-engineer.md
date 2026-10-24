@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'Engineers:[\s*`]*1(?!\d)'
+pattern: '(?:^|\n)[ \t>*`-]*Engineers:[\s*`]*1[\s*`]*(?:\r?\n|$)'
 ---

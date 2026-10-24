@@ -2,7 +2,7 @@
 name: kickoff
 description: Start a new feature (or a legacy phase) - create its docs folder from templates and mark it current.
 disable-model-invocation: true
-argument-hint: "<module> <feature-slug> [--profile standard|full] [--no-ux] [--new-module] | <area> phase-NN"
+argument-hint: "<module> <feature-slug> [--profile standard|full] [--ux|--no-ux] [--new-module] [--surfaces s1,s2] | <area> phase-NN"
 ---
 Arguments, in either form:
 - Module form: `<module> <feature-slug> [--profile standard|full] [--ux|--no-ux]
@@ -43,19 +43,20 @@ spaces with the first letter capitalised (vet-records -> Vet records).
      docs/product/*/phases/phase-<nn>/ folders, plus 1, two digits (01 if none).
      The folder is docs/product/<module>/<nn>-<feature-slug>/, or
      docs/product/<module>/phases/phase-<nn>/ if the module has a phases/
-     folder. Stop if the module already has a folder for this slug, or, with
-     --new-module, if docs/product/<module>/ exists.
+     folder. Stop if the module already has this slug (a <nn>-<slug>/ folder,
+     or a phases/*/.plumbline with `slug=<slug>`), or, with --new-module, if
+     docs/product/<module>/ exists.
   2. Copy the module docs it lacks from templates/module/: vision.md,
      decisions.md, changes.md, and design-principles.md unless --no-ux.
   3. Copy every file of templates/phase/ into the folder; for the standard
      profile, then copy templates/standard/ over them. Without UX, skip ux.md
      and delete the `- [ ] Design verification` line from signoff.md. In every
-     copy replace <phase> with <nn>, <Module> with the module's display name
-     and <module> with the module.
+     copy replace `Phase <phase>` with `Feature <nn>`, then <phase> with <nn>,
+     <Module> with the module's display name and <module> with the module.
   4. Create contracts/ and briefs/ (and prototypes/ with UX), each with an
      empty .gitkeep.
   5. Write <folder>/.plumbline, one per line: `module=<module>`, `number=<nn>`,
-     `profile=<standard|full>`, `surfaces=<s1,s2>` (only if given),
+     `slug=<feature-slug>`, `profile=<standard|full>`, `surfaces=<s1,s2>` (only if given),
      `ux=<yes|no>`, `created=<YYYY-MM-DD>`.
 - Both: write the folder path (relative to the repo root, no trailing slash)
   as the only line of .claude/current-phase. Claude Code asks permission for

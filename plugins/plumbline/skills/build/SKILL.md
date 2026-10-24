@@ -19,6 +19,9 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
      PLUMBLINE_CONFIRM environment variable; else `auto`.
    - Teams: available if and only if the TeamCreate tool is in your tool list.
    - Shell: available if you have the Bash tool. Without it, see step 9.
+   - Quick marker: if `.claude/plumbline-quick` exists, an earlier Quick change
+     was interrupted or is still running in another session. Ask: still
+     running (stop here), or clear it (delete the file and go on).
 2. **Triage.** Dispatch the plumbline:product-engineer agent with model sonnet
    and this brief: "Triage mode. Request (verbatim): <request>. Today:
    <YYYY-MM-DD>. TeamCreate available: <yes|no>. Write no files. Return the
@@ -57,31 +60,35 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
       (PLUMBLINE_TYPECHECK, PLUMBLINE_LINT and PLUMBLINE_TEST_AC if set, else
       `npm run -s typecheck`, `npm run -s lint`, `npm run -s test:ac`). Say that
       Claude Code will ask them to approve any it doesn't already allow, and
-      that a denied command stops the change. Ask once: go ahead, or stop.
-      Never edit permission settings yourself.
+      that a denied command stops the change. This is information, not a
+      question: go on. Never edit permission settings yourself.
 5. **Quick.**
-   1. Choose the branch `quick/<yymmdd>-<slug>` (slug: 2-4 words from the
-      request). Write `.claude/plumbline-quick` with two lines:
-      `branch=<branch>` and `ids=<IDs separated by spaces>`.
+   1. Create and switch to the branch `quick/<yymmdd>-<slug>` (slug: 2-4 words
+      from the request) from the default branch's latest commit (`git fetch`
+      first when there's a remote). Then write `.claude/plumbline-quick` with
+      two lines: `branch=<branch>` and `ids=<IDs separated by spaces>`.
    2. Dispatch plumbline:lead-engineer with: "Quick mode. Request: <request>.
-      Module: <module>. Criteria: <IDs and text>. Branch: <branch>, from the
-      default branch's latest commit. Scripts: <plugin>/scripts." The lead
-      dispatches one senior engineer, runs `ac-check.sh`, gets a review, pushes
-      and opens the PR; it never creates a folder or merges. If it reports the
-      work outgrew Quick, go back to step 2 with its reasons.
+      Module: <module>. Criteria: <IDs and text>. Branch: <branch> (created;
+      you're on it). Scripts: <plugin>/scripts." The lead dispatches one senior
+      engineer, runs `ac-check.sh`, gets a review, pushes and opens the PR; it
+      never creates a folder or merges. If it reports the work outgrew Quick,
+      go back to step 2 with its reasons.
    3. Wrap-up, also after a failure or a cancel: delete `.claude/plumbline-quick`
-      and report the PR link (or the compare URL), the `ac-check.sh` result per
-      ID, and the reviewer's findings and how each was resolved.
+      and report the PR link (or the compare URL), the `ac-check.sh` result,
+      and the reviewer's findings and how each was resolved.
 6. **Standard.**
-   1. Create and switch to the branch `feature/<nn>-<feature-slug>` from the
-      default branch, then run
+   1. From the default branch, run
       `bash <plugin>/scripts/kickoff.sh <module> <feature-slug> --profile standard --ux`
-      (or `--no-ux` when the block says `UX: no`). It prints the feature folder;
-      use that path from now on, and say so if its number differs from the
-      block's. Commit the new docs by path.
+      (or `--no-ux` when the block says `UX: no`). Its last line is the feature
+      folder; use that path from now on, and say so if it differs from the
+      block's. Then create and switch to the branch `feature/<nn>-<feature-slug>`,
+      with <nn> from the printed folder, and commit the new docs by path.
    2. Dispatch plumbline:product-engineer: write the slim spec.md and
-      acceptance-criteria.md for the request in the folder. If `UX: yes`, then
-      dispatch plumbline:ux-engineer for ux.md and one mockup per key screen.
+      acceptance-criteria.md for the request in the folder. Then dispatch,
+      together: plumbline:qa-engineer with model sonnet to write test-plan.md
+      (one Traceability row per AC with Status `planned`, and the Evidence
+      lines), and, if `UX: yes`, plumbline:ux-engineer for ux.md and one mockup
+      per key screen.
    3. Dispatch plumbline:lead-engineer to write dev-plan.md (Status: DRAFT,
       1-2 engineers). Show its summary and ask one question: approve the plan,
       or change it (say what). Relay changes to the lead until approved.
@@ -89,14 +96,24 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
       builds, dispatching the engineers and a reviewer per workstream as
       subagents. With 2 engineers and teams available, create the team yourself
       with TeamCreate instead, spawning the lead and each engineer (pointed at
-      its brief) as teammates.
-   5. Dispatch plumbline:qa-runner to run the test plan, fill the Evidence table
-      and run qa-summary.sh. Then follow /plumbline:signoff
-      (<plugin>/skills/signoff/SKILL.md): gap check, full suite, push, PR.
-7. **Full.** Requires teams (step 3). Create the branch as in 6.1, then run
+      its brief) as teammates. When every workstream is reviewed and the full
+      suite passes, the lead ticks "Integration review" in signoff.md.
+   5. Verify. Dispatch plumbline:qa-runner with: "Standard: run test-plan.md,
+      record results in qa-report.md, set each Traceability Status in
+      test-plan.md to pass or fail, run qa-summary.sh, set the Verdict and tick
+      the QA verdict box." Dispatch plumbline:product-engineer to walk the
+      finished journeys against the criteria (Journey results, Product
+      findings, Success metrics results in signoff.md) and tick Product
+      verification; with `UX: yes`, plumbline:ux-engineer checks each screen
+      against ux.md and ticks Design verification. Then follow
+      /plumbline:signoff (<plugin>/skills/signoff/SKILL.md): gap check, full
+      suite, push, PR. If the gap check lists gaps, send each to its owner and
+      run it again.
+7. **Full.** Requires teams (step 3). Run
    `bash <plugin>/scripts/kickoff.sh <module> <feature-slug> --profile full --ux`
-   (or `--no-ux`), adding `--new-module` when the block says the module is new;
-   for a new module, product writes vision.md first. Then the full flow:
+   (or `--no-ux`), adding `--new-module` when the block says the module is new,
+   then create the branch from the printed folder as in 6.1. For a new module,
+   product writes vision.md first. Then the full flow:
    discovery (follow <plugin>/skills/discover/SKILL.md yourself, since it asks
    the user) → spec, ux.md and prototypes (UX), test plan (QA engineer) →
    lead's plan → the user approves → READY and make-briefs.sh → team build
@@ -115,7 +132,7 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
      the user's name (`git config user.name`, else ask).
    - Cleanup on stop: delete `.claude/plumbline-quick` if you wrote it.
 9. **No shell** (e.g. eval runs). Do steps 1-3 as usual. Then:
-   - Quick: skip step 4 and the marker. Dispatch the lead as in 5.2, adding
+   - Quick: skip step 4, the branch and the marker. Dispatch the lead as in 5.2, adding
      "No shell: no branch, commits, checks or PR. Quick change: no feature
      folder; don't write phase docs. Write the tests, named after the IDs, and
      the code." Report that the change is uncommitted and unchecked, and the

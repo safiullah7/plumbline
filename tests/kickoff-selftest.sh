@@ -85,7 +85,28 @@ eq "legacy: area docs never overwritten" "$(cat docs/product/clinic/vision.md)" 
 assert "legacy: no 'added' lines when the area docs exist" bash -c "! grep -q '^added' <<<'$out'"
 eq "legacy: current-phase moves to the new phase" "$(cur)" docs/product/clinic/phases/phase-02
 
-kickoff clinic phase-3 >/dev/null 2>&1; eq "legacy: one-digit phase is a usage error" "$?" 1
+# v0.3's hand kickoff took these names; refuse only what breaks a path or sed.
+out=$(kickoff Vet_Records phase-01); rc=$?
+eq "legacy: mixed-case area with an underscore: exit 0" "$rc" 0
+eq "legacy: ...folder keeps the name as given" "$(tail -n1 <<<"$out")" docs/product/Vet_Records/phases/phase-01
+eq "legacy: ...area title keeps the name" "$(head -n1 docs/product/Vet_Records/vision.md)" "# Vet_Records vision"
+out=$(kickoff vet phase-3); rc=$?
+eq "legacy: one-digit phase: exit 0" "$rc" 0
+eq "legacy: ...folder is phase-3" "$(tail -n1 <<<"$out")" docs/product/vet/phases/phase-3
+assert "legacy: ...<phase> is 3" grep -q 'AC-3-001' docs/product/vet/phases/phase-3/acceptance-criteria.md
+out=$(kickoff vet phase-03-auth); rc=$?
+eq "legacy: phase id with a suffix: exit 0" "$rc" 0
+eq "legacy: ...folder keeps the suffix" "$(tail -n1 <<<"$out")" docs/product/vet/phases/phase-03-auth
+assert "legacy: ...<phase> is the leading number" grep -q 'AC-03-001' docs/product/vet/phases/phase-03-auth/acceptance-criteria.md
+assert "legacy: ...title keeps Phase" grep -q '^# Phase 03' docs/product/vet/phases/phase-03-auth/spec.md
+before=$(snapshot)
+for bad in "a/b phase-01" "vet phase-1/x" "vet phase-1&" ".. phase-01" ".hid phase-01"; do
+  kickoff $bad >/dev/null 2>&1; eq "legacy: refuses '$bad'" "$?" 1
+done
+kickoff 'a\b' phase-05 >/dev/null 2>&1; eq "legacy: refuses a backslash" "$?" 1
+kickoff "va t" phase-05 >/dev/null 2>&1; eq "legacy: refuses a name with a space" "$?" 1
+kickoff vet "phase-5 x" >/dev/null 2>&1; eq "legacy: refuses a phase id with a space" "$?" 1
+eq "legacy: refused names change nothing" "$(snapshot)" "$before"
 kickoff clinic phase-04 --no-ux >/dev/null 2>&1; eq "legacy: options are a usage error" "$?" 1
 assert "legacy: ...and create nothing" test ! -e docs/product/clinic/phases/phase-04
 
@@ -104,7 +125,7 @@ eq "standard, existing module: module docs not overwritten" "$(cat docs/product/
 eq "standard, existing module: current-phase" "$(cur)" "$F"
 eq "standard: feature files" "$(cd "$F" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | paste -sd' ' -)" \
   ".plumbline acceptance-criteria.md briefs/.gitkeep contracts/.gitkeep dev-plan.md progress.md prototypes/.gitkeep qa-report.md questions.md signoff.md spec.md test-plan.md ux.md"
-subst=(-e 's/<phase>/01/g' -e 's/<Module>/Rooms/g' -e 's/<module>/rooms/g')
+subst=(-e 's/Phase <phase>/Feature 01/g' -e 's/<phase>/01/g' -e 's/<Module>/Rooms/g' -e 's/<module>/rooms/g')
 assert "standard: spec.md is the slim overlay" same_as "$F/spec.md" "$TPL/standard/spec.md" "${subst[@]}"
 assert "standard: test-plan.md is the overlay" same_as "$F/test-plan.md" "$TPL/standard/test-plan.md" "${subst[@]}"
 assert "standard: slim spec has Data and permissions" grep -q '^## Data and permissions' "$F/spec.md"
@@ -116,13 +137,18 @@ eq "standard: .plumbline" "$(cat "$F/.plumbline")" "module=rooms
 number=01
 profile=standard
 ux=yes
-created=$(date +%Y-%m-%d)"
+created=$(date +%Y-%m-%d)
+slug=room-schedules"
 eq "feature_meta: module" "$(feature_meta module)" rooms
 eq "feature_meta: number" "$(feature_meta number)" 01
 eq "feature_meta: profile" "$(feature_meta profile)" standard
 eq "feature_meta: ux" "$(feature_meta ux)" yes
 eq "feature_meta: no surfaces without --surfaces" "$(feature_meta surfaces)" ""
 eq "feature_meta: created" "$(feature_meta created)" "$(date +%Y-%m-%d)"
+eq "feature_meta: slug" "$(feature_meta slug)" room-schedules
+eq "module form: docs say Feature, not Phase, in their titles" \
+  "$(cd "$F" && head -qn1 *.md | grep -c "^# Feature 01")" 9
+assert "module form: no 'Phase 01' left in the copied docs" bash -c "! grep -rq 'Phase 01' '$F'"
 
 # Standard creating a missing module, without UX, with surfaces.
 out=$(kickoff billing-ops invoice-export --profile=standard --no-ux --surfaces api,cli); rc=$?
@@ -140,7 +166,7 @@ assert "no UX: no prototypes/" test ! -e "$F/prototypes"
 assert "no UX: contracts/ and briefs/ kept" test -f "$F/contracts/.gitkeep" -a -f "$F/briefs/.gitkeep"
 assert "no UX: no Design verification box" bash -c "! grep -q 'Design verification' '$F/signoff.md'"
 assert "no UX: signoff.md otherwise unchanged" same_as "$F/signoff.md" "$TPL/phase/signoff.md" \
-  -e 's/<phase>/02/g' -e '/^- \[ \] Design verification/d'
+  -e 's/Phase <phase>/Feature 02/g' -e 's/<phase>/02/g' -e '/^- \[ \] Design verification/d'
 eq "no UX: signoff.md lost exactly one line" \
   "$(( $(wc -l < "$TPL/phase/signoff.md") - $(wc -l < "$F/signoff.md") ))" 1
 eq "feature_meta: surfaces" "$(feature_meta surfaces)" api,cli
@@ -157,7 +183,7 @@ eq "full, new module: last line is the folder" "$(tail -n1 <<<"$out")" "$F"
 eq "full, new module: all four module docs" "$(ls docs/product/vet-records | paste -sd' ' -)" \
   "03-intake changes.md decisions.md design-principles.md vision.md"
 assert "full: spec.md is the full phase template" same_as "$F/spec.md" "$TPL/phase/spec.md" \
-  -e 's/<phase>/03/g' -e 's/<Module>/Vet records/g' -e 's/<module>/vet-records/g'
+  -e 's/Phase <phase>/Feature 03/g' -e 's/<phase>/03/g' -e 's/<Module>/Vet records/g' -e 's/<module>/vet-records/g'
 assert "full: ux.md and prototypes/" test -f "$F/ux.md" -a -f "$F/prototypes/.gitkeep"
 assert "full: AC-03-001" grep -q 'AC-03-001' "$F/acceptance-criteria.md"
 eq "feature_meta: profile full" "$(feature_meta profile)" full
@@ -217,6 +243,25 @@ eq "legacy area: next number under phases/" "$(tail -n1 <<<"$out")" "$F"
 eq "legacy area: module_dir is the area" "$(module_dir)" "$PROJECT_DIR/docs/product/demo"
 eq "legacy area: .plumbline module" "$(feature_meta module)" demo
 eq "legacy area: next number after it -> 10" "$(next_feature_number)" 10
+
+# The same feature twice in a legacy area is refused too: its folders are numbered
+# phase-NN, so the slug is kept in .plumbline.
+eq "legacy area: .plumbline keeps the slug" "$(feature_meta slug)" checkin
+eq "legacy area: docs say Feature" "$(head -n1 "$F/spec.md" | cut -d: -f1)" "# Feature 09"
+before=$(snapshot); was=$(cur)
+out=$(kickoff demo checkin --profile standard 2>&1); rc=$?
+eq "legacy area, same slug: exit 1" "$rc" 1
+assert "legacy area, same slug: names the existing folder" grep -q "^kickoff: $F already exists; nothing changed.$" <<<"$out"
+eq "legacy area, same slug: nothing changed" "$(snapshot)" "$before"
+eq "legacy area, same slug: current-phase unchanged" "$(cur)" "$was"
+printf 'module=demo\r\nslug=crlf-one\r\n' > docs/product/demo/phases/phase-09/.plumbline
+kickoff demo crlf-one >/dev/null 2>&1; eq "legacy area, same slug in a CRLF .plumbline: exit 1" "$?" 1
+printf 'module=demo\nslug=checkin\n' > docs/product/demo/phases/phase-09/.plumbline
+out=$(kickoff demo checkin-2); rc=$?
+eq "legacy area: a different slug is fine" "$rc/$(tail -n1 <<<"$out")" "0/docs/product/demo/phases/phase-10"
+kickoff demo checkin >/dev/null 2>&1; eq "legacy area: old slug still refused after a newer feature" "$?" 1
+out=$(kickoff demo phase-11); rc=$?
+eq "legacy area: a legacy-form phase has no slug and doesn't block" "$rc" 0
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

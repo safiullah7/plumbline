@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'Docs:[\s*`]*full'
+pattern: '(?:^|\n)[ \t>*`-]*Docs:[\s*`]*full[\s*`]*(?:\r?\n|$)'
 ---

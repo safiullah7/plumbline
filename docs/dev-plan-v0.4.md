@@ -111,7 +111,7 @@ before it's relied on.
 | Size | Rule | Roles | Docs | Runs as |
 | --- | --- | --- | --- | --- |
 | **Quick** | All of: one module, ≤ 3 criteria, no new screen or flow, no schema change, no change to a contract another workstream depends on | Product (triage + criteria) → lead → 1 engineer → reviewer | None. Criteria, tests and review in the PR body; one row in the module's `changes.md` only if that folder already exists | Subagents only (main → lead → engineer and reviewer, depth 2) |
-| **Standard** | Otherwise | Product, lead, 1–2 engineers, QA runner; UX only for UI surfaces with screen, flow or visible-copy changes | Feature subfolder in the module (slim profile); the module folder is created first if missing | Subagents; a team only if 2 engineers and the TeamCreate tool is available, else sequential subagents |
+| **Standard** | Otherwise | Product, QA engineer (slim test plan), lead, 1–2 engineers, QA runner; UX only for UI surfaces with screen, flow or visible-copy changes | Feature subfolder in the module (slim profile); the module folder is created first if missing | Subagents; a team only if 2 engineers and the TeamCreate tool is available, else sequential subagents |
 | **Full** | Any of: a module built from scratch (no code yet), 3+ screens, a data migration, an auth/permissions model change, billing, cross-module work, ~10+ criteria | Everyone the surfaces need | New module folder + feature subfolder, or a feature subfolder in an existing module (full profile) | Agent team with all gates |
 
 **Escalation:** if Quick or Standard work grows past its rule, the lead stops and
@@ -160,6 +160,7 @@ Agents rewrite `dev-plan.md` wholesale, so metadata lives in its own file, in
 ```
 module=rooms
 number=07
+slug=room-schedules     # revision 3: lets kickoff refuse a duplicate in phases/
 profile=standard        # quick is never stored; standard | full
 surfaces=api,web-ui     # v0.4b; absent in v0.4a
 ux=yes
@@ -169,7 +170,9 @@ created=2026-10-24
 - Written only by `kickoff.sh`, and readable with `feature_meta <key>` in
   `lib.sh`.
 - The ownership guard refuses writes to `*/.plumbline` from any agent (any
-  `agent_id`); only the main session or the script may change it.
+  `agent_id`); only the main session or the script may change it. The name is
+  compared case-insensitively, without trailing dots, spaces or a `:` stream
+  suffix (NTFS and APFS would otherwise accept `.Plumbline` or `.plumbline.`).
 
 #### 6.2.2 Quick marker: `.claude/plumbline-quick`
 
@@ -177,7 +180,9 @@ While a Quick change runs, the build skill writes `branch=…` and `ids=…` her
 and deletes it when done (or when the user cancels). `context.sh` sees it and
 injects "Quick change in progress: no feature folder; don't write phase docs"
 instead of the active feature's context, so a stale feature never leaks into a
-Quick change.
+Quick change. It applies only while the current git branch equals `branch=`, so
+a marker left by an interrupted change can't hide a later feature's context;
+the build skill also asks about a leftover marker before it starts.
 
 ### 6.3 Project profile (v0.4b): `docs/product/project.md`
 
@@ -322,17 +327,19 @@ per day, and matching the gate regex and test naming.
 1. **Preflight (build skill, main session).**
    1. Check the working tree is clean. If not, ask: stash, continue on top, or
       stop.
-   2. Check the user's permissions cover the commands the lead and engineer
-      will run (`git checkout -b`, `git add`, `git commit`, `git push`,
-      `gh pr create`, and the surface's test commands). If any would prompt or
-      be denied, ask once to approve them for this change, or stop with the
-      list.
+   2. List the commands the lead and engineer will run (`git checkout -b`,
+      `git add`, `git commit`, `git push`, `gh pr create`, and the test
+      commands), and say Claude Code will ask the user to approve any it
+      doesn't already allow. This is information, not a question (revision 3:
+      a skill can't reliably predict permission prompts, and Claude Code asks
+      anyway). Skills never edit permission settings.
 2. **Triage.** The product engineer subagent (triage mode, `model: sonnet`)
    returns the block and 1–3 criteria. The build skill prints the block and
    asks only per §6.5.
-3. **Marker.** The build skill writes `.claude/plumbline-quick`.
+3. **Branch and marker.** The build skill creates `quick/<yymmdd>-<slug>` from
+   the default branch's latest commit, then writes `.claude/plumbline-quick`.
 4. **Lead subagent, quick mode:**
-   1. create `quick/<yymmdd>-<slug>` from the default branch's latest commit;
+   1. work on that branch (create it only if it's missing);
    2. dispatch one senior engineer subagent with the criteria and conventions
       (test-first; the engineer commits its files by path);
    3. run `ac-check.sh "<IDs>"`;
@@ -351,21 +358,35 @@ per day, and matching the gate regex and test naming.
 **Standard**
 1. `kickoff.sh <module> <slug> --profile standard [--ux|--no-ux]
    [--surfaces a,b]` creates the folder, writes `.plumbline` and sets the
-   current feature.
-2. Product (subagent) writes the slim spec and criteria. UX (subagent) writes
-   `ux.md` and one mockup per key screen, only if UX is in the roles.
+   current feature. Then the build skill creates `feature/<nn>-<slug>` with
+   `<nn>` from the folder kickoff printed (revision 3: kickoff first, so the
+   branch carries the real number).
+2. Product (subagent) writes the slim spec and criteria. Then, together: the
+   QA engineer (subagent, sonnet) writes the slim test plan (one Traceability
+   row per AC, Status `planned`, and the Evidence lines), and UX (subagent)
+   writes `ux.md` and one mockup per key screen, only if UX is in the roles.
 3. Lead (subagent) writes `dev-plan.md` with a `Surface` column per teammate
    (v0.4b). The build skill asks the user to approve the plan (one question).
    The lead then sets READY and runs `make-briefs.sh`.
 4. Build: 1–2 engineers, as subagents dispatched by the lead or as a team when
-   available. Each runs `ac-check.sh` and gets a reviewer per workstream.
-5. QA runner (subagent) produces the Evidence table and runs `qa-summary.sh`,
-   then `signoff-check.sh`, then the PR.
+   available. Each runs `ac-check.sh` and gets a reviewer per workstream. The
+   lead ticks "Integration review" when every workstream is reviewed and the
+   full suite passes.
+5. Verification (revision 3: someone has to own each sign-off box, or a
+   Standard feature can never pass signoff):
+   - the QA runner runs the test plan, records results in `qa-report.md`, sets
+     each Traceability Status in `test-plan.md` to pass or fail, runs
+     `qa-summary.sh`, sets the Verdict and ticks "QA verdict PASS";
+   - the product engineer walks the journeys against the criteria and ticks
+     "Product verification"; with UX, the UX engineer checks each screen and
+     ticks "Design verification" (kickoff drops that box without UX);
+   - then `signoff-check.sh`, the full suite and the PR. Gaps go back to their
+     owners.
 
 **Full**
-1. `kickoff.sh <module> <slug> --profile full [--new-module] [--surfaces …]`.
-   With `--new-module` the module docs are created and the product engineer
-   writes the module vision first.
+1. `kickoff.sh <module> <slug> --profile full [--new-module] [--surfaces …]`,
+   then the branch as in Standard. With `--new-module` the module docs are
+   created and the product engineer writes the module vision first.
 2. Then today's flow, with roles from §6.4: discover → spec, UX, test plan →
    plan → user approval → team build → QA → signoff.
 3. If TeamCreate isn't available, it stops and prints the launch command.
@@ -449,6 +470,17 @@ contains `Evidence waived:` or `Accessibility waived:`. It answers "Only the
 user can approve a waiver. Tell the lead which evidence is missing and why." The
 build skill asks the user with AskUserQuestion and writes the line itself in the
 main session.
+
+Revision 3 (from the v0.4a review):
+- The guard judges the file the edit would produce, not the fragment: a waiver
+  line that the current file doesn't already hold is refused, so splicing
+  "waived:" onto an "Accessibility notes:" line fails too, while agents can
+  still edit a qa-report that holds a user-approved waiver. Placeholder lines
+  get no exemption.
+- Agent Bash commands that write a waiver line or a `.plumbline` file are
+  refused as well. This is a guard against accidents, not a sandbox.
+- `signoff-check.sh` counts a waiver line only when it has no `<…>`
+  placeholder and ends with `(approved by <name>)`.
 
 ### 6.10 Mobile capture (guidance in the QA runner; v0.4b)
 
@@ -712,3 +744,25 @@ important issues. All are resolved above:
 | 13 | Quick flow: permissions, branch base, no `gh`, who commits, stale context, depth | Preflight in the main session, branch from the default branch, compare URL fallback, the engineer commits, the Quick marker, research subagents only in Full |
 | 14 | Skills can't read env vars without Bash | `Confirm:` in `project.md`; team detection by tool presence |
 | 15 | Column positions and test globs | §6.13 invariants; `status.sh` globs extended |
+
+## 14. Revision 3: what the v0.4a review changed
+
+A read-only review of the built v0.4a diff found 16 issues. The fixes are folded
+into the sections above (marked "revision 3") and the code:
+
+| # | Issue | Resolution |
+| --- | --- | --- |
+| 1 | Placeholder waiver lines passed the guard and counted in signoff | No placeholder exemption; signoff needs `(approved by <name>)` and no `<…>` |
+| 2 | An Edit could splice "waived:" onto an existing line | The guard judges the resulting file (§6.9) |
+| 3 | `.Plumbline`, trailing dots or spaces, `::$DATA` bypassed the lock | Case-insensitive, normalised name (§6.2.1) |
+| 4 | Bash wasn't covered by either lock | Agent Bash writes of waivers or `.plumbline` refused (best effort) |
+| 5 | A Standard feature could never pass signoff (no test plan, no box owners) | QA engineer writes the slim test plan; every box has an owner (§6.6) |
+| 6 | A leftover Quick marker hid feature context for good | Marker applies only on its branch; the build skill asks about a leftover one |
+| 7 | Checklist rows compared case-sensitively; a header row counted as results | Lowercased, unknown impact on a fail counts as serious, header skipped |
+| 8–9 | Eval graders that could pass vacuously or match the template | Fixed globs; anchored line regexes |
+| 10 | Branch named before kickoff assigned the number | Kickoff first, then the branch from the printed folder |
+| 11 | Preflight asked every time | It informs; Claude Code prompts for unapproved commands |
+| 12 | The lead asked for pre-approvals it can't ask for as a subagent | Only as the main session; never edits permission settings |
+| 13–14 | Legacy kickoff refused names v0.3 accepted; no duplicate check in `phases/` | Relaxed legacy names; `slug=` in `.plumbline` |
+| 15 | Templates told QA to write the waiver line | Reworded: ask the lead; the user approves |
+| 16 | `ac-check.sh` passed with no AC test command | It fails with "no AC test command configured" |

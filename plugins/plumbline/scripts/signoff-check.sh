@@ -22,7 +22,7 @@ for id in $(md_table "$dir/acceptance-criteria.md" 2>/dev/null | awk -F'\t' '$1 
 done
 
 verdict=$(grep -m1 -iE '^Verdict:' "$dir/qa-report.md" 2>/dev/null | tr -d '\r' | sed -E 's/^[Vv]erdict:[[:space:]]*//')
-[[ "${verdict^^}" == PASS ]] || gaps+=("QA verdict is ${verdict:-missing}, not PASS (qa-report.md)")
+[[ "$(tr '[:lower:]' '[:upper:]' <<<"$verdict")" == PASS ]] || gaps+=("QA verdict is ${verdict:-missing}, not PASS (qa-report.md)")
 while IFS= read -r b; do [[ -n "$b" ]] && gaps+=("open bug $b (qa-report.md)"); done < <(
   md_table "$dir/qa-report.md" Bugs 2>/dev/null | awk -F'\t' '
     $1 != "" && toupper($4) !~ /^(FIXED|VERIFIED|WONTFIX|CLOSED)$/ && tolower($3) ~ /^(high|critical)$/ { print $1 " (" tolower($3) "): " $5 }')
@@ -39,8 +39,14 @@ while IFS=$'\t' read -r screen width crit ser _; do
   fi
 done <<<"$a11y"
 screens=$(md_table "$dir/ux.md" "Screen inventory" 2>/dev/null | awk -F'\t' '$1 != ""' | grep -c .)
-if [[ -z "$a11y" && "$screens" -gt 0 ]] && ! grep -qiE '^Accessibility waived:' "$dir/qa-report.md" 2>/dev/null; then
-  gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or add \"Accessibility waived: <reason> (approved by <who>)\" (qa-report.md)")
+# A waiver line counts only when it's filled in: no <placeholder> left and an
+# "(approved by <name>)" ending, so the template's example line waives nothing.
+accessibility_waived() {
+  { tr -d '\r' < "$dir/qa-report.md"; } 2>/dev/null | grep -iE '^Accessibility waived:' \
+    | grep -v '<[^>]*>' | grep -qiE '\(approved by [^)]*[^) ][^)]*\)[[:space:]]*$'
+}
+if [[ -z "$a11y" && "$screens" -gt 0 ]] && ! accessibility_waived; then
+  gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
 fi
 
 closed='^(FIXED|RESOLVED|CLOSED|WONTFIX|VERIFIED|DONE)$'

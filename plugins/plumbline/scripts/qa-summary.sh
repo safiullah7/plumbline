@@ -30,13 +30,21 @@ for f in "$dir"/qa/a11y/*.json; do
 done
 
 # Manual checklist (qa/a11y-checklist.tsv): add up the failed checks per screen and
-# width by impact; a pair with only passing checks gets a row of zeros.
+# width by impact; a pair with only passing checks gets a row of zeros. Result and
+# impact are compared in lower case, a fail with an unknown impact counts as
+# serious, and a row whose result isn't pass or fail (a header) is skipped.
 if [[ -f "$dir/qa/a11y-checklist.tsv" ]]; then
   checklist=$(tr -d '\r' < "$dir/qa/a11y-checklist.tsv" | awk -F'\t' '
     /^[ \t]*#/ || NF < 5 { next }
-    { k = $1 "\t" $2
+    { res = tolower($4); imp = tolower($5)
+      gsub(/^[ \t]+|[ \t]+$/, "", res); gsub(/^[ \t]+|[ \t]+$/, "", imp)
+      if (res != "pass" && res != "fail") next   # a header row or an unfilled result
+      k = $1 "\t" $2
       if (!(k in seen)) { seen[k] = 1; order[++n] = k; scr[k] = $1; wid[k] = $2 }
-      if ($4 == "fail" && $5 ~ /^(critical|serious|moderate|minor)$/) c[k, $5]++ }
+      if (res == "fail") {
+        if (imp !~ /^(critical|serious|moderate|minor)$/) imp = "serious"   # unknown impact still blocks
+        c[k, imp]++
+      } }
     END { for (i = 1; i <= n; i++) { k = order[i]
       printf "| %s | %s | %d | %d | %d | %d | qa/a11y-checklist.tsv | checklist |\n", scr[k], wid[k],
         c[k, "critical"], c[k, "serious"], c[k, "moderate"], c[k, "minor"] } }')

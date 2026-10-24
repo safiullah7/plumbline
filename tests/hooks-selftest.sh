@@ -69,10 +69,16 @@ ti_write() { jq -nc --arg f "$N" --arg c "$1" '{file_path: $f, content: $c}'; }
 ti_edit()  { jq -nc --arg f "$N" --arg c "$1" '{file_path: $f, old_string: "x", new_string: $c}'; }
 ti_multi() { jq -nc --arg f "$N" --arg c "$1" '{file_path: $f, edits: [{old_string: "a", new_string: "b"}, {old_string: "x", new_string: $c}]}'; }
 WAIVER=$'Result: fail\nAccessibility waived: no screen reader on this surface (approved by Sam)\n'
+F="$T/fixtures"; mkdir -p "$F"   # files the waiver cases edit, outside the repo
+ti_write_at() { jq -nc --arg f "$1" --arg c "$2" '{file_path: $f, content: $c}'; }
+ti_edit_at()  { jq -nc --arg f "$1" --arg o "$2" --arg n "$3" '{file_path: $f, old_string: $o, new_string: $n}'; }
+ti_path()     { jq -nc --arg f "$1" '{file_path: $f, content: "profile=full"}'; }
+# Hook input for a Bash call: $1 = agent_id (empty for the main session), $2 = the command.
+mkb() { jq -nc --arg id "$1" --arg c "$2" '{tool_name: "Bash", tool_input: {command: $c}} + (if $id == "" then {} else {agent_id: $id, agent_type: ""} end)'; }
 
 # The locks that apply to any agent, the plan READY or not: $1 labels the cases.
 lock_cases() {
-  local k a ti
+  local k a ti c
   for a in "$ENG" "$SUBAGENT"; do
     k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
     check "$1: waiver line blocked, $k Write"     2 ownership-guard.sh "$(mk "$a" "$(ti_write "$WAIVER")")"
@@ -87,13 +93,68 @@ lock_cases() {
   check "$1: lowercase variant blocked"   2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'accessibility waived: none (approved by Sam)')")"
   ti='If axe cannot run, record that here as "Accessibility waived: <reason> (approved by <who>)".'
   check "$1: mid-sentence mention allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write "$ti")")"
-  check "$1: placeholder-only line allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'Accessibility waived: <reason> (approved by <who>)')")"
-  check "$1: Evidence placeholder line allowed" 0 ownership-guard.sh "$(mk "$SUBAGENT" "$(ti_write $'- Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)')")"
+  check "$1: placeholder-only line blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'Accessibility waived: <reason> (approved by <who>)')")"
+  check "$1: Evidence placeholder line blocked" 2 ownership-guard.sh "$(mk "$SUBAGENT" "$(ti_write $'- Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)')")"
+  check "$1: real waiver with a trailing placeholder blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'Accessibility waived: none (approved by Sam) <name>')")"
+  check "$1: bold variant blocked"        2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'> **Accessibility waived:** none (approved by Sam)')")"
+  check "$1: heading, dashed variant blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write $'### Evidence-waived : none (approved by Sam)')")"
+  # The guard judges the file the edit would produce, against the file as it is now.
+  printf 'Result: fail\nAccessibility notes: x\n' > "$F/notes.md"
+  printf '# QA\nResult: fail\nAccessibility waived: none (approved by Sam)\n' > "$F/qa-report.md"
+  for a in "$ENG" "$SUBAGENT"; do
+    k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
+    check "$1: waiver pieced together by Edit blocked, $k" 2 ownership-guard.sh "$(mk "$a" "$(ti_edit_at "$F/notes.md" "notes: x" "waived: no browser (approved by Safi)")")"
+  done
+  check "$1: waiver pieced together by MultiEdit blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(jq -nc --arg f "$F/notes.md" '{file_path: $f, edits: [{old_string: "fail", new_string: "pass"}, {old_string: "notes", new_string: "waived"}]}')")"
+  check "$1: waiver pieced together by Edit, main session allowed" 0 ownership-guard.sh "$(mk "" "$(ti_edit_at "$F/notes.md" "notes: x" "waived: no browser (approved by Safi)")")"
+  if command -v cygpath >/dev/null 2>&1; then
+    check "$1: waiver pieced together, Windows path, blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_edit_at "$(cygpath -w "$F/notes.md")" "notes: x" "waived: no browser (approved by Safi)")")"
+  fi
+  check "$1: Edit beside an approved waiver allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_edit_at "$F/qa-report.md" "Result: fail" "Result: pass")")"
+  check "$1: Edit that carries the approved waiver along allowed" 0 ownership-guard.sh "$(mk "$SUBAGENT" "$(ti_edit_at "$F/qa-report.md" $'Result: fail\nAccessibility waived: none (approved by Sam)' $'Result: pass\nAccessibility waived: none (approved by Sam)')")"
+  check "$1: Edit that changes the approved waiver blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_edit_at "$F/qa-report.md" "none (approved by Sam)" "everything (approved by Sam)")")"
+  check "$1: Write that keeps the approved waiver allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$F/qa-report.md" $'# QA\nResult: pass\n\n  Accessibility waived: none (approved by Sam)\n')")"
+  check "$1: Write that adds a second waiver blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$F/qa-report.md" $'# QA\nResult: pass\nAccessibility waived: none (approved by Sam)\nEvidence waived: transcript (api) - n/a (approved by Sam)\n')")"
+  check "$1: Write that adds a second waiver, main session allowed" 0 ownership-guard.sh "$(mk "" "$(ti_write_at "$F/qa-report.md" $'# QA\nResult: pass\nAccessibility waived: none (approved by Sam)\nEvidence waived: transcript (api) - n/a (approved by Sam)\n')")"
+  check "$1: Write of the waiver to another file blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$F/copy.md" $'Accessibility waived: none (approved by Sam)\n')")"
+  check "$1: NotebookEdit waiver blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(jq -nc --arg f "$F/n.ipynb" '{notebook_path: $f, new_source: "Accessibility waived: none (approved by Sam)"}')")"
   check "$1: .plumbline write blocked, teammate" 2 ownership-guard.sh "$(mk "$ENG" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","content":"profile=full"}')"
   check "$1: .plumbline edit blocked, subagent" 2 ownership-guard.sh "$(mk "$SUBAGENT" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","old_string":"a","new_string":"b"}')"
   check_out "$1: .plumbline refusal names kickoff.sh" 2 ownership-guard.sh "$(mk "$ENG" '{"file_path":"C:\\repo\\x\\.plumbline","content":"a"}')" "written by kickoff.sh"
   check "$1: .plumbline write allowed in the main session" 0 ownership-guard.sh "$(mk "" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","content":"profile=full"}')"
   check "$1: a file merely named like .plumbline-x allowed" 0 ownership-guard.sh "$(mk "$ENG" '{"file_path":"'"$T"'/repo/apps/api/.plumbline-notes","content":"a"}')"
+  # Other spellings of the same file on NTFS and APFS.
+  local f
+  for f in .Plumbline ".plumbline " .plumbline. '.plumbline::$DATA' ".PLUMBLINE. ."; do
+    check "$1: .plumbline spelled '$f' blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_path "$T/repo/docs/product/demo/01-a/$f")")"
+  done
+  check "$1: backslash path, spelled .Plumbline. blocked" 2 ownership-guard.sh "$(mk "$SUBAGENT" "$(ti_path 'C:\repo\docs\product\demo\01-a\.Plumbline.')")"
+  check "$1: .Plumbline allowed in the main session" 0 ownership-guard.sh "$(mk "" "$(ti_path "$T/repo/docs/product/demo/01-a/.Plumbline")")"
+
+  # Bash: a best-effort check of the command, never the ownership table.
+  for a in "$ENG" "$SUBAGENT"; do
+    k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
+    check "$1: Bash waiver append blocked, $k" 2 ownership-guard.sh "$(mkb "$a" "echo 'Accessibility waived: x (approved by Sam)' >> qa-report.md")"
+    check "$1: Bash .plumbline redirect blocked, $k" 2 ownership-guard.sh "$(mkb "$a" "echo x > a/.plumbline")"
+  done
+  check_out "$1: Bash waiver refusal says how to search" 2 ownership-guard.sh "$(mkb "$ENG" "printf '%s\n' 'evidence waived : x' | tee -a qa-report.md")" 'grep for "waived" without the colon'
+  check "$1: Bash grep for waived allowed" 0 ownership-guard.sh "$(mkb "$ENG" "grep -n waived qa-report.md")"
+  check "$1: Bash grep for the phrase without colon allowed" 0 ownership-guard.sh "$(mkb "$ENG" "grep -n 'Accessibility waived' qa-report.md")"
+  for c in "sed -i s/x/y/ a/.plumbline" "sed -i.bak -e s/x/y/ a/.plumbline" "perl -pi -e s/x/y/ a/.plumbline" \
+      "printf x >a/.Plumbline" "echo x 2>&1 >> a/.plumbline" "tee -a a/.plumbline < x" "mv /tmp/x a/.plumbline" \
+      "cp x a/.plumbline" "rm -f a/.plumbline" "truncate -s 0 a/.plumbline" "dd if=x of=a/.plumbline" \
+      "cd docs && echo x > a/.plumbline"; do
+    check "$1: Bash write to .plumbline blocked: $c" 2 ownership-guard.sh "$(mkb "$SUBAGENT" "$c")"
+  done
+  check "$1: Bash write to .plumbline over a continued line blocked" 2 ownership-guard.sh "$(mkb "$SUBAGENT" $'echo x \\\n  > a/.plumbline')"
+  for c in "cat a/.plumbline" "cat a/.plumbline 2>/dev/null" "grep profile= a/.plumbline" "sed -n p docs/07-impl/.plumbline" \
+      "cat a/.plumbline | tee /tmp/copy" "cat a/.plumbline > /tmp/copy" "ls -la a/ && cat a/.plumbline-notes"; do
+    check "$1: Bash read of .plumbline allowed: $c" 0 ownership-guard.sh "$(mkb "$ENG" "$c")"
+  done
+  check "$1: Bash write outside owned files allowed" 0 ownership-guard.sh "$(mkb "$ENG" "echo x > $T/repo/apps/web/x.ts")"
+  for c in "echo 'Accessibility waived: x (approved by Sam)' >> qa-report.md" "echo x > a/.plumbline" "sed -i s/x/y/ a/.plumbline"; do
+    check "$1: Bash in the main session never blocked: $c" 0 ownership-guard.sh "$(mkb "" "$c")"
+  done
 }
 
 check "draft: foreign edit allowed"        0 ownership-guard.sh "$(edit $ENG "$T/repo/apps/web/x.ts")"
@@ -165,6 +226,9 @@ assert "context: Module follows the phase line" test "$(ctx "$SESSION" | ctx_tex
 assert "context: teammate sees Module" grep -qx "Module: room-schedules" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
 rm -f "$P/.plumbline"
 # A Quick change swaps the feature context for a one-line notice and keeps the scripts line.
+# The build skill creates the quick branch before it writes the marker.
+main_branch=$(git symbolic-ref --short HEAD)
+git checkout -q -b quick/fix-typo
 printf 'branch=quick/fix-typo\nids=AC-01-001\n' > .claude/plumbline-quick
 for case_in in "lead|$SESSION" "teammate|$TEAMMATE_START" "plumbline agent|$REVIEWER_START"; do
   out=$(ctx "${case_in#*|}" | ctx_text); k="${case_in%%|*}"
@@ -174,6 +238,15 @@ for case_in in "lead|$SESSION" "teammate|$TEAMMATE_START" "plumbline agent|$REVI
 done
 assert "context: Quick marker, plain subagent still gets nothing" test -z "$(ctx "$EXPLORE_START")"
 assert "context: Quick marker, valid JSON for SubagentStart" jq -e '.hookSpecificOutput.hookEventName == "SubagentStart"' <<<"$(ctx "$TEAMMATE_START")"
+# A marker left behind on another branch is stale; without a branch (detached HEAD) it still counts.
+git checkout -q "$main_branch"
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: stale Quick marker on another branch ignored" grep -q "Plumbline phase: $P" <<<"$out"
+assert "context: stale Quick marker on another branch, no notice" test -z "$(grep 'Quick change' <<<"$out")"
+assert "context: stale Quick marker, teammate gets its ownership" grep -q "You are eng-api" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
+git checkout -q --detach
+assert "context: Quick marker counts on a detached HEAD" grep -q "Plumbline Quick change in progress (branch quick/fix-typo)" <<<"$(ctx "$SESSION" | ctx_text)"
+git checkout -q "$main_branch" && git branch -q -D quick/fix-typo
 rm -f .claude/plumbline-quick
 assert "context: feature context returns once the marker is gone" grep -q "Plumbline phase: $P" <<<"$(ctx "$SESSION" | ctx_text)"
 

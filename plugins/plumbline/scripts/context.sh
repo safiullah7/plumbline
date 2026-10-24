@@ -29,10 +29,14 @@ emit() { # context text: cap it and hand it over
 
 # A Quick change in progress replaces the active feature's context, so a stale
 # feature never leaks into it. The lead still needs the scripts folder for ac-check.sh.
+# The marker counts only on its own branch, so one left behind by an interrupted
+# Quick change doesn't hide the feature for good; when git can't tell the branch
+# (not a repo, detached HEAD), it counts as before.
 quick="$PROJECT_DIR/.claude/plumbline-quick"
 if [[ -f "$quick" ]]; then
   branch=$(awk -F= '{ sub(/\r$/, "") } $1 == "branch" { print substr($0, 8); exit }' "$quick")
-  emit "Plumbline Quick change in progress (branch ${branch:-unknown}): no feature folder; don't write phase docs."$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
+  head=$(git -C "$PROJECT_DIR" symbolic-ref --short HEAD 2>/dev/null | tr -d '\r')
+  [[ -z "$head" || "$head" == "$branch" ]] && emit "Plumbline Quick change in progress (branch ${branch:-unknown}): no feature folder; don't write phase docs."$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
 fi
 
 dir=$(phase_dir) || exit 0

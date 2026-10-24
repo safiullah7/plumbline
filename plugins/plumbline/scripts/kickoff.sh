@@ -9,10 +9,14 @@
 # (vision, design-principles when UX, decisions, changes), then
 # docs/product/<module>/<nn>-<slug>/ with the next repo-wide number (in a legacy
 # area, one with a phases/ folder: phases/phase-<nn>/), the templates/standard/
-# overlay for the standard profile, and .plumbline. Without UX there's no ux.md,
+# overlay for the standard profile, and .plumbline (with the slug, so a legacy
+# area can refuse the same feature twice). The copied docs say "Feature <nn>"
+# where the templates say "Phase <nn>". Without UX there's no ux.md,
 # no prototypes/ and no Design verification box.
 # Legacy form, as v0.3's kickoff: the area docs that are missing, then
-# docs/product/<area>/phases/phase-NN/, no .plumbline.
+# docs/product/<area>/phases/phase-NN/, no .plumbline. It takes any area name and
+# phase id v0.3's hand kickoff took (Vet_Records phase-1, phase-03-auth); the
+# module form needs lowercase slugs.
 # Both write .claude/current-phase, print "added <path>" for each module or area
 # doc they add, and print the feature folder (repo-relative) as the last line.
 # Exit 0 = created, 1 = usage or the feature already exists, 2 = --new-module on
@@ -46,8 +50,20 @@ while (( $# )); do
   esac
 done
 (( ${#pos[@]} == 2 )) || usage
-[[ "${pos[0]}" =~ $NAME_RE ]] || usage "'${pos[0]}' isn't a valid name (lowercase letters, digits and dashes)"
-[[ "${pos[1]}" =~ $NAME_RE ]] || usage "'${pos[1]}' isn't a valid name (lowercase letters, digits and dashes)"
+# The legacy form takes whatever v0.3's hand kickoff took (Vet_Records phase-01,
+# phase-3, phase-03-auth) and refuses only names that would break a path or the
+# sed substitutions below; the module form keeps the strict slug rule.
+legacy=""; [[ "${pos[1]}" =~ ^phase-[0-9] ]] && legacy=1
+if [[ -n "$legacy" ]]; then
+  for n in "${pos[0]}" "${pos[1]}"; do
+    case "$n" in
+      .*|*[/\\\&[:space:][:cntrl:]]*) usage "'$n' can't be used as a folder name here (no slashes, spaces or &, and no leading dot)" ;;
+    esac
+  done
+else
+  [[ "${pos[0]}" =~ $NAME_RE ]] || usage "'${pos[0]}' isn't a valid name (lowercase letters, digits and dashes)"
+  [[ "${pos[1]}" =~ $NAME_RE ]] || usage "'${pos[1]}' isn't a valid name (lowercase letters, digits and dashes)"
+fi
 
 # "room-schedules" -> "Room schedules", for <Module> and <Area>.
 display() {
@@ -65,10 +81,9 @@ gitkeep() { # folder, subfolders...
 current() { mkdir -p .claude && printf '%s\n' "$1" > .claude/current-phase; }
 
 # --- Legacy form: kickoff.sh <area> phase-NN ---
-if [[ "${pos[1]}" =~ ^phase-[0-9] ]]; then
+if [[ -n "$legacy" ]]; then
   [[ -z "$opts" ]] || usage "the <area> phase-NN form takes no options"
-  [[ "${pos[1]}" =~ ^phase-[0-9][0-9]+$ ]] || usage "the phase is phase-NN, two digits or more (e.g. phase-03)"
-  area="${pos[0]}" nn="${pos[1]#phase-}"
+  area="${pos[0]}"; [[ "${pos[1]}" =~ ^phase-([0-9]+) ]] && nn="${BASH_REMATCH[1]}"   # <phase> is the leading number
   feature="docs/product/$area/phases/${pos[1]}"
   [[ -e "$feature" ]] && exists "$feature"
   Area=$(display "$area")
@@ -102,12 +117,16 @@ for d in "$mdir"/[0-9][0-9]*-*/; do   # the same slug under any number
   d="${d%/}"
   [[ "${d##*/}" =~ ^[0-9]+-(.*)$ && "${BASH_REMATCH[1]}" == "$slug" ]] && exists "$d"
 done
+for f in "$mdir"/phases/*/.plumbline; do   # a legacy area keeps the slug in .plumbline
+  [[ -f "$f" ]] || continue
+  tr -d '\r' < "$f" | grep -qxF "slug=$slug" && exists "${f%/.plumbline}"
+done
 nn=$(next_feature_number)
 if [[ -d "$mdir/phases" ]]; then feature="$mdir/phases/phase-$nn"; else feature="$mdir/$nn-$slug"; fi
 [[ -e "$feature" ]] && exists "$feature"
 
 Module=$(display "$module")
-subst=(-e "s/<phase>/$nn/g" -e "s/<Module>/$Module/g" -e "s/<module>/$module/g")
+subst=(-e "s/Phase <phase>/Feature $nn/g" -e "s/<phase>/$nn/g" -e "s/<Module>/$Module/g" -e "s/<module>/$module/g")
 mkdir -p "$feature"
 docs="vision.md decisions.md changes.md"
 [[ "$ux" == yes ]] && docs="vision.md design-principles.md decisions.md changes.md"
@@ -134,6 +153,7 @@ if [[ "$ux" == yes ]]; then gitkeep "$feature" contracts prototypes briefs; else
   [[ -n "$has_surfaces" ]] && echo "surfaces=$surfaces"
   echo "ux=$ux"
   echo "created=$(date +%Y-%m-%d)"
+  echo "slug=$slug"
 } > "$feature/.plumbline"
 current "$feature"
 printf '%s\n' "$feature"

@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'UX:[\s*`]*yes\b'
+pattern: '(?:^|\n)[ \t>*`-]*UX:[\s*`]*yes[\s*`]*(?:\r?\n|$)'
 ---

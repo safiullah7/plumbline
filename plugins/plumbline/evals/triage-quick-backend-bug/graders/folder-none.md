@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'Folder:[\s*`]*none'
+pattern: '(?:^|\n)[ \t>*`-]*Folder:[\s*`]*none[\s*`]*(?:\r?\n|$)'
 ---

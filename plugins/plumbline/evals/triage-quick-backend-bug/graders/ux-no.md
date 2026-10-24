@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: 'UX:[\s*`]*no\b'
+pattern: '(?:^|\n)[ \t>*`-]*UX:[\s*`]*no[\s*`]*(?:\r?\n|$)'
 ---
