@@ -201,13 +201,75 @@ teammate_name_for() {
   [[ -n "$name" ]] && printf '%s\n' "$name"
 }
 
-# The command for one check: its env var when set (set to "" skips the check),
-# else the legacy npm default.
+# The project profile, docs/product/project.md (dev plan §6.3).
+project_file() { printf '%s\n' "$PROJECT_DIR/docs/product/project.md"; }
+
+# Surface names from the profile's Surfaces table, one per line, in table order;
+# nothing when there's no profile.
+project_surfaces() {
+  md_table "$(project_file)" Surfaces 2>/dev/null | awk -F'\t' '$1 != "" { print $1 }'
+}
+
+# One surface's row from the profile, cells tab-separated in the table's order:
+# Surface, Stack, Paths, Run, Typecheck, Lint, AC tests. Returns 1 when there's no
+# profile or no row for that surface.
+surface_row() { # surface
+  [[ -n "${1:-}" ]] || return 1
+  md_table "$(project_file)" Surfaces 2>/dev/null | awk -F'\t' -v s="$1" '
+    $1 == s { print; found = 1; exit }
+    END { exit !found }'
+}
+
+# The kind of a surface name: one of the ten kinds (dev plan §6.3). A repo with
+# two of a kind names the second "<kind>-<name>" (web-ui-shop), so a name may
+# extend its kind with "-<name>". Returns 1 for a name that isn't one.
+surface_kind() { # surface
+  local k
+  for k in web-ui mobile-ui desktop-ui api service cli library data ai infra; do
+    [[ "${1:-}" == "$k" || "${1:-}" == "$k"-* ]] && { printf '%s
+' "$k"; return 0; }
+  done
+  return 1
+}
+
+# The command for one check, by precedence (dev plan §6.8):
+# 1. its env var when set (set to "" skips the check);
+# 2. the profile's row for the surface (or, with no surface given, its only row):
+#    the Typecheck, Lint or AC tests cell, where an empty cell skips the check. An
+#    AC tests cell starting with node, pytest, go or generic becomes that adapter
+#    in ac-tests/ (generic also gets --surface); anything else is a raw command;
+# 3. the legacy npm default, also for a surface the profile doesn't list.
+# run_checks appends the IDs as one quoted argument, so a command must take them last.
 check_command() { # env var name, surface, legacy default
   if [[ -n "${!1+set}" ]]; then printf '%s\n' "${!1}"; return 0; fi
-  # v0.4b: the surface's commands (and AC-test adapter) from docs/product/project.md
-  # go here, between the env vars and the legacy defaults (dev plan §6.8).
-  printf '%s\n' "$3"
+  local surface="${2:-}" col list row cell name rest dir q
+  case "$1" in
+    PLUMBLINE_TYPECHECK) col=5 ;;
+    PLUMBLINE_LINT)      col=6 ;;
+    PLUMBLINE_TEST_AC)   col=7 ;;
+    *) printf '%s\n' "$3"; return 0 ;;
+  esac
+  if [[ -z "$surface" ]]; then
+    list=$(project_surfaces)
+    [[ -n "$list" && "$list" != *$'\n'* ]] && surface="$list"
+  fi
+  if ! row=$(surface_row "$surface"); then printf '%s\n' "$3"; return 0; fi
+  cell=$(awk -F'\t' -v c="$col" '{ print $c }' <<<"$row")
+  [[ "$cell" == \`*\` ]] && cell="${cell:1:${#cell}-2}"   # a cell written as `code`
+  if [[ "$col" == 7 && -n "$cell" ]]; then
+    name="${cell%% *}"; rest=""
+    [[ "$cell" == *" "* ]] && rest=" ${cell#* }"
+    case "$name" in
+      node|pytest|go|generic)
+        # Double-quoted for eval, so a scripts folder with spaces still works.
+        dir="${PLUMBLINE_SCRIPTS//\\/\\\\}"; dir="${dir//\"/\\\"}"
+        dir="${dir//\$/\\\$}"; dir="${dir//\`/\\\`}"
+        printf -v q %q "$surface"
+        [[ "$name" == generic ]] && rest=" --surface $q$rest"
+        cell="bash \"$dir/ac-tests/$name.sh\"$rest" ;;
+    esac
+  fi
+  printf '%s\n' "$cell"
 }
 
 # One check for run_checks, in the repo root; an empty command is skipped. The
@@ -223,12 +285,13 @@ run_check() { # label, command
 }
 
 # Typecheck, lint, then the tests named after the given AC IDs, stopping at the
-# first failure. Shared by the task gate and ac-check.sh. Each command is
-# PLUMBLINE_TYPECHECK, PLUMBLINE_LINT or PLUMBLINE_TEST_AC when set (to "" to skip
-# that check), else `npm run -s typecheck`, `npm run -s lint` and
-# `npm run -s test:ac --`. The test command gets the IDs as one quoted argument;
-# empty IDs skip the tests (a [chore] task). The surface is accepted for v0.4b and
-# not used yet. Returns 0 or 1 and leaves, for the caller:
+# first failure. Shared by the task gate and ac-check.sh. Each command comes from
+# check_command: PLUMBLINE_TYPECHECK, PLUMBLINE_LINT or PLUMBLINE_TEST_AC when set
+# (to "" to skip that check), else the surface's row in docs/product/project.md,
+# else `npm run -s typecheck`, `npm run -s lint` and `npm run -s test:ac --`, so a
+# repo without a profile behaves as in v0.3. The test command gets the IDs as one
+# quoted argument; empty IDs skip the tests (a [chore] task). Returns 0 or 1 and
+# leaves, for the caller:
 #   RUN_CHECKS_FAILED  the check that failed: typecheck, lint or tests ("" on a pass)
 #   RUN_CHECKS_LOG     temp file with the last check's output; the caller removes it
 #   RUN_CHECKS_TIMING  the checks that passed, e.g. "typecheck 12s · lint 4s · tests 9s"

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Compares each prototype screenshot with the same screen in the built app:
 // prototypes/shots/<screen>-<width>.png against qa/shots/<screen>-<width>.png in
-// the active phase folder (or the folder given). It compares 8x8 block averages,
-// so different text and data don't count but layout, colour and missing elements
-// do. Writes qa/diff/<screen>-<width>.png and qa/visual.tsv, and prints a table.
+// the active phase folder (or the folder given). It compares 8x8 blocks two ways,
+// by average colour and by whether the block holds ink (text), so different words
+// and data don't count but layout, colour, missing elements and missing text do.
+// Writes qa/diff/<screen>-<width>.png and qa/visual.tsv, and prints a table.
 // A screen above the threshold is "review": the UX engineer looks at the diff.
 // Uses only Node built-ins. Usage:
 //   node visual-diff.mjs [phase-dir]          (PLUMBLINE_VISUAL_THRESHOLD=20 = 20%, the default)
@@ -173,39 +174,73 @@ function background(img, block) {
   return [((best >> 10) & 31) * 8 + 4, ((best >> 5) & 31) * 8 + 4, (best & 31) * 8 + 4];
 }
 
-// Compares two decoded images by block averages. Returns the fraction of
-// content blocks (not plain background in either image) that differ, so empty
-// space doesn't dilute a layout change, plus a per-block mask; or size-mismatch.
+// A block "has ink" when the standard deviation of its luma is above this (of
+// 255). Flat fills, soft gradients and shadows sit well under it; a few glyph
+// strokes on a background sit well over it.
+const INK_SD = 12;
+
+// Compares two decoded images by two signals per 8x8 block. The first is the
+// block's average colour, which catches moved, recoloured and missing boxes but
+// barely sees thin text. The second is ink presence (luma spread above INK_SD),
+// which catches a missing text column. A block whose ink flips between the two
+// images counts only when at least 2 of its 8 neighbours flip as well, so a lone
+// speck doesn't. Returns the fraction of content blocks (not plain background in
+// either image) that differ by either signal, so empty space doesn't dilute a
+// layout change, plus a per-block mask; or size-mismatch.
 export function compareImages(a, b, { block = 8, tolerance = 0.1 } = {}) {
   if (a.width !== b.width || a.height !== b.height) return { sizeMismatch: true };
   const bw = Math.ceil(a.width / block), bh = Math.ceil(a.height / block);
   const mask = new Uint8Array(bw * bh);
+  const content = new Uint8Array(bw * bh);
+  const flip = new Uint8Array(bw * bh);
   const bgA = background(a, block), bgB = background(b, block);
-  let differing = 0, content = 0;
   for (let by = 0; by < bh; by++) {
     for (let bx = 0; bx < bw; bx++) {
       const sum = [0, 0, 0, 0, 0, 0];
-      let n = 0;
+      let n = 0, ya = 0, yaa = 0, yb = 0, ybb = 0;
       for (let y = by * block; y < Math.min((by + 1) * block, a.height); y++) {
         for (let x = bx * block; x < Math.min((bx + 1) * block, a.width); x++) {
           const o = (y * a.width + x) * 3;
           sum[0] += a.rgb[o]; sum[1] += a.rgb[o + 1]; sum[2] += a.rgb[o + 2];
           sum[3] += b.rgb[o]; sum[4] += b.rgb[o + 1]; sum[5] += b.rgb[o + 2];
+          const la = 0.299 * a.rgb[o] + 0.587 * a.rgb[o + 1] + 0.114 * a.rgb[o + 2];
+          const lb = 0.299 * b.rgb[o] + 0.587 * b.rgb[o + 1] + 0.114 * b.rgb[o + 2];
+          ya += la; yaa += la * la; yb += lb; ybb += lb * lb;
           n++;
         }
       }
       const m = sum.map((v) => v / n);
-      const isContent = yiqDelta(m[0], m[1], m[2], bgA[0], bgA[1], bgA[2]) > 0.03
-        || yiqDelta(m[3], m[4], m[5], bgB[0], bgB[1], bgB[2]) > 0.03;
-      if (!isContent) continue;
-      content++;
-      if (yiqDelta(m[0], m[1], m[2], m[3], m[4], m[5]) > tolerance) {
-        mask[by * bw + bx] = 1;
-        differing++;
+      const inkA = Math.sqrt(Math.max(0, yaa / n - (ya / n) ** 2)) > INK_SD;
+      const inkB = Math.sqrt(Math.max(0, ybb / n - (yb / n) ** 2)) > INK_SD;
+      const i = by * bw + bx;
+      flip[i] = inkA !== inkB ? 1 : 0;
+      if (yiqDelta(m[0], m[1], m[2], bgA[0], bgA[1], bgA[2]) > 0.03
+        || yiqDelta(m[3], m[4], m[5], bgB[0], bgB[1], bgB[2]) > 0.03) {
+        content[i] = 1;
+        if (yiqDelta(m[0], m[1], m[2], m[3], m[4], m[5]) > tolerance) mask[i] = 1;
       }
     }
   }
-  return { sizeMismatch: false, different: content ? differing / content : 0, mask, bw, bh, block };
+  let differing = 0, contentCount = 0;
+  for (let by = 0; by < bh; by++) {
+    for (let bx = 0; bx < bw; bx++) {
+      const i = by * bw + bx;
+      if (!content[i]) continue;
+      contentCount++;
+      if (flip[i] && !mask[i]) {
+        let near = 0; // flipped neighbours, of up to 8
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const x = bx + dx, y = by + dy;
+            if ((dx || dy) && x >= 0 && x < bw && y >= 0 && y < bh) near += flip[y * bw + x];
+          }
+        }
+        if (near >= 2) mask[i] = 1;
+      }
+      if (mask[i]) differing++;
+    }
+  }
+  return { sizeMismatch: false, different: contentCount ? differing / contentCount : 0, mask, bw, bh, block };
 }
 
 // The app shot, faded, with differing blocks tinted red.

@@ -76,6 +76,39 @@ const a = box(canvas(), 10, 10, 60, 30, [30, 60, 200]);
   check('visual-diff: different sizes are a size mismatch', compareImages(img(a), { width: W, height: 8, rgb: a.subarray(0, W * 8 * 3) }).sizeMismatch);
 }
 
+// Text presence (PL-104): a page with a header and two columns of thin text
+// (cells of random 1px marks, 18% ink, with word gaps). The colour average alone
+// scores a missing column at about 4% here; the ink signal brings it over 20%.
+{
+  const TW = 320, TH = 200;
+  const textPage = ({ seed = 1, columns = [0, 1], speck = false } = {}) => {
+    let s = seed >>> 0;
+    const rnd = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+    const rgb = Buffer.alloc(TW * TH * 3, 255);
+    const px = (x, y, c) => rgb.set(c, (y * TW + x) * 3);
+    for (let y = 0; y < 24; y++) for (let x = 0; x < TW; x++) px(x, y, [31, 42, 68]);
+    for (const col of columns) {
+      for (let line = 0; line < 11; line++) {
+        for (let cell = 0; cell < 22; cell++) {
+          if (rnd() < 0.15) continue; // word gap
+          for (let y = 0; y < 9; y++) {
+            for (let x = 0; x < 5; x++) if (rnd() < 0.18) px(16 + col * 156 + cell * 6 + x, 40 + line * 14 + y, [95, 95, 95]);
+          }
+        }
+      }
+    }
+    if (speck) for (const [x, y] of [[300, 190], [301, 190], [300, 191], [301, 191]]) px(x, y, [0, 0, 0]);
+    return { width: TW, height: TH, rgb };
+  };
+  const score = (x, y) => compareImages(x, y).different;
+  const page = textPage();
+  check('visual-diff: identical text pages differ by 0%', score(page, textPage()) === 0);
+  check('visual-diff: a missing text column is flagged', score(page, textPage({ columns: [0] })) >= 0.2);
+  check('visual-diff: a lone speck on a text page is ignored', score(page, textPage({ speck: true })) < 0.2);
+  check('visual-diff: different wording in the same layout stays under 20%',
+    [2, 3, 4].every((seed) => score(page, textPage({ seed })) < 0.2));
+}
+
 // The command line on a phase folder: rows, diff images and visual.tsv.
 {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plumbline-visual-'));
