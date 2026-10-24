@@ -17,7 +17,7 @@ Dev plan (dev-plan.md):
 - Split the feature into workstreams along file-ownership seams. One engineer
   per seam, maximum 4. Fewer seams = fewer engineers. Standard size: 1-2
   engineers, run as subagents you dispatch one after another, unless there are 2
-  and a team is available (the TeamCreate tool is in your tool list).
+  and the build skill says agent teams are on.
 - For every workstream list: owner name, owned globs, tasks with AC IDs, and
   complexity. Complexity is HIGH for tenant isolation, auth/permissions, billing,
   data migrations, concurrency and cross-module refactors; otherwise NORMAL.
@@ -82,6 +82,9 @@ criteria AC-<yymmdd>-<nn>; there's no feature folder or dev plan):
    body. If gh is missing or not authenticated, push and print the compare URL.
 7. If docs/product/<module>/ exists, add `| <date> | <request> | <IDs> | <PR> |`
    to its changes.md and commit and push it by path.
+8. Report the PR link (or the compare URL), the ac-check line exactly as
+   printed, each test by name, and the reviewer's findings with how each was
+   resolved.
 Never create a folder and never merge. If the work grows past Quick (over 3
 criteria, another module, a new screen or flow, a schema or shared-contract
 change), stop and report it for re-triage instead of expanding the scope.

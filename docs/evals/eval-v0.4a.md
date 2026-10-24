@@ -98,5 +98,15 @@ smoke test covers them.
     build-quick-dispatches were rerun after that change and stayed at 1.00.
 - **discover-asks-first** failed its "hard parts" judge in one run of three, the
   same as v0.2 and v0.3. Its skill didn't change in v0.4a.
+- **After the live smoke test** (all its checks passed), four more fixes changed the build skill, the
+  product engineer and the lead:
+  - team detection now works without the TeamCreate tool, which current Claude Code no longer has;
+  - plain helper agents are dispatched without a name, so they aren't turned into teammates;
+  - triage says `Module: none` for code no module owns;
+  - the lead quotes its `ac-check` line.
+
+  All ten affected cases were rerun, 3 runs each: the five triage cases,
+  build-quick-dispatches, lead-writes-plan and the three product cases. All
+  scored 1.00.
 - **Self-tests at the time of this run:** 760 checks across all suites,
   0 failed (`bash tests/run-all.sh`).

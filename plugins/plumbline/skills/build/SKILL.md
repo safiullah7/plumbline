@@ -11,20 +11,25 @@ subagents can't. <plugin> is the folder two levels above this SKILL.md. When a
 step says "ask", use AskUserQuestion with your recommended option first; if
 that tool isn't available, ask in plain text and end your turn until they reply.
 Run every dispatch in the foreground and wait for its result before the next
-step. If the user chooses to stop at any point, run step 8's cleanup and stop.
+step. Dispatch agents without a `name`, except where a step spawns teammates:
+with agent teams on, a named agent joins the team as a teammate, and the hooks
+then hold it to the dev plan's Ownership table. If the user chooses to stop at any point, run step 8's cleanup and stop.
 
 1. **Settings.**
    - Confirm mode: the `Confirm:` line of docs/product/project.md if that file
      exists (`auto` or `always`); else, if you have a shell, the
      PLUMBLINE_CONFIRM environment variable; else `auto`.
-   - Teams: available if and only if the TeamCreate tool is in your tool list.
+   - Teams: on when agent teams are enabled: with a shell, when
+     `echo "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"` prints `1`; without one,
+     when your Agent tool's description says a named agent joins this
+     session's team, or a TeamCreate tool is listed (older Claude Code). Else off.
    - Shell: available if you have the Bash tool. Without it, see step 9.
    - Quick marker: if `.claude/plumbline-quick` exists, an earlier Quick change
      was interrupted or is still running in another session. Ask: still
      running (stop here), or clear it (delete the file and go on).
 2. **Triage.** Dispatch the plumbline:product-engineer agent with model sonnet
    and this brief: "Triage mode. Request (verbatim): <request>. Today:
-   <YYYY-MM-DD>. TeamCreate available: <yes|no>. Write no files. Return the
+   <YYYY-MM-DD>. Agent teams on: <yes|no>. Write no files. Return the
    fixed triage block; for Quick, 1-3 observable criteria with IDs
    AC-<yymmdd>-<nn>; and any question you couldn't decide."
 3. **Show and ask.** Print the block exactly as returned, in this shape:
@@ -32,7 +37,7 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
    ```
    Plumbline triage
    Size: Quick | Standard | Full
-   Module: <name> (existing | new)
+   Module: <name> (existing | new) | none
    Folder: none | docs/product/<module>/<nn>-<feature-slug>/
    UX: yes | no
    Engineers: <n>
@@ -94,9 +99,11 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
       or change it (say what). Relay changes to the lead until approved.
    4. Tell the lead the plan is approved: it sets READY, runs make-briefs.sh and
       builds, dispatching the engineers and a reviewer per workstream as
-      subagents. With 2 engineers and teams available, create the team yourself
-      with TeamCreate instead, spawning the lead and each engineer (pointed at
-      its brief) as teammates. When every workstream is reviewed and the full
+      subagents. With 2 engineers and teams on, spawn the team yourself
+      instead: the lead and each engineer (pointed at its brief) as teammates,
+      each with the Agent tool, its agent type and its name from the plan's Team
+      table (call TeamCreate first if your Claude Code has it). Teammates can't
+      spawn teammates, so you spawn them all. When every workstream is reviewed and the full
       suite passes, the lead ticks "Integration review" in signoff.md.
    5. Verify. Dispatch plumbline:qa-runner with: "Standard: run test-plan.md,
       record results in qa-report.md, set each Traceability Status in
@@ -117,7 +124,7 @@ step. If the user chooses to stop at any point, run step 8's cleanup and stop.
    discovery (follow <plugin>/skills/discover/SKILL.md yourself, since it asks
    the user) → spec, ux.md and prototypes (UX), test plan (QA engineer) →
    lead's plan → the user approves → READY and make-briefs.sh → team build
-   (TeamCreate; teammates from the plan's Team table) → QA runner → signoff as
+   (teammates from the plan's Team table, spawned as in 6.4) → QA runner → signoff as
    in 6.5.
 8. **Questions, waivers and cleanup** (any size).
    - When an agent returns a question only the user can answer, ask it, then

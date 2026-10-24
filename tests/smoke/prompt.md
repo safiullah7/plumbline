@@ -141,17 +141,17 @@ for (const id of ids) {
 Then run:
 git add -A && git commit -q -m "Quick fixture"
 R=$(mktemp -d) && git init -q --bare "$R" && git remote add origin "$R" && git push -q origin HEAD
-Then run this slash command. If the skill asks you something (the command
-approvals, or a question), answer yes and pick its recommended option; this is
-a test:
-/plumbline:build make greet() return "Hello, friend" when called with no name
-When it finishes, run and keep the output:
+/plumbline:build can only be started by the user, so stop here and tell me
+exactly: "Type: /plumbline:build make greet() return "Hello, friend" when
+called with no name". When the build skill asks something (a question, or a
+command approval), I'll pick its recommended option; this is a test. When it
+has finished and I say "continue Part 6", run and keep the output:
 git branch --list 'quick/*'
 git log --oneline -n 5
 ls -a .claude
 ls docs/product
 grep -rn "AC-[0-9]*-[0-9]*" test/
-Also say whether you or any agent called TeamCreate during this part, and
+Also list every agent dispatched during this part (name and type), and
 quote the triage block and the ac-check line (ac-check: pass ...) as printed.
 
 PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
@@ -173,7 +173,7 @@ PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Step 5: questions.md exists and has exactly one ESCALATED row, from hooks to
   lead, naming src/a/draft.txt
 - Step 6: status.sh shows "1 escalated"; signoff-check.sh exits 1 and lists the
-  ESCALATED question; phase-evidence.sh prints "Evidence for the next phase" and
+  ESCALATED question; phase-evidence.sh prints "Evidence for the next feature" and
   exits 0
 - Part 4 (Standard kickoff): the first run prints "added docs/product/shop/vision.md",
   "added docs/product/shop/design-principles.md", "added docs/product/shop/decisions.md",
@@ -195,10 +195,13 @@ PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Part 6, review: a code-reviewer subagent ran and its findings are reported
 - Part 6, hand-off: a PR link, or a compare URL, or (the remote is a local folder, so
   no PR is possible) the report says the branch was pushed
-- Part 6, no team: TeamCreate was not called
+- Part 6, no team: the only agents were product (triage), the lead, one senior
+  engineer and a code reviewer; no other engineers or teammates
 - Part 6, no folder: docs/product holds no new folder for this change (only demo and shop)
 - Part 6, cleanup: .claude/plumbline-quick no longer exists
 Then show how many times each hook fired:
 for e in PreToolUse TaskCreated TaskCompleted TeammateIdle SessionStart SubagentStart; do echo "$e $(grep -c "\"hook_event_name\":\"$e\"" /tmp/plumbline-hooks.jsonl)"; done
+(SessionStart shows 0 here: it fires before Part 2 moves the log aside. Step 0
+proves the context hook works.)
 For any failed row, also show the last 3 log lines for that hook, each cut to 600
 characters.

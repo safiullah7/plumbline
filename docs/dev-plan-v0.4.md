@@ -81,7 +81,7 @@ After v0.4, this is true:
 | `AskUserQuestion` is removed from every subagent | Every question to the user, including waiver approvals, is asked by the build skill in the main session |
 | A dispatch can pass a `model` override | Triage runs on sonnet; judgement-heavy work keeps opus |
 | Ownership and task hooks gate teammates; PreToolUse sees `agent_id` for any subagent | Subagent paths get the same checks from `ac-check.sh`, run by the lead, plus the reviewer; the waiver rule (§6.9) applies to every agent |
-| Agent teams need `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` at startup | Team detection is "is the TeamCreate tool in my tool list", not an env var; Quick and Standard never need teams |
+| Agent teams need `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` at startup | Revision 3 (live smoke): current Claude Code has no TeamCreate tool; a session has one team, and an agent spawned with a `name` joins it. Detection: the env var via the shell, else the Agent tool's description, else a TeamCreate tool (older versions). Subagent flows dispatch without a `name`. Quick and Standard never need teams |
 | Eval runs: no Bash on native Windows, no AskUserQuestion, no teams; graders see the main session's tool calls and files | Scripts are proven by self-tests; evals grade the main session's dispatches, the files written and the reply; git, PRs and nested dispatches are proven in the live smoke test |
 | Skills can't read environment variables without a shell | Settings a skill must read live in a file (`project.md`), not env vars |
 | `TaskCreated`/`TaskCompleted` hooks receive `task_subject`; the gates match `AC-[0-9]+-[0-9]+` | Quick criteria IDs keep that shape |
@@ -290,8 +290,8 @@ docs → team.
   - v0.4b: additionally, only when a UI surface is touched.
 - **Engineers:** one per independent file area, max 4; Quick is always 1.
 - **Docs:** by §6.1–6.2.
-- **Team:** Full → yes; Standard → yes only with 2 engineers and TeamCreate
-  available; Quick → no.
+- **Team:** Full → yes; Standard → yes only with 2 engineers and agent teams
+  on; Quick → no.
 
 **Ask the user only when:**
 - the request is too vague for observable criteria;
@@ -389,7 +389,7 @@ per day, and matching the gate regex and test naming.
    created and the product engineer writes the module vision first.
 2. Then today's flow, with roles from §6.4: discover → spec, UX, test plan →
    plan → user approval → team build → QA → signoff.
-3. If TeamCreate isn't available, it stops and prints the launch command.
+3. If agent teams are off, it stops and prints the launch command.
 
 **Waivers (any size):** only the build skill writes a waiver line, after asking
 the user in the main session (§6.9).
@@ -766,3 +766,6 @@ into the sections above (marked "revision 3") and the code:
 | 13–14 | Legacy kickoff refused names v0.3 accepted; no duplicate check in `phases/` | Relaxed legacy names; `slug=` in `.plumbline` |
 | 15 | Templates told QA to write the waiver line | Reworded: ask the lead; the user approves |
 | 16 | `ac-check.sh` passed with no AC test command | It fails with "no AC test command configured" |
+| 17 | Live smoke: current Claude Code has no TeamCreate tool, so Full would always stop | Teams detected from the env var, the Agent tool or TeamCreate; teammates spawned with the Agent tool and a `name`; subagent dispatches carry no `name` |
+| 18 | Live smoke: triage guessed a module for code no module owns | `Module: none` for such a Quick change; no `changes.md` row |
+| 19 | Live smoke: the lead didn't quote its `ac-check` line | The lead's Quick report quotes it, with each test by name |

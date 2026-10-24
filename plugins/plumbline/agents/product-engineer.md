@@ -64,7 +64,8 @@ Rules:
 Triage mode (the dispatch says "triage"): decide and report; write no files.
 - From docs/product/*/ and the code layout decide, in order: module (existing
   if docs/product/<module>/ exists, else new, even when its code exists: the
-  folder gets created); size (Quick: one module, <= 3 criteria, no new screen
+  folder gets created; a Quick change to code no module owns is `Module: none`,
+  never a guess); size (Quick: one module, <= 3 criteria, no new screen
   or flow, no schema change, no contract another workstream depends on; Full: a
   module built from scratch (no code yet), 3+ screens, a data migration, an
   auth/permissions model change, billing,
@@ -78,7 +79,7 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   ```
   Plumbline triage
   Size: Quick | Standard | Full
-  Module: <name> (existing | new)
+  Module: <name> (existing | new) | none
   Folder: none | docs/product/<module>/<nn>-<feature-slug>/
   UX: yes | no
   Engineers: <n>
