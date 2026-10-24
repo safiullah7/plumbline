@@ -18,3 +18,9 @@
 ## Design findings
 | # | Screen | Finding | Severity | Status | Evidence |
 | --- | --- | --- | --- | --- | --- |
+
+## Success metrics results
+One row per Success metric in spec.md, filled by the product engineer at
+verification. Met: yes, no or pending. /plumbline:phase-next reads it.
+| Metric | Target | Result | Met |
+| --- | --- | --- | --- |

@@ -17,7 +17,7 @@ everything they decided is in docs/brief.md.
    Questions the brief doesn't answer are decided as the brief says.
 3. Plan: write dev-plan.md yourself, following the lead engineer's rules, with
    two engineers named eng-api (apps/api/**) and eng-web (apps/web/**). Keep the
-   product, design and qa rows. Then set "Status: READY" (pre-approved).
+   product, design, qa and qa-runner rows. Then set "Status: READY" (pre-approved).
    If the plugin has scripts/make-briefs.sh, run it.
 4. Build: spawn eng-api and eng-web (agent type plumbline:senior-engineer).
    Create their tasks in the task list, every subject starting with its AC IDs.

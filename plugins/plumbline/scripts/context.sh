@@ -26,6 +26,7 @@ rel=$(phase_rel)
 status=$(plan_status)
 q="$dir/questions.md"
 ctx="Plumbline phase: $rel (dev plan: ${status:-not written yet})."
+ctx+=$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
 if [[ -n "$who" ]]; then
   ctx+=$'\n'"You are $who. You own: $globs"
   [[ -f "$dir/briefs/$who.md" ]] && ctx+=$'\n'"Your brief: $rel/briefs/$who.md. Read it before anything else; open the full docs only when it isn't enough."

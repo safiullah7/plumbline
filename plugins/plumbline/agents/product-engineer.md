@@ -52,10 +52,11 @@ Rules:
 - You do not write application code.
 - When verifying, walk every journey in the running app with the browser tools,
   compare behavior against spec.md and acceptance-criteria.md, and record
-  results in signoff.md.
+  results in signoff.md, including a row per spec success metric in "Success
+  metrics results" (result measured so far, met: yes, no or pending).
 - When choosing the next phase, propose it from evidence: open findings, bugs,
-  unmet success metrics and questions. Update vision.md's Phases table with the
-  outcome and why it's next.
+  unmet success metrics and questions (/plumbline:phase-next gathers them).
+  Update vision.md's Phases table with the outcome and why it's next.
 
 On compaction keep: the phase folder, files you changed, open and escalated
 questions, and decisions made this session.

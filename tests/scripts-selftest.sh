@@ -95,6 +95,26 @@ assert "signoff-check: fixed low bug ignored" test -z "$(grep BUG-01-002 <<<"$ou
 assert "signoff-check: open question named" has "$out" "OPEN question #1: Grey out inactive rooms?"
 assert "signoff-check: unticked box named" has "$out" "unticked sign-off box: Product verification"
 assert "signoff-check: PR and merge boxes ignored" test -z "$(grep -iE 'Phase PR|Merged' <<<"$out")"
+assert "signoff-check: missing accessibility results named" has "$out" "no accessibility results for the 2 screen(s)"
+
+# qa-summary: fills the generated Visual comparison and Accessibility sections.
+mkdir -p "$P/qa/a11y"
+printf 'rooms-list	390	3.1%%	20%%	ok	qa/diff/rooms-list-390.png
+' > "$P/qa/visual.tsv"
+echo '{"violations":[{"id":"image-alt","impact":"critical"},{"id":"color-contrast","impact":"serious"},{"id":"region","impact":"moderate"}]}' > "$P/qa/a11y/rooms-list-390.json"
+echo '[{"violations":[{"id":"label","impact":"minor"}]},{"violations":[]}]' > "$P/qa/a11y/add-room-dialog-1280.json"
+bash "$G/qa-summary.sh" >/dev/null
+report=$(cat "$P/qa-report.md")
+assert "qa-summary: visual row written" has "$report" "| rooms-list | 390 | 3.1% | 20% | ok | qa/diff/rooms-list-390.png |"
+assert "qa-summary: counts one axe result by impact" has "$report" "| rooms-list | 390 | 1 | 1 | 1 | 0 | qa/a11y/rooms-list-390.json |"
+assert "qa-summary: counts an array of axe results" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json |"
+assert "qa-summary: keeps the rest of the report" has "$report" "BUG-01-001"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: rerunning doesn't duplicate rows" test "$(grep -c '| rooms-list | 390 | 1 |' "$P/qa-report.md")" = 1
+out=$(bash "$G/signoff-check.sh")
+assert "signoff-check: serious accessibility violations named" has "$out" "rooms-list at 390 has 1 critical and 1 serious violation(s)"
+echo '{"violations":[{"id":"region","impact":"moderate"}]}' > "$P/qa/a11y/rooms-list-390.json"
+bash "$G/qa-summary.sh" >/dev/null
 
 sed -i 's/| Fail |/| Pass |/' "$P/test-plan.md"
 echo "| AC-01-005 | TC-01-005 | e2e | Pass |" >> "$P/test-plan.md"
@@ -104,6 +124,35 @@ sed -i -E '/Phase PR|Merged/! s/^- \[ \]/- [x]/' "$P/signoff.md"
 out=$(bash "$G/signoff-check.sh"); rc=$?
 assert "signoff-check: clean phase exits 0" test "$rc" = 0
 assert "signoff-check: says no gaps" has "$out" "no gaps"
+
+# A scan that wasn't run blocks signoff unless it's explicitly waived.
+cp "$P/qa-report.md" "$T/qa-report.bak"
+sed -i 's/^| rooms-list | 390 | 0 | 0 |/| rooms-list | 390 | skipped | skipped |/' "$P/qa-report.md"
+assert "signoff-check: non-numeric accessibility counts are a gap" has "$(bash "$G/signoff-check.sh")" "aren't counts"
+rm -f "$P"/qa/a11y/*.json && bash "$G/qa-summary.sh" >/dev/null
+assert "signoff-check: no accessibility results is a gap" has "$(bash "$G/signoff-check.sh")" "no accessibility results"
+add_after() { # file line-regex text: insert text after the first matching line
+  awk -v re="$2" -v text="$3" '{ print } !done && $0 ~ re { print text; done = 1 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
+}
+add_row() { # file section text: add a row right after that section's table separator
+  awk -v sec="## $2" -v text="$3" '/^## / { in_sec = ($0 == sec) } { print } in_sec && /^[|] ---/ { print text; in_sec = 0 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
+}
+add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: an explicit waiver clears it" test "$rc" = 0
+cp "$T/qa-report.bak" "$P/qa-report.md"
+
+# phase-evidence: what shipped with problems, what was left out, unmet metrics.
+add_row "$P/qa-report.md" Bugs "| BUG-01-003 | AC-01-005 | medium | WONTFIX | Empty state icon misaligned | shots/empty.png |"
+add_row "$P/signoff.md" "Design findings" "| 1 | Rooms list | Badge colour too close to brand blue | medium | OPEN | shots/badge.png |"
+add_row "$P/signoff.md" "Success metrics results" "| Admin sets up 10 rooms | under 3 min | 4.5 min | no |"
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: unmet success metric" has "$out" "Admin sets up 10 rooms: target under 3 min, result 4.5 min (met: no)"
+assert "phase-evidence: WONTFIX bug" has "$out" "BUG-01-003 (medium, wontfix): Empty state icon misaligned"
+assert "phase-evidence: open medium design finding" has "$out" "design #1 (medium, open): Badge colour too close to brand blue"
+assert "phase-evidence: Non-Goals (Out of scope in older specs)" has "$out" "Booking appointments into rooms (phase 03)"
+assert "phase-evidence: leaves out verified high bugs" test -z "$(grep BUG-01-001 <<<"$out")"
+assert "phase-evidence: at most 80 lines" test "$(wc -l <<<"$out")" -le 80
 
 # make-briefs: one brief per engineer, holding only its own ACs.
 out=$(bash "$G/make-briefs.sh")
@@ -116,6 +165,15 @@ assert "make-briefs: web brief holds AC-01-005" grep -q '^| AC-01-005 |' "$web"
 assert "make-briefs: brief links the full docs" grep -q "^$P/spec.md" "$api"
 assert "make-briefs: brief carries the spec's business rules" grep -qF "Room names are unique within a clinic" "$api"
 assert "make-briefs: brief carries data and permissions" grep -qF "Only clinic admins can add" "$api"
+
+# Image comparison and capture (Node). PLUMBLINE_BROWSER_TEST=1 adds a real browser run.
+if command -v node >/dev/null 2>&1; then
+  while IFS= read -r line; do
+    case "$line" in "ok    "*) ok "${line#ok    }" ;; "FAIL  "*) fail "${line#FAIL  }" ;; esac
+  done < <(node "$ROOT/tests/visual-selftest.mjs" 2>&1 || echo "FAIL  visual-selftest.mjs crashed")
+else
+  echo "skip  visual-diff and capture tests (Node isn't installed)"
+fi
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]
