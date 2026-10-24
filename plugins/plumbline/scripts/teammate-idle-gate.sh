@@ -16,8 +16,10 @@ escalate() {
   q="$dir/questions.md"
   grep -q "idle-gate $sig" "$q" 2>/dev/null && return 0
   if [[ ! -f "$q" ]]; then
-    local ph; ph=$(basename "$dir"); ph="${ph#phase-}"
-    printf '%s\n' "# Phase $ph questions" "" \
+    local ph title; ph=$(basename "$dir")
+    # Legacy phase-NN folders keep "# Phase NN questions"; others use the folder name.
+    if [[ "$ph" =~ ^phase-([0-9]+)$ ]]; then title="Phase ${BASH_REMATCH[1]}"; else title="$ph"; fi
+    printf '%s\n' "# $title questions" "" \
       "Status values: OPEN, ANSWERED, ESCALATED (needs the user; blocks the item)." "" \
       "| # | From | To | Question | Answer | Status |" \
       "| --- | --- | --- | --- | --- | --- |" > "$q"

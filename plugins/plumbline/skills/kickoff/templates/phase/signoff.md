@@ -4,7 +4,7 @@
 - [ ] Design verification: every screen checked against ux.md (UX engineer)
 - [ ] Integration review complete (lead engineer)
 - [ ] QA verdict PASS (QA engineer)
-- [ ] Phase PR opened:
+- [ ] Feature PR opened:
 - [ ] Merged by the user
 
 ## Journey results

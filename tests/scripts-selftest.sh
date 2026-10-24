@@ -106,14 +106,45 @@ echo '[{"violations":[{"id":"label","impact":"minor"}]},{"violations":[]}]' > "$
 bash "$G/qa-summary.sh" >/dev/null
 report=$(cat "$P/qa-report.md")
 assert "qa-summary: visual row written" has "$report" "| rooms-list | 390 | 3.1% | 20% | ok | qa/diff/rooms-list-390.png |"
-assert "qa-summary: counts one axe result by impact" has "$report" "| rooms-list | 390 | 1 | 1 | 1 | 0 | qa/a11y/rooms-list-390.json |"
-assert "qa-summary: counts an array of axe results" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json |"
+assert "qa-summary: counts one axe result by impact" has "$report" "| rooms-list | 390 | 1 | 1 | 1 | 0 | qa/a11y/rooms-list-390.json | axe |"
+assert "qa-summary: counts an array of axe results" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json | axe |"
 assert "qa-summary: keeps the rest of the report" has "$report" "BUG-01-001"
 bash "$G/qa-summary.sh" >/dev/null
 assert "qa-summary: rerunning doesn't duplicate rows" test "$(grep -c '| rooms-list | 390 | 1 |' "$P/qa-report.md")" = 1
 out=$(bash "$G/signoff-check.sh")
 assert "signoff-check: serious accessibility violations named" has "$out" "rooms-list at 390 has 1 critical and 1 serious violation(s)"
 echo '{"violations":[{"id":"region","impact":"moderate"}]}' > "$P/qa/a11y/rooms-list-390.json"
+
+# qa-summary: the manual accessibility checklist adds Method "checklist" rows.
+printf '# screen\twidth\tcheck\tresult\timpact\tevidence\r\nsettings\t390\tfocus-visible\tfail\tcritical\tqa/shots/a.png\r\n\r\nsettings\t390\tlabels\tfail\tminor\tqa/shots/b.png\nsettings\t390\ttargets\tpass\tserious\tqa/shots/c.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+report=$(cat "$P/qa-report.md")
+assert "qa-summary: checklist failures add up by impact" has "$report" "| settings | 390 | 1 | 0 | 0 | 1 | qa/a11y-checklist.tsv | checklist |"
+assert "qa-summary: all-pass checklist screen gets zeros" has "$report" "| home | 390 | 0 | 0 | 0 | 0 | qa/a11y-checklist.tsv | checklist |"
+assert "qa-summary: axe rows keep Method axe beside checklist rows" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json | axe |"
+assert "qa-summary: Accessibility header has Method" has "$report" "| Screen | Width | Critical | Serious | Moderate | Minor | Report | Method |"
+assert "qa-summary: axe rows come before checklist rows" test "$(grep -n 'add-room-dialog | 1280' "$P/qa-report.md" | cut -d: -f1)" -lt "$(grep -n '| settings | 390' "$P/qa-report.md" | cut -d: -f1)"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: rerunning doesn't duplicate checklist rows" test "$(grep -c '| settings | 390 |' "$P/qa-report.md")" = 1
+printf 'settings\t390\tcontrast\tfail\tserious\tqa/shots/e.png\n' >> "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: checklist serious failure is counted" has "$(cat "$P/qa-report.md")" "| settings | 390 | 1 | 1 | 0 | 1 | qa/a11y-checklist.tsv | checklist |"
+assert "signoff-check: serious checklist failure named" has "$(bash "$G/signoff-check.sh")" "settings at 390 has 1 critical and 1 serious violation(s)"
+printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+
+# Checklist rows: result and impact are compared in lower case, an unknown impact on a
+# fail counts as serious, and a header row or an unfilled result is not a row.
+printf 'screen\twidth\tcheck\tresult\timpact\tevidence\nhome\t390\tcontrast\tFail\tCritical\tqa/shots/a.png\nhome\t390\tlabels\tFAIL\tmoderate\tqa/shots/b.png\nhome\t390\ttargets\tfail\thigh\tqa/shots/c.png\nhome\t390\tfocus\tfail\t\tqa/shots/d.png\nhome\t390\tzoom\tPass\tserious\tqa/shots/e.png\nhome\t390\ttodo\t\t\tqa/shots/f.png\nhome\t390\tmaybe\tn/a\tcritical\tqa/shots/g.png\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+report=$(cat "$P/qa-report.md")
+assert "qa-summary: Fail/Critical in any case is counted, unknown impacts are serious" has "$report" "| home | 390 | 1 | 2 | 1 | 0 | qa/a11y-checklist.tsv | checklist |"
+assert "qa-summary: header row is not a screen" test -z "$(grep -i '^| screen |' <<<"$report" | grep -v 'Screen | Width')"
+assert "qa-summary: unfilled and n/a results add nothing" test "$(grep -c '| home | 390 |' "$P/qa-report.md")" = 1
+printf 'screen\twidth\tcheck\tresult\timpact\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: a header-only checklist writes no rows" test -z "$(grep 'checklist |' "$P/qa-report.md")"
+printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
 bash "$G/qa-summary.sh" >/dev/null
 
 sed -i 's/| Fail |/| Pass |/' "$P/test-plan.md"
@@ -129,7 +160,7 @@ assert "signoff-check: says no gaps" has "$out" "no gaps"
 cp "$P/qa-report.md" "$T/qa-report.bak"
 sed -i 's/^| rooms-list | 390 | 0 | 0 |/| rooms-list | 390 | skipped | skipped |/' "$P/qa-report.md"
 assert "signoff-check: non-numeric accessibility counts are a gap" has "$(bash "$G/signoff-check.sh")" "aren't counts"
-rm -f "$P"/qa/a11y/*.json && bash "$G/qa-summary.sh" >/dev/null
+rm -f "$P"/qa/a11y/*.json "$P/qa/a11y-checklist.tsv" && bash "$G/qa-summary.sh" >/dev/null
 assert "signoff-check: no accessibility results is a gap" has "$(bash "$G/signoff-check.sh")" "no accessibility results"
 add_after() { # file line-regex text: insert text after the first matching line
   awk -v re="$2" -v text="$3" '{ print } !done && $0 ~ re { print text; done = 1 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
@@ -137,10 +168,50 @@ add_after() { # file line-regex text: insert text after the first matching line
 add_row() { # file section text: add a row right after that section's table separator
   awk -v sec="## $2" -v text="$3" '/^## / { in_sec = ($0 == sec) } { print } in_sec && /^[|] ---/ { print text; in_sec = 0 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
 }
+assert "signoff-check: gap message doesn't hand out a waiver line to paste" test -z "$(bash "$G/signoff-check.sh" | grep 'Accessibility waived:')"
+assert "signoff-check: gap message says to ask the user" has "$(bash "$G/signoff-check.sh")" "ask the user to waive it"
+cp "$P/qa-report.md" "$T/qa-nowaiver.bak"
+for w in "Accessibility waived: <reason> (approved by <who>)" \
+         "Accessibility waived: no browser in CI (approved by <who>)" \
+         "Accessibility waived: <reason> (approved by product)" \
+         "Accessibility waived: no browser in CI" \
+         "Accessibility waived: no browser in CI (approved by )" \
+         "Accessibility waived: no browser in CI (approved by)" \
+         "Accessibility waived: no browser in CI (approved by product) and more"; do
+  cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
+  add_after "$P/qa-report.md" '^Verdict: PASS$' "$w"
+  bash "$G/signoff-check.sh" >/dev/null; rc=$?
+  assert "signoff-check: not a waiver: $w" test "$rc" = 1
+done
+cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
 add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"
 bash "$G/signoff-check.sh" >/dev/null; rc=$?
 assert "signoff-check: an explicit waiver clears it" test "$rc" = 0
+cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
+add_after "$P/qa-report.md" '^Verdict: PASS$' "accessibility waived: no browser in CI (Approved by Dana Smith)  "
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: waiver is case-insensitive and may carry a full name" test "$rc" = 0
+sed 's/$/\r/' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: waiver in a CRLF file counts" test "$rc" = 0
+cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
+sed -i 's/^Verdict: PASS/Verdict: pass/' "$P/qa-report.md"
+add_after "$P/qa-report.md" '^Verdict: pass$' "Accessibility waived: no browser in CI (approved by product)"
+bash "$G/signoff-check.sh" >/dev/null; rc=$?
+assert "signoff-check: a lower-case verdict still passes" test "$rc" = 0
 cp "$T/qa-report.bak" "$P/qa-report.md"
+
+# signoff-check: the PR boxes stay unticked, whatever the layout calls them.
+cp "$P/signoff.md" "$T/signoff.bak"
+printf '%s\n' '- [ ] Feature PR opened: #12' '- [ ] Phase PR opened: #13' >> "$P/signoff.md"
+out=$(bash "$G/signoff-check.sh"); rc=$?
+assert "signoff-check: unticked Feature PR and Phase PR boxes ignored" test "$rc" = 0
+printf '%s\n' '- [ ] Release notes written' >> "$P/signoff.md"
+out=$(bash "$G/signoff-check.sh"); rc=$?
+assert "signoff-check: other unticked boxes still flagged" test "$rc" = 1
+assert "signoff-check: names the unticked box" has "$out" "unticked sign-off box: Release notes written"
+assert "signoff-check: PR boxes not named beside it" test -z "$(grep -iE 'PR opened' <<<"$out")"
+cp "$T/signoff.bak" "$P/signoff.md"
 
 # phase-evidence: what shipped with problems, what was left out, unmet metrics.
 add_row "$P/qa-report.md" Bugs "| BUG-01-003 | AC-01-005 | medium | WONTFIX | Empty state icon misaligned | shots/empty.png |"
@@ -153,6 +224,51 @@ assert "phase-evidence: open medium design finding" has "$out" "design #1 (mediu
 assert "phase-evidence: Non-Goals (Out of scope in older specs)" has "$out" "Booking appointments into rooms (phase 03)"
 assert "phase-evidence: leaves out verified high bugs" test -z "$(grep BUG-01-001 <<<"$out")"
 assert "phase-evidence: at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+
+# phase-evidence on the new layout (<module>/<nn>-<slug>/) and on a mixed module
+# (legacy phases/phase-01 beside 02-x), listed in number order.
+printf '%s\n' "$(head -n1 .claude/current-phase)" > "$T/current-phase.bak"
+bug_report() { # file id severity: a qa-report.md with one open bug
+  printf '# QA report\n\nVerdict: PASS\n\n## Bugs\n| ID | AC ID | Severity | Status | Summary | Evidence |\n| --- | --- | --- | --- | --- | --- |\n| %s | AC-01-001 | %s | OPEN | Problem in %s | - |\n' "$2" "$3" "$2" > "$1"
+}
+mkdir -p docs/product/shop/04-a docs/product/shop/05-b
+bug_report docs/product/shop/04-a/qa-report.md BUG-04-001 low
+bug_report docs/product/shop/05-b/qa-report.md BUG-05-001 medium
+echo "docs/product/shop/05-b" > .claude/current-phase
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: new layout names the module" has "$out" "Evidence for the next feature in docs/product/shop."
+assert "phase-evidence: new layout points to vision.md and decisions.md" has "$out" "docs/product/shop/vision.md and docs/product/shop/decisions.md"
+assert "phase-evidence: new layout lists the first feature" has "$out" "BUG-04-001 (low, open): Problem in BUG-04-001"
+assert "phase-evidence: new layout lists the second feature" has "$out" "BUG-05-001 (medium, open): Problem in BUG-05-001"
+assert "phase-evidence: new layout in number order" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## 04-a ## 05-b "
+assert "phase-evidence: new layout at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+mkdir -p docs/product/old/phases/phase-01 docs/product/old/02-x
+bug_report docs/product/old/phases/phase-01/qa-report.md BUG-01-009 low
+bug_report docs/product/old/02-x/qa-report.md BUG-02-001 low
+echo "docs/product/old/02-x" > .claude/current-phase
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: mixed module lists the legacy phase" has "$out" "BUG-01-009 (low, open)"
+assert "phase-evidence: mixed module lists the new feature" has "$out" "BUG-02-001 (low, open)"
+assert "phase-evidence: mixed module in number order" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## phase-01 ## 02-x "
+assert "phase-evidence: mixed module at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+mkdir -p docs/product/old/phases/hotfix docs/product/old/phases/archive
+bug_report docs/product/old/phases/hotfix/qa-report.md BUG-HF-001 low
+bug_report docs/product/old/phases/archive/qa-report.md BUG-AR-001 low
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: non-numeric legacy folder is listed" has "$out" "BUG-HF-001 (low, open)"
+assert "phase-evidence: numbered features first, then non-numeric folders by name" test "$(grep '^## ' <<<"$out" | tr '\n' ' ')" = "## phase-01 ## 02-x ## archive ## hotfix "
+echo "docs/product/old/phases/phase-01" > .claude/current-phase
+assert "phase-evidence: same module from a legacy feature" has "$(bash "$G/phase-evidence.sh")" "BUG-02-001 (low, open)"
+cp "$T/current-phase.bak" .claude/current-phase
+rm -rf docs/product/shop docs/product/old
+
+# status: test files named the Go, Python, Dart, Swift and C# way count too.
+mkdir -p apps/api/svc
+echo "func TestAC_01_004(t *testing.T) {} // AC-01-004" > apps/api/svc/rooms_test.go
+echo "def test_room(): pass  # AC-01-005" > apps/api/svc/test_rooms.py
+out=$(bash "$G/status.sh")
+assert "status: AC IDs in _test.go and test_*.py files count as covered" has "$out" "ACs: 5 · every one has a test"
+rm -rf apps/api/svc
 
 # make-briefs: one brief per engineer, holding only its own ACs.
 out=$(bash "$G/make-briefs.sh")
