@@ -9,8 +9,10 @@ Progress:
   score 1.00 with no regressions; the memory case rose from 0.89 on v0.2 to 1.00
   (docs/evals/eval-v0.3.md). Live smoke test and PR pending.
 - v0.4a built on branch `v0.4a` (steps A1-A11 done: helpers, ac-check, templates,
-  agents, build skill, kickoff.sh, layout, locks, docs). Evals, live smoke test and
-  PR pending. v0.4b not started.
+  agents, build skill, kickoff.sh, layout, locks, docs), plus the fixes from an
+  independent review. Evals: every case at or above v0.3, the seven new cases at
+  1.00 (docs/evals/eval-v0.4a.md). PR open; live smoke test pending. v0.4b not
+  started.
 - Team token benchmark still pending.
 Owner: Safi. Written 2026-10-23 from the plugin review and the live smoke test;
 v0.4 added 2026-10-24.

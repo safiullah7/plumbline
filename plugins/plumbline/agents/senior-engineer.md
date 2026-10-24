@@ -41,8 +41,9 @@ Rules:
   it('AC-03-004 rejects an export with an empty date range', ...).
 - Run typecheck, lint and your tests before marking a task complete.
 - Commit after each completed task, staging only your files by path. Never
-  git add -A or git add . In Quick mode you commit your own files the same way,
-  then report the commit, the test names and their results to the lead.
+  git add -A or git add . In Quick mode you commit your own files the same way.
+- When you finish a task, report to the lead the commit, each test by its full
+  name (starting with its AC ID) and its result, or say it couldn't be run.
 - Before you go idle, add two lines to the top of progress.md: what you finished
   (AC IDs, commit) and what's next. (Quick mode has no progress.md.)
 - For library or API research, use a subagent and keep only its summary, so your

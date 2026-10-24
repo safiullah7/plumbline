@@ -416,7 +416,7 @@ still read by every script, nothing is moved, and new features in such an area g
 | **v0.1.2** | ✅ shipped | Windows path fix, visible escalations, QA ownership |
 | **v0.2** | ✅ shipped | A method for every role, the creation gate, injected context, briefs, the eval suite (0.84 → 1.00) |
 | **v0.3** | ✅ shipped | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
-| **v0.4a** | 🛠️ built, evals and live test pending | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
+| **v0.4a** | 🔍 in review | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
 | **v0.4b** | 🗺️ planned | Project awareness: the plugin learns what kind of software you are building and adapts roles and evidence to it |
 
 The full plan, with every task and its acceptance check, is in [`docs/dev-plan.md`](docs/dev-plan.md).
