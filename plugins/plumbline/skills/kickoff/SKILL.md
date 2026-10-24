@@ -13,7 +13,12 @@ Arguments, in either form:
 
 <plugin> is the folder two levels above this SKILL.md.
 
-1. Run `bash <plugin>/scripts/kickoff.sh <arguments, without the short name>`.
+1. Module form with docs/product/project.md and no `--surfaces`: ask which of
+   the profile's surfaces the feature touches (propose the ones whose Paths
+   fit), and add `--surfaces` with the answer. With a shell, if
+   `git rev-parse --show-toplevel` isn't the folder this session started in,
+   stop and say to start Claude Code in the repo root. Then run
+   `bash <plugin>/scripts/kickoff.sh <arguments, without the short name>`.
    It creates the docs (never overwriting existing ones), writes
    .claude/current-phase, prints `added <path>` for each module or area doc it
    adds, and prints the feature folder as its last line. Exit 1: show its

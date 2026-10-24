@@ -13,7 +13,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
   <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e9c46a?style=flat-square">
   <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="846 self-tests passing" src="https://img.shields.io/badge/self--tests-846%20passing-2a9d8f?style=flat-square">
+  <img alt="958 self-tests passing" src="https://img.shields.io/badge/self--tests-958%20passing-2a9d8f?style=flat-square">
   <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
 </p>
@@ -177,12 +177,14 @@ October 2026. The Rust and Swift docs don't spell out repeated filters, so run a
 once against a failing test before you rely on it.
 
 Rust (`cargo test`: libtest takes substring filters after `--`, case-sensitive, so the
-IDs are lowercased; name tests `ac_01_001_...`):
+IDs are lowercased; name tests `ac_01_001_...`). `cargo test` and `dotnet test` exit 0
+when nothing matches, so these two recipes also require at least one passed test:
 
 ````markdown
 ### library
 ```
-cargo test -- $(echo '{ids_underscored}' | tr 'A-Z' 'a-z')
+out=$(cargo test -- $(echo '{ids_underscored}' | tr 'A-Z' 'a-z') 2>&1); rc=$?; echo "$out"
+[ $rc -eq 0 ] && grep -qE 'test result: ok\. [1-9][0-9]* passed' <<<"$out"
 ```
 ````
 
@@ -191,7 +193,8 @@ cargo test -- $(echo '{ids_underscored}' | tr 'A-Z' 'a-z')
 ````markdown
 ### api
 ```
-dotnet test --filter "$(echo '{ids_underscored}' | sed 's/^/FullyQualifiedName~/; s/ /|FullyQualifiedName~/g')"
+out=$(dotnet test --filter "$(echo '{ids_underscored}' | sed 's/^/FullyQualifiedName~/; s/ /|FullyQualifiedName~/g')" 2>&1); rc=$?; echo "$out"
+[ $rc -eq 0 ] && grep -qE 'Passed: *[1-9]' <<<"$out"
 ```
 ````
 
@@ -423,11 +426,11 @@ Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
 
 Every release is also checked by:
 
-- **846 self-tests** (`bash tests/run-all.sh`, each suite counted once): 234 for the hooks
-  (run in two Windows path modes); 109 for the shared helpers; 182 for kickoff and the
-  layouts; 170 for the scripts, including the PNG decoder against a real browser
-  screenshot and the visual checks; 85 for project detection and the profile; 66 for the
-  test adapters.
+- **958 self-tests** (`bash tests/run-all.sh`, each suite counted once): 282 for the hooks
+  (run in two Windows path modes); 124 for the shared helpers and gates; 182 for kickoff and
+  the layouts; 178 for the scripts, including the PNG decoder against a real browser
+  screenshot and the visual checks; 118 for project detection and the profile; 74 for the
+  test adapters, run against the real node:test, jest, vitest, pytest and Go runners.
 - **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
   creation gate, `[chore]` tasks, idle escalation, injected context, status and signoff.
 

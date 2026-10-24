@@ -23,11 +23,15 @@ disable-model-invocation: true
      all while ux.md lists screens. With `surfaces=`: a web-ui surface and no
      row with Method axe, or a mobile-ui or desktop-ui surface and no row with
      Method checklist. Surfaces with no UI are exempt. An
-     "Accessibility waived:" line clears the missing rows, not the counts.
+     "Accessibility waived:" line clears the missing rows, not the counts. It
+     also clears the `axe` and `checklist` evidence kinds below (one waiver,
+     asked once).
    - only with `surfaces=` in .plumbline: for each surface listed (a name is
      a kind, or `<kind>-<name>` such as web-ui-shop; any other name is a gap),
      each evidence kind below needs a qa-report.md Evidence row with that Kind,
-     that Surface as written in `surfaces=`, and Result pass, or an
+     that Surface as written in `surfaces=`, a filled-in Location, and Result
+     pass (a pass row with an empty Location doesn't count, and if any row for
+     that kind and surface says fail, it is a gap even beside a pass row), or an
      "Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)"
      line (the dash may be `-`, `—` or `:`). Several surfaces need every kind
      of each:

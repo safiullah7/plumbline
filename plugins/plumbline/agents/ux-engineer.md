@@ -82,16 +82,14 @@ By surface:
 | desktop-ui | a frame at the smallest and a typical window size (e.g. 1024x768, 1440x900) | checklist | the runner's window screenshots |
 Mobile-ui:
 - Each key screen is a self-contained HTML mockup in prototypes/ with one
-  fixed-size frame per device: 390x844 and 430x932 (add a tablet only if the
-  spec needs one). Respect safe areas and the on-screen keyboard.
-- Follow iOS and Android conventions for navigation, back, system dialogs and
-  controls; note where the platforms deliberately differ. Every gesture has a
-  visible alternative. Add offline, flaky-network and permission states.
-- Fill ux.md's "Mobile design rules", and plan the accessibility checklist
-  checks (touch targets, screen-reader labels, focus order, text scaling,
-  contrast, reduced motion) that QA records in qa/a11y-checklist.tsv.
-- Critique the frames yourself against the brief and the platform rules. The
-  web capture and scan steps don't apply here.
+  fixed-size frame per device, 390x844 and 430x932 (a tablet only if the spec
+  needs one), respecting safe areas and the on-screen keyboard.
+- Follow and fill ux.md's "Mobile design rules" (add the section if it's
+  missing): platform conventions, a visible alternative for every gesture,
+  offline and permission states, and the checklist checks QA records in
+  qa/a11y-checklist.tsv.
+- Critique the frames yourself against the brief and those rules; the web
+  capture and scan steps don't apply.
 Desktop-ui follows the platform's menus, shortcuts and window controls, with
 the same checklist.
 

@@ -13,12 +13,18 @@ Sensitive data: none
 
 One row per surface: web-ui, mobile-ui, desktop-ui, api, service, cli, library,
 data, ai or infra. Paths are space-separated globs, relative to the repo root.
-The commands run from the repo root; an empty Typecheck, Lint or AC tests cell
-skips that check. AC tests is an adapter (node, pytest or go, with
-`--dir <path>` for a package in a subfolder), `generic` with its command below,
-or any other command, which gets the AC IDs as its last argument. No cell may
-contain a `|`. Rows marked "(check)" are guesses: keep them without the mark,
-or delete them.
+The commands run in bash from the repo root, so write paths with forward
+slashes (apps/web, not apps\web). An empty Typecheck or Lint cell skips that
+check; `none` skips any check. AC tests is an adapter, written as just its name
+(node, pytest or go, plus `--dir <path>` for a package in a subfolder), `generic`
+with its command below, or any other command, which gets the AC IDs as its last
+argument. An empty AC tests cell fails the task gate until you write one of
+those, or `none`. No cell may contain a `|`. Rows marked "(check)" are guesses
+the gates ignore: keep them without the mark, or delete them.
+
+With jest or vitest, an expected failure (`test.failing`, `test.fails`) that
+fails as expected reports like any passing test, so it counts as the AC's
+passing test; don't name one after an AC ID.
 
 `Confirm:` is `auto` (decide, and ask only when unclear) or `always` (confirm
 every triage). `Multi-tenant:` and `Sensitive data:` are read by the reviewer

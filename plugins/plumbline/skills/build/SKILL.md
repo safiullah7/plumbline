@@ -17,6 +17,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
 
 1. **Settings.**
    - Shell: available if you have the Bash tool. Without it, see step 9.
+   - Repo root: with a shell, if `git rev-parse --show-toplevel` isn't the
+     folder this session started in, stop: say the hooks and the scripts would
+     see different projects, and to start Claude Code in the repo root.
    - Teams: on when agent teams are enabled: with a shell, when
      `echo "$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"` prints `1`; without one,
      when your Agent tool's description says a named agent joins this
@@ -24,7 +27,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    - Quick marker: if `.claude/plumbline-quick` exists, an earlier Quick change
      was interrupted or is still running in another session. Ask: still
      running (stop here), or clear it (delete the file and go on).
-   - Profile: if docs/product/project.md doesn't exist, show a proposal: with
+   - Profile (ignore surface rows marked "(check)" until confirmed): if
+     docs/product/project.md doesn't exist, show a proposal: with
      a shell, the output of `bash <plugin>/scripts/detect-project.sh`; without
      one (or if it fails), rows you propose from the manifests you can read
      (package.json, pyproject.toml, go.mod, pubspec.yaml, Cargo.toml), in the
@@ -32,8 +36,10 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
      for now (no profile: the checks keep their defaults and triage proposes
      surfaces from the code). On use or edit, write the file yourself: drop
      "(check)" rows the user didn't keep and the mark on those kept, and set
-     `Confirmed by: <name> on <YYYY-MM-DD>` (<name> as in step 8). If the user
-     said not to ask anything, skip and say so.
+     `Confirmed by: <name> on <YYYY-MM-DD>` (<name> as in step 8). Point out
+     any surface whose AC tests cell is blank: its checks fail until it names
+     a command (or `none`). If the user said not to ask anything, skip and say
+     so.
    - Confirm mode: the `Confirm:` line of docs/product/project.md if that file
      exists (`auto` or `always`); else, if you have a shell, the
      PLUMBLINE_CONFIRM environment variable; else `auto`.
@@ -96,7 +102,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       two lines: `branch=<branch>` and `ids=<IDs separated by spaces>`. Commit
       a project.md you wrote in step 1 by path.
    2. Dispatch plumbline:lead-engineer with: "Quick mode. Request: <request>.
-      Module: <module>. Surface: <the block's surface>. Criteria: <IDs and
+      Module: <module>. Surface: <the block's one surface, or none without a
+      profile>. Criteria: <IDs and
       text>. Branch: <branch> (created; you're on it). Scripts: <plugin>/scripts."
       Model trial (v0.4b; delete this line to revert): dispatch it with model sonnet.
       The lead dispatches one senior engineer, runs

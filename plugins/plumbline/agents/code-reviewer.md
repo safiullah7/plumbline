@@ -26,7 +26,7 @@ diff touches.
 | web-ui | UI states and accessibility against ux.md, keyboard, contrast, XSS |
 | mobile-ui | offline and flaky network, permissions, app lifecycle, battery, store rules |
 | desktop-ui | window states, keyboard, updates |
-| api | authorization on every endpoint, validation, idempotency, migrations |
+| api | validation, idempotency, migrations |
 | service | idempotency, retries, dead letters, observability |
 | cli | exit codes, stdout vs stderr, `--help`, no prompts in non-interactive paths |
 | library | breaking changes, naming, error types |

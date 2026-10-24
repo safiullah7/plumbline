@@ -306,10 +306,10 @@ evals grade each line with a regex.
 ```
 Plumbline triage
 Size: Quick | Standard | Full
-Module: <name> (existing | new)
+Module: <name> (existing | new) | none
 Folder: none | docs/product/<module>/<nn>-<feature-slug>/
 Surfaces: <comma-separated>                                  (b)
-Roles: <e.g. product, lead, 2 engineers, UX, QA runner>      (b)
+Roles: <e.g. product, lead, 2 engineers, reviewer, UX, QA, QA runner> (b)
 Evidence: <kinds per surface, e.g. api: contract, authz>     (b)
 UX: yes | no
 Engineers: <n>
@@ -418,7 +418,7 @@ the user in the main session (§6.9).
 | Script | Interface | Exit | Notes |
 | --- | --- | --- | --- |
 | `kickoff.sh` | Module form: `kickoff.sh <module> <feature-slug> [--profile standard\|full] [--ux\|--no-ux] [--new-module] [--surfaces s1,s2]`. Legacy form: `kickoff.sh <area> phase-NN` | 0 ok; 1 usage; 2 `--new-module` on an existing module | Module docs if missing (always with `--new-module`); folder `<nn>-<slug>`; profile and surface overlays; placeholders (`<phase>`→nn, `<Module>`, `<module>`); writes `.plumbline` and `.claude/current-phase`; prints the folder |
-| `ac-check.sh` | `ac-check.sh "<IDs>" [--surface <s>]` | 0 pass; 1 a check failed (last 30 log lines on stderr); 2 usage | Calls `run_checks` |
+| `ac-check.sh` | `ac-check.sh "<IDs>" [--surface <s>]` | 0 pass (per-ID lines, then `ac-check: pass`); 1 a check failed (last 30 log lines on stderr), or a blank AC tests cell; 2 usage, or (with a profile) an unknown surface or several surfaces and no `--surface` | Calls `run_checks` |
 | `run_checks` (lib.sh) | `run_checks "<IDs>" [surface]` | 0 or 1 | **Precedence:** `PLUMBLINE_TYPECHECK`/`LINT`/`TEST_AC` env vars > the surface's `project.md` commands and adapter > legacy `npm run -s …` defaults. The task gate maps a failure to exit 2 |
 | `ac-tests/node.sh`, `pytest.sh`, `go.sh` | `<adapter>.sh "<IDs>" [--dir <path>]` | 0 only if every ID has ≥ 1 passing test and none failing or skipped-as-pass; 1 otherwise | Prints `AC-01-001: pass (2)` / `fail` / `missing` lines; strips `\r` |
 | `ac-tests/generic.sh` | `generic.sh "<IDs>"`, command from `project.md` with `{ids_regex}` and `{ids_underscored}` placeholders | exit code of the command | Prints a warning that per-ID presence isn't proven |
@@ -492,8 +492,10 @@ Commands are verified against current docs before shipping:
 - **Flow tools when present:** Maestro (`maestro test <flow.yaml>` with
   `takeScreenshot`), `flutter test integration_test`, Detox, XCUITest,
   Espresso.
-- **Mockups** are captured at the same device size so `visual-diff.mjs`
-  compares like with like; a size mismatch is reported, never cropped.
+- **No screenshot comparison on mobile in v0.4b** (revision 4): the mockups are
+  HTML frames in points, simulator shots are in device pixels, so they could
+  never compare like with like. The runner records screenshots as evidence and
+  the UX engineer reviews them.
 - **No device:** the runner records `screenshots` as `not run` with the boot
   command, and asks the lead for a waiver.
 
@@ -769,3 +771,25 @@ into the sections above (marked "revision 3") and the code:
 | 17 | Live smoke: current Claude Code has no TeamCreate tool, so Full would always stop | Teams detected from the env var, the Agent tool or TeamCreate; teammates spawned with the Agent tool and a `name`; subagent dispatches carry no `name` |
 | 18 | Live smoke: triage guessed a module for code no module owns | `Module: none` for such a Quick change; no `changes.md` row |
 | 19 | Live smoke: the lead didn't quote its `ac-check` line | The lead's Quick report quotes it, with each test by name |
+
+## 15. Revision 4: what the v0.4b review changed
+
+A read-only review of the built v0.4b diff found these; all are fixed in the
+code and the sections above:
+
+| # | Issue | Resolution |
+| --- | --- | --- |
+| 1 | A failing pytest `subTest` printed `PASSED` and counted as a pass | `SUBFAILED` lines count as fails |
+| 2 | A blank AC tests cell skipped the tests, and detection leaves it blank for Flutter and Rust | A blank cell fails the check with a message; `none` skips on purpose |
+| 3 | Any cell starting with node, pytest, go or generic became an adapter call | Only the bare name (plus `--dir`) is an adapter; anything else is a raw command |
+| 4 | An unknown or ambiguous surface silently ran the npm defaults | With a profile, it's an error that lists the surfaces; `(check)` rows are ignored |
+| 5 | Agents could edit `project.md`, whose cells the gates run | The ownership guard refuses agent writes to it, including through Bash |
+| 6 | Starting a session below the repo root made hooks and scripts see different projects | The build and kickoff skills stop and say to start in the repo root |
+| 7 | Detection named a second surface after its folder unchanged (`web-ui-Admin`) | Lowercased and dashed |
+| 8 | ac-check hid the per-ID lines and the generic warning on a pass | Printed before `ac-check: pass` |
+| 9 | The mobile visual comparison could never produce a result | No screenshot comparison on mobile in v0.4b |
+| 10–11 | Surface fallbacks went in a circle; a two-surface Quick change checked one | Fallback: `surfaces=`, then the profile rows by Paths, then web-ui; Quick is one surface |
+| 12 | A `pass` row beat a `fail` row; an empty Location counted | A `fail` wins; a pass needs a Location |
+| 14 | Engineers were shown raw adapter cells as commands | Context and agents show the `ac-check.sh … --surface` command |
+| 15 | Two generic recipes passed on no matching tests | Rust and .NET recipes require a passed count |
+| — | Agent text bloat, weak eval graders, no first-run eval | Trimmed; graders fixed; `build-first-run-profile` added |

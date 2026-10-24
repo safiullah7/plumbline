@@ -44,8 +44,10 @@ Rules:
   Every task ships with tests whose names start with its AC ID, in the stack's
   form (By surface), e.g.
   it('AC-03-004 rejects an export with an empty date range', ...).
-- Run your surface's typecheck, lint and AC tests (project.md, else the
-  project's usual scripts) before marking a task complete.
+- Before marking a task complete, run
+  `bash <scripts>/ac-check.sh "<its IDs>" --surface <your surface>` (<scripts>
+  is the "Plumbline scripts" folder in your context; drop `--surface` when
+  there's no project.md): it runs your surface's typecheck, lint and AC tests.
 - Commit after each completed task, staging only your files by path. Never
   git add -A or git add . In Quick mode you commit your own files the same way.
 - When you finish a task, report to the lead the commit, each test by its full

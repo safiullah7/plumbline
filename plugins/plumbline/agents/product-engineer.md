@@ -84,9 +84,7 @@ By surface (the evidence kinds are fixed tokens; QA and the gates check them):
 | ai | an eval score against a threshold | eval-set, injection |
 | infra | the planned change | plan-output |
 - A multi-surface feature takes every row it touches.
-- UX joins only when a UI surface (web-ui, mobile-ui, desktop-ui, or an ai
-  chat UI) changes. A cli feature still needs help text, flags and exit codes
-  in the spec.
+- A cli feature still needs help text, flags and exit codes in the spec.
 - Verify from the evidence the QA runner recorded for those kinds. Only for
   web-ui, also walk the journeys in the running app with the browser tools.
 
@@ -94,8 +92,8 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
 - From docs/product/project.md, docs/product/*/ and the code layout decide, in
   order: module (existing if docs/product/<module>/ exists, else new, even when
   its code exists: the folder gets created; a Quick change to code no module
-  owns is `Module: none`, never a guess); size (Quick: one module, <= 3
-  criteria, no new screen or flow, no schema change, no contract another
+  owns is `Module: none`, never a guess); size (Quick: one module and one
+  surface, <= 3 criteria, no new screen or flow, no schema change, no contract another
   workstream depends on; Full: a module built from scratch (no code yet), 3+
   screens, a data migration, an auth/permissions model change, billing,
   cross-module work or ~10+ criteria; else Standard); surfaces (the profile
@@ -108,7 +106,8 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   2 engineers and teams available; Quick no).
 - No project.md: propose the surfaces from the code layout (package.json
   dependencies, go.mod, pyproject.toml, pubspec.yaml, Cargo.toml, folder
-  names) and add a question saying they need the user's confirmation.
+  names) and add a question saying they need the user's confirmation, unless
+  the dispatch says the user skipped the profile: then don't ask about them.
 - Roles: product, lead, <n> engineer(s), reviewer; add UX when UX is yes, and
   QA and QA runner for Standard and Full.
 - Evidence: each surface's kinds from By surface, as `<surface>: <kind>, <kind>`,

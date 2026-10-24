@@ -66,10 +66,16 @@ if [[ -z "$surfaces" ]]; then
     gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
   fi
 else
-  # Evidence rows with Result pass, as "kind<TAB>surface"; kind and result in any case.
+  # Evidence rows with Result pass and a Location, as "kind<TAB>surface"; kind and
+  # result in any case. A row with no Location points at nothing, so it doesn't
+  # count. A fail row beats a pass row for the same kind and surface.
   passed=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null \
-    | awk -F'\t' '$1 != "" && tolower($4) == "pass" { print tolower($1) "\t" $2 }')
-  recorded=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null | awk -F'\t' '{ print tolower($1) "\t" $2 "\t" tolower($4) }')
+    | awk -F'\t' '$1 != "" && $3 != "" && tolower($4) == "pass" { print tolower($1) "\t" $2 }')
+  failed=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null \
+    | awk -F'\t' '$1 != "" && tolower($4) == "fail" { print tolower($1) "\t" $2 }')
+  recorded=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null | awk -F'\t' '
+    { r = tolower($4); if (r == "pass" && $3 == "") r = "pass without a location"
+      print tolower($1) "\t" $2 "\t" r }')
   seen="," axe_for="" checklist_for=""
   IFS=, read -r -a snames <<<"$surfaces"
   for s in "${snames[@]}"; do
@@ -94,11 +100,14 @@ else
       infra)      need="plan-output" ;;
     esac
     for k in $need; do
-      grep -qxF "$(printf '%s\t%s' "$k" "$s")" <<<"$passed" && continue
+      key=$(printf '%s\t%s' "$k" "$s")
+      grep -qxF "$key" <<<"$failed" && is_failed=1 || is_failed=0
+      (( is_failed )) || { grep -qxF "$key" <<<"$passed" && continue; }
       evidence_waived "$k" "$s" && continue
       # The scan the user waived is this evidence too: don't ask twice.
       [[ "$k" == axe || "$k" == checklist ]] && accessibility_waived && continue
       got=$(awk -F'\t' -v k="$k" -v s="$s" '$1 == k && $2 == s && $3 != "" { print $3 }' <<<"$recorded" | sort -u | paste -sd, -)
+      (( is_failed )) && got=fail
       gaps+=("no passing $k evidence for $s${got:+ (recorded: $got)}: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line (qa-report.md)")
     done
   done

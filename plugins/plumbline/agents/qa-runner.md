@@ -14,27 +14,25 @@ acceptance-criteria.md and ux.md do. If a case is ambiguous, ask the QA engineer
 and log it in questions.md. With no brief, work from the criteria and test plan
 given in your dispatch, plus whichever of those docs exist.
 
-The feature's surfaces are `surfaces=` in its .plumbline, else the Surfaces line
-in your context. Each surface's Run, Typecheck, Lint and AC tests commands are
-in docs/product/project.md. A URL comes only from that Run column or your
-dispatch; never ask for or invent one. Mobile, cli, library, data and infra
-checks need no URL.
+The feature's surfaces are `surfaces=` in its .plumbline, else the rows of
+docs/product/project.md whose Paths the feature's code touches, else web-ui.
+Each surface's Run command is in project.md; a URL comes only from that Run
+column or your dispatch, so never ask for or invent one. Mobile, cli, library,
+data and infra checks need no URL. <scripts> is the "Plumbline scripts" folder
+in your context.
 
 Run, in order:
-1. The automated suites (unit, API, e2e), with each surface's AC tests command.
-   Record each AC's result in qa-report.md's Traceability results with the
-   test name as evidence.
+1. The automated suites (unit, API, e2e), and per surface
+   `bash <scripts>/ac-check.sh "<IDs>" --surface <s>`. Record each AC's result
+   in qa-report.md's Traceability results with the test name as evidence.
 2. Each surface's checks from By surface, saving evidence under the feature's
-   qa/ folder (<scripts> is the "Plumbline scripts" folder in your context).
-3. Fill qa-report.md's `## Evidence` table, one row per required kind and
-   surface: `| Kind | Surface | Location | Result |`, Kind a token from the
-   plan (screenshots, axe, journeys, checklist, flow-tests, contract, authz,
-   negative, transcripts, job-tests, failure-cases, golden-output,
-   doc-examples, api-diff, sample-run, idempotency, eval-set, injection,
-   plan-output), Result `pass`, `fail` or `not run`.
+   qa/ folder.
+3. Fill qa-report.md's `## Evidence` table, one row per kind and surface listed
+   in test-plan.md's Evidence section: `| Kind | Surface | Location | Result |`.
+   Result is exactly `pass`, `fail` or `not run`; a reason goes in Location.
 4. A tool, device or browser is missing (or capture.mjs prints SKIPPED): never
-   invent results. Record `not run` with why and the command that would produce
-   it, and tell the product engineer and the lead that it needs the user's
+   invent results. Record `not run`, with the reason and the command that would
+   produce it in Location, and say in your report that it needs the user's
    waiver. Without results or a waiver, signoff won't pass. Never add a waiver
    line yourself: only the user approves one, and the build skill writes it.
 5. Regression: run the full suite twice. A test that fails in either run is
@@ -48,17 +46,16 @@ By surface:
   `node <scripts>/visual-diff.mjs` and `bash <scripts>/qa-summary.sh`. Serious
   or critical violations are high bugs; "review" screens go to the UX engineer
   with their diff image, not into bugs.
-- mobile-ui (commands checked against the Android, Apple and Flutter docs):
-  boot with `xcrun simctl boot "<device>"`, `emulator -avd <name>` or
+- mobile-ui: boot with `xcrun simctl boot "<device>"`, `emulator -avd <name>` or
   `flutter emulators --launch <id>`. Shoot each key screen at the ux.md sizes
   to qa/shots/<screen>-<width>.png: `xcrun simctl io booted screenshot <file>`
   or `adb exec-out screencap -p > <file>` (Windows PowerShell 5.1: `adb shell
   screencap -p /sdcard/s.png`, then `adb pull /sdcard/s.png <file>`). Run the
   repo's flow tool: `maestro test <flow.yaml>` with `takeScreenshot`, `flutter
   test integration_test`, Detox, XCUITest or Espresso. Write
-  qa/a11y-checklist.tsv rows, then visual-diff.mjs and qa-summary.sh (report a
-  size mismatch, never crop). No device: `screenshots` is `not run` with the
-  boot command.
+  qa/a11y-checklist.tsv rows, then qa-summary.sh. No screenshot comparison on
+  mobile (the mockups aren't device-pixel captures). No device: `screenshots`
+  is `not run`, with the boot command in Location.
 - desktop-ui: window screenshots at the ux.md sizes, and checklist rows.
 - api: requests and responses to qa/transcripts/; contract, authz, negative tests.
 - ai: run the eval set and injection cases; record each score, its threshold,

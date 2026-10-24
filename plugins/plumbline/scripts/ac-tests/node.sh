@@ -12,7 +12,9 @@
 # Rules: only leaf tests count (a describe/suite, or a test that only wraps
 # subtests, adds nothing), and an ID counts when it appears anywhere in the
 # test's full name (suite names included). A failing parent still counts as a fail.
-# Skipped and todo tests never count as passes, nor as fails.
+# Skipped and todo tests never count as passes, nor as fails. An expected
+# failure (jest's test.failing, vitest's test.fails) that fails as expected
+# counts as a pass: both runners report it exactly like a normal pass.
 #
 # Verified (Node 22.23, jest 29.7, vitest 3.2.4, Oct 2026):
 # - node:test: `node --test --test-reporter=tap --test-name-pattern=<re>` with no
@@ -28,6 +30,9 @@
 #   pending (jest skip and -t filtered), skipped (vitest), todo. A file's status
 #   is "failed" when any test in it fails, so it is only used when the file has
 #   no results (it failed to run).
+# - test.failing (jest) and test.fails (vitest): one that fails is "passed" with
+#   the same fields as a normal pass (no mode or flag in the JSON); one that
+#   passes is "failed". So the JSON can't tell an expected failure from a pass.
 # - Name patterns are regexes (JS); [Aa][Cc] makes them case-insensitive in all three.
 source "$(dirname "${0//\\//}")/../lib.sh"
 NAME=node

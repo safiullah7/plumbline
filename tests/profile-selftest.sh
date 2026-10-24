@@ -93,6 +93,19 @@ mk "$R/apps/shop/package.json" '{"name":"shop","dependencies":{"next":"14"}}'
 mk "$R/apps/admin/package.json" '{"name":"admin","dependencies":{"vue":"3"}}'
 out=$(detect "$R")
 eq "two web apps: the second gets its folder's name" "$(surfaces_of "$out")" "web-ui,web-ui-shop"
+R="$T/odd-webs"
+mk "$R/package.json" '{"private":true,"workspaces":["apps/*"]}'
+mk "$R/apps/0web/package.json" '{"name":"a","dependencies":{"vue":"3"}}'
+mk "$R/apps/Admin/package.json" '{"name":"b","dependencies":{"vue":"3"}}'
+mk "$R/apps/admin_portal/package.json" '{"name":"c","dependencies":{"vue":"3"}}'
+mk "$R/apps/__Shop..V2__/package.json" '{"name":"d","dependencies":{"vue":"3"}}'
+mk "$R/apps/_/package.json" '{"name":"e","dependencies":{"vue":"3"}}'
+out=$(detect "$R")
+eq "odd folder names: lowercased, other characters as one dash, trimmed; nothing left gets -2" \
+  "$(surfaces_of "$out")" "web-ui,web-ui-admin,web-ui-2,web-ui-shop-v2,web-ui-admin-portal"
+for s in $(surfaces_of "$out" | tr , ' '); do
+  [[ "$s" =~ ^[a-z0-9][a-z0-9-]*$ ]] || fail "odd folder names: '$s' isn't a name kickoff takes"
+done
 
 # --- detection: Go API and Go CLI ---
 R="$T/go-api"
@@ -225,6 +238,9 @@ mkdir -p "$P/docs/product"
     '| cli | Rust | cli/** | cargo run | cargo check | cargo clippy | generic |' \
     '| tool | Make | tools/** | | | | make ac -- |' \
     '| lib | Python | lib/** | | | | pytest |' \
+    '| ai (check) | Node | ai/** | | | | node |' \
+    '| blank | Rust | x/** | | cargo check | | |' \
+    '| off | Rust | y/** | | none | `none` | NONE |' \
     '' '## Generic commands' '### cli' '```' 'cargo test -- {ids_underscored}' '```' \
     '' '## Notes' '| Surface | Other |' '| --- | --- |' '| stray | not a surface |'
 } > "$P/docs/product/project.md"
@@ -232,8 +248,11 @@ mkdir -p "$P/docs/product"
 lib() { local r="$1"; shift; (cd "$r" && export CLAUDE_PROJECT_DIR="$r" && source "$G/lib.sh" && "$@"); }
 S=$(cd "$G" && pwd)   # PLUMBLINE_SCRIPTS as lib.sh spells it
 
-eq "project_surfaces: one per line, only the Surfaces table, CRLF stripped" \
-  "$(lib "$P" project_surfaces | paste -sd, -)" "web-ui,api,cli,tool,lib"
+eq "project_surfaces: one per line, only the Surfaces table, CRLF stripped, no (check) rows" \
+  "$(lib "$P" project_surfaces | paste -sd, -)" "web-ui,api,cli,tool,lib,blank,off"
+eq "surface_list: the same on one line" "$(lib "$P" surface_list)" "web-ui, api, cli, tool, lib, blank, off"
+lib "$P" surface_row "ai (check)" >/dev/null; rc=$?
+eq "surface_row: a (check) row isn't a surface" "$rc" 1
 eq "surface_row: tab-separated cells" "$(lib "$P" surface_row api | tr '\t' '#')" \
   'api#Go#services/api/**#go run ./cmd/api#go vet ./...#`golangci-lint run`#go --dir services/api'
 lib "$P" surface_row mobile-ui >/dev/null; rc=$?
@@ -254,10 +273,28 @@ eq "check_command: go adapter" "$(cc PLUMBLINE_TEST_AC api x)" "bash \"$S/ac-tes
 eq "check_command: pytest adapter without arguments" "$(cc PLUMBLINE_TEST_AC lib x)" "bash \"$S/ac-tests/pytest.sh\""
 eq "check_command: generic adds --surface" "$(cc PLUMBLINE_TEST_AC cli x)" "bash \"$S/ac-tests/generic.sh\" --surface cli"
 eq "check_command: any other AC cell is a raw command" "$(cc PLUMBLINE_TEST_AC tool x)" "make ac --"
-eq "check_command: an unknown surface uses the legacy default" "$(cc PLUMBLINE_TEST_AC mobile-ui 'npm run -s test:ac --')" \
-  "npm run -s test:ac --"
-eq "check_command: no surface and several rows uses the legacy default" "$(cc PLUMBLINE_TYPECHECK '' 'npm run -s typecheck')" \
-  "npm run -s typecheck"
+cc_rc() { out=$(cc "$@"); rc=$?; }   # sets out and rc
+cc_rc PLUMBLINE_TEST_AC mobile-ui 'npm run -s test:ac --'
+eq "check_command: an unknown surface returns 1, printing nothing" "$rc/$out" "1/"
+cc_rc PLUMBLINE_LINT API 'npm run -s lint'
+eq "check_command: names are exact (API isn't api)" "$rc/$out" "1/"
+cc_rc PLUMBLINE_LINT 'api, web-ui' 'npm run -s lint'
+eq "check_command: a list isn't a surface" "$rc/$out" "1/"
+cc_rc PLUMBLINE_TYPECHECK 'ai (check)' x
+eq "check_command: nor is a (check) row" "$rc/$out" "1/"
+cc_rc PLUMBLINE_TYPECHECK '' 'npm run -s typecheck'
+eq "check_command: no surface and several rows returns 2, printing nothing" "$rc/$out" "2/"
+cc_rc PLUMBLINE_TEST_AC blank x
+eq "check_command: an empty AC tests cell returns 3" "$rc/$out" "3/"
+cc_rc PLUMBLINE_TYPECHECK blank x
+eq "check_command: ...while that row's Typecheck cell still reads" "$rc/$out" "0/cargo check"
+for v in PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC; do
+  cc_rc "$v" off x
+  eq "check_command: none skips $v (any case, in backticks too)" "$rc/$out" "0/"
+done
+eq "check_command: the env var still fills an empty AC tests cell" "$(PLUMBLINE_TEST_AC='make ac' cc PLUMBLINE_TEST_AC blank x)" "make ac"
+eq "ac_command_missing: the message, naming the surface" "$(lib "$P" ac_command_missing blank)" \
+  "AC tests: no command for surface blank in docs/product/project.md; write one (an adapter, generic, or a command), or none to skip"
 eq "check_command: an unknown env var name uses the default" "$(cc PLUMBLINE_OTHER api dflt)" dflt
 eq "check_command: env var wins over the profile" "$(PLUMBLINE_TYPECHECK=true cc PLUMBLINE_TYPECHECK api x)" true
 out=$(PLUMBLINE_TEST_AC="" cc PLUMBLINE_TEST_AC api x); rc=$?
@@ -268,12 +305,43 @@ eq "check_command: no project.md, no surface" \
   "$(lib "$T/go-api" check_command PLUMBLINE_LINT '' 'npm run -s lint')" "npm run -s lint"
 P1="$T/single"
 mk "$P1/docs/product/project.md" '## Surfaces' '| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |' \
-  '| --- | --- | --- | --- | --- | --- | --- |' '| api | Go | ** | | go vet ./... | | go --dir . |'
-eq "check_command: no surface and a single row uses that row" \
+  '| --- | --- | --- | --- | --- | --- | --- |' '| api | Go | ** | | go vet ./... | | go --dir . |' \
+  '| web-ui (check) | React | web/** | | tsc | | node |'
+eq "check_command: no surface and a single row (and a (check) row) uses that row" \
   "$(lib "$P1" check_command PLUMBLINE_TYPECHECK '' 'npm run -s typecheck')" "go vet ./..."
 eq "check_command: ...and its empty Lint cell skips" "$(lib "$P1" check_command PLUMBLINE_LINT '' 'npm run -s lint')" ""
-eq "check_command: a named surface missing from a one-row profile uses the default" \
-  "$(lib "$P1" check_command PLUMBLINE_LINT web-ui 'npm run -s lint')" "npm run -s lint"
+out=$(lib "$P1" check_command PLUMBLINE_LINT web-ui 'npm run -s lint'); rc=$?
+eq "check_command: a named surface missing from a one-row profile is unknown" "$rc/$out" "1/"
+eq "profile_surface: no surface and one row is that row" "$(lib "$P1" profile_surface '')" api
+lib "$T/go-api" profile_surface nope >/dev/null; rc=$?
+eq "profile_surface: without a profile any surface is fine (the npm defaults)" "$rc" 0
+mk "$T/hints-only/docs/product/project.md" '## Surfaces' '| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |' \
+  '| --- | --- | --- | --- | --- | --- | --- |' '| api (check) | Go | ** | | | | |'
+out=$(lib "$T/hints-only" check_command PLUMBLINE_LINT '' 'npm run -s lint'); rc=$?
+eq "check_command: no surface, only (check) rows: the default" "$rc/$out" "0/npm run -s lint"
+out=$(lib "$T/hints-only" check_command PLUMBLINE_LINT api 'npm run -s lint'); rc=$?
+eq "check_command: ...but a named surface there is unknown" "$rc/$out" "1/"
+
+# An AC tests cell is an adapter only when it's just the name, plus --dir <path>
+# (and --surface for generic); anything else is a raw command that gets the IDs.
+P2="$T/cells"
+cells=('node' 'node --dir apps/web' 'node --dir=apps/web' "pytest  --dir 'my app'" "go --dir 'it'\''s'"
+       'pytest --dir "a b"' 'generic --dir sub' 'generic --surface other --dir=sub'
+       'node scripts/ac.js' 'node --test' 'go test ./... -run' 'pytest -q tests/ac' 'node --surface x'
+       'pytest --dir' 'go --dir a b' 'generic run')
+want=("bash \"$S/ac-tests/node.sh\"" "bash \"$S/ac-tests/node.sh\" --dir apps/web" "bash \"$S/ac-tests/node.sh\" --dir=apps/web"
+      "bash \"$S/ac-tests/pytest.sh\"  --dir 'my app'" "bash \"$S/ac-tests/go.sh\" --dir 'it'\''s'"
+      "bash \"$S/ac-tests/pytest.sh\" --dir \"a b\"" "bash \"$S/ac-tests/generic.sh\" --surface s7 --dir sub"
+      "bash \"$S/ac-tests/generic.sh\" --surface other --dir=sub"
+      'node scripts/ac.js' 'node --test' 'go test ./... -run' 'pytest -q tests/ac' 'node --surface x'
+      'pytest --dir' 'go --dir a b' 'generic run')
+{ echo '## Surfaces'; echo '| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |'; echo '| --- | --- | --- | --- | --- | --- | --- |'
+  for i in "${!cells[@]}"; do echo "| s$((i + 1)) | x | ** | | | | ${cells[$i]} |"; done
+} > "$T/cells.md"
+mkdir -p "$P2/docs/product" && mv "$T/cells.md" "$P2/docs/product/project.md"
+for i in "${!cells[@]}"; do
+  eq "check_command: AC tests cell '${cells[$i]}'" "$(lib "$P2" check_command PLUMBLINE_TEST_AC "s$((i + 1))" x)" "${want[$i]}"
+done
 
 # --- run_checks through the adapters, from a scripts folder with a space and a quote ---
 D="$T/plug in's \$HOME/scripts"

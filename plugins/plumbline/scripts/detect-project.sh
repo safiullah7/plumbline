@@ -347,9 +347,11 @@ fi
 
 # --- the proposal ---
 
-# Two groups proposing the same surface: the later ones get the folder's name
-# (web-ui, web-ui-admin), since a surface names one row. Two hints for the same
-# surface become one row with both stacks and paths.
+# Two groups proposing the same surface: the later ones get the folder's name,
+# lowercased with anything outside [a-z0-9-] as one dash (web-ui, then
+# web-ui-admin-portal for apps/Admin_Portal), since a surface names one row and
+# kickoff takes only those characters. Two hints for the same surface become one
+# row with both stacks and paths.
 table=$( { printf '%s' "$ROWS"; printf '%s' "$HINTS"; } | awk -F'\t' -v OFS='\t' '
   $1 == "" { next }
   $1 ~ / \(check\)$/ {
@@ -364,7 +366,9 @@ table=$( { printf '%s' "$ROWS"; printf '%s' "$HINTS"; } | awk -F'\t' -v OFS='\t'
   {
     s = $1
     if (s in used) {
-      p = $3; sub(/\/\*\*$/, "", p); sub(/.*\//, "", p); s = $1 "-" p
+      p = $3; sub(/\/\*\*$/, "", p); sub(/.*\//, "", p)
+      p = tolower(p); gsub(/[^a-z0-9-]+/, "-", p); gsub(/-+/, "-", p); gsub(/^-|-$/, "", p)
+      s = (p == "") ? $1 : $1 "-" p   # nothing is left of the root, "**"
       while (s in used) s = s "-2"
     }
     used[s] = 1; $1 = s; r[++n] = $0

@@ -219,6 +219,58 @@ def test_unrelated(): assert False
 EOF
   common_cases pytest "$P" pytest "xfail/xpass"
   adapter pytest "$P" "AC-01-006"; expect "pytest: ERROR counts as fail" 1 "AC-01-006: fail"
+  # Subtests (pytest 9): a failing unittest subTest leaves its test PASSED plus a
+  # SUBFAILED line; parameters and subtest messages may hold spaces.
+  SB="$T/py-sub"; mkdir -p "$SB/tests"
+  cat > "$SB/tests/test_sub.py" <<'EOF'
+import unittest
+import pytest
+
+class TestAC_03_001(unittest.TestCase):
+    def test_loop(self):
+        for i in range(3):
+            with self.subTest(i=i, label="a b) c"):
+                self.assertNotEqual(i, 1)
+
+class TestAC_03_002(unittest.TestCase):
+    def test_loop(self):
+        for i in range(2):
+            with self.subTest(i=i):
+                pass
+
+class TestAC_03_003(unittest.TestCase):
+    def test_plain(self):
+        with self.subTest():
+            self.fail("no description")
+
+def test_ac_03_004_fixture(subtests):
+    for i in range(2):
+        with subtests.test(msg="has ] and ) in it", i=i):
+            assert i == 0
+
+def test_ac_03_005_fixture_ok(subtests):
+    with subtests.test(msg="fine"):
+        pass
+
+@pytest.mark.parametrize("x", ["a b", "c - d"])
+def test_ac_03_006_param(x): pass
+
+@pytest.mark.parametrize("x", ["a b", "c - d"])
+def test_ac_03_007_param(x): assert x == "a b"
+EOF
+  if "$PY" -c 'import sys, pytest; sys.exit(int(pytest.__version__.split(".")[0]) < 9)' 2>/dev/null; then
+    adapter pytest "$SB" "AC-03-001"; expect "pytest: a failing unittest subTest is a fail" 1 "AC-03-001: fail"
+    adapter pytest "$SB" "AC-03-002"; expect "pytest: passing subTests are one pass" 0 "AC-03-002: pass (1)"
+    adapter pytest "$SB" "AC-03-003"; expect "pytest: a failing subTest without a description" 1 "AC-03-003: fail"
+    adapter pytest "$SB" "AC-03-004"; expect "pytest: a failing subtests-fixture subtest" 1 "AC-03-004: fail"
+    adapter pytest "$SB" "AC-03-005"; expect "pytest: a passing subtests-fixture subtest" 0 "AC-03-005: pass (1)"
+    adapter pytest "$SB" "AC-03-006"; expect "pytest: parameters with spaces and ' - '" 0 "AC-03-006: pass (2)"
+    adapter pytest "$SB" "AC-03-007"; expect "pytest: ...one of them failing" 1 "AC-03-007: fail"
+    adapter pytest "$SB" "AC-03-002|AC-03-001"
+    expect "pytest: a subtest fail stays with its own ID" 1 "AC-03-002: pass (1)" "AC-03-001: fail"
+  else
+    skip "pytest: subtest cases (pytest older than 9)"
+  fi
   M="$T/py-mono"; mkdir -p "$M/services/data/tests"
   printf 'def test_ac_02_001_data(): pass\n' > "$M/services/data/tests/test_data.py"
   adapter pytest "$M" --dir services/data "AC-02-001"

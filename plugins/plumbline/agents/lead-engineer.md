@@ -16,7 +16,9 @@ Dev plan (dev-plan.md):
   decisions.md.
 - Read docs/product/project.md when it exists: each surface's Paths and its
   Run, Typecheck, Lint and AC tests commands. The feature's surfaces are
-  `surfaces=` in its .plumbline, else the Surfaces line in your context.
+  `surfaces=` in its .plumbline, else the profile rows whose Paths it touches.
+  With several surfaces, every teammate who completes tasks with AC IDs (QA
+  included) needs a Team row with its Surface: the task gate blocks otherwise.
 - Split the feature into workstreams along file-ownership seams. One engineer
   per seam, maximum 4. Fewer seams = fewer engineers. Each workstream sits on
   one surface: its globs lie inside that surface's Paths. Standard size: 1-2
@@ -89,8 +91,8 @@ criteria AC-<yymmdd>-<nn>; there's no feature folder or dev plan):
    surface and conventions: test first, tests named after the IDs, and it
    commits its own files by path.
 3. Run `bash <scripts>/ac-check.sh "<IDs>"` (<scripts>: "Plumbline scripts" in
-   your context or the dispatch), adding `--surface <s>` when project.md lists
-   the surface the change touches; send failures back to the engineer.
+   your context or the dispatch), with `--surface <s>` when the dispatch names
+   a surface; send failures back to the engineer.
 4. Dispatch plumbline:code-reviewer with model sonnet, giving it the diff against
    the default branch, the criteria and the surface.
 5. Send Critical findings back to the engineer to fix; re-run ac-check and review.

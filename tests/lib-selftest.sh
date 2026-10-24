@@ -154,6 +154,12 @@ out=$(ac AC-01-001 2>/dev/null); rc=$?
 eq "ac-check: pass exits 0" "$rc" 0
 assert "ac-check: pass line with timing" \
   grep -qE '^ac-check: pass \(typecheck [0-9]+s · lint [0-9]+s · tests [0-9]+s\)$' <<<"$out"
+eq "ac-check: a pass with a silent test command prints only the pass line" "$(grep -c . <<<"$out")" 1
+checks true true 'f(){ echo "generic: per-ID presence is not proven" >&2; echo noise; printf "AC-01-001: pass (2)\r\n"; echo "AC-01-002: pass (1)"; echo "  AC-01-003: indented"; }; f'
+out=$(ac "AC-01-001|AC-01-002" 2>/dev/null); rc=$?
+eq "ac-check: a pass shows the per-ID lines and the generic warning, pass line last" "$rc/$(sed 's/ (.*//' <<<"$out" | paste -sd';' -)" \
+  "0/generic: per-ID presence is not proven;AC-01-001: pass;AC-01-002: pass;ac-check: pass"
+checks true true 'f(){ [ "$1" = "AC-01-001" ]; }; f'
 out=$(ac AC-01-001 --surface api 2>&1); rc=$?
 eq "ac-check: --surface accepted" "$rc" 0
 out=$(ac --surface=api "[AC-01-001] x" 2>&1); rc=$?
@@ -291,7 +297,8 @@ trace() { paste -sd';' - < "$TRACE"; }
 npm_first() { head -n1 "$NPM_LOG"; }
 gate_as() { # teammate, subject: runs the task gate with the stand-in npm first on PATH
   : > "$TRACE"; : > "$NPM_LOG"
-  echo "{\"task_subject\":\"$2\",\"teammate_name\":\"$1\"}" | PATH="$T/bin:$PATH" bash "$G/task-completed-gate.sh" >/dev/null 2>&1
+  GATE_ERR=$(echo "{\"task_subject\":\"$2\",\"teammate_name\":\"$1\"}" \
+    | PATH="$T/bin:$PATH" bash "$G/task-completed-gate.sh" 2>&1 >/dev/null)
   GATE_RC=$?
 }
 plan() { # the Team table's lines (header, separator, rows), as a CRLF plan
@@ -300,7 +307,7 @@ plan() { # the Team table's lines (header, separator, rows), as a CRLF plan
 }
 plan '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' \
   '| eng-api | sonnet | API | api |' '| eng-web | sonnet | UI | `web-ui` |' \
-  '| eng-none | sonnet | Misc |  |' '| eng-x | sonnet | Misc | mobile |'
+  '| eng-none | sonnet | Misc |  |' '| eng-x | sonnet | Misc | mobile |' '| eng-worker | sonnet | Jobs | worker |'
 gate_as eng-api "[AC-07-001] x"
 eq "gate: a 4-column Team table picks the teammate's surface" "$GATE_RC/$(trace)" \
   "0/api-typecheck;api-lint;api-tests AC-07-001"
@@ -310,15 +317,36 @@ eq "gate: another teammate, another surface (backticks, CRLF plan)" "$GATE_RC/$(
 gate_as eng-api "[chore] land contracts"
 eq "gate: a [chore] runs the surface's typecheck and lint only" "$GATE_RC/$(trace)" \
   "0/api-typecheck;api-lint"
+several="has no Surface in the dev plan's Team table and the profile lists several (api, web-ui, worker); ask the lead to add one, or tag coordination work [chore]"
 gate_as eng-none "[AC-07-001] x"
-eq "gate: an empty Surface cell passes no surface (npm defaults, two rows)" \
-  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+eq "gate: an empty Surface cell and several profile rows is refused, nothing run" \
+  "$GATE_RC/$(trace)/$(npm_first)/$GATE_ERR" "2///Task gate: eng-none $several"
 gate_as eng-x "[AC-07-001] x"
-eq "gate: a surface the profile doesn't list falls back to the npm defaults" \
-  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+eq "gate: a surface the profile doesn't list is refused, nothing run" "$GATE_RC/$(trace)/$(npm_first)/$GATE_ERR" \
+  "2///Task gate: eng-x's Surface \"mobile\" in the dev plan's Team table isn't a surface in docs/product/project.md, which lists: api, web-ui, worker; ask the lead to fix one of them"
 gate_as nobody "[AC-07-001] x"
-eq "gate: a teammate with no Team row passes no surface" \
-  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+eq "gate: a teammate with no Team row is refused the same way" "$GATE_RC/$GATE_ERR" "2/Task gate: nobody $several"
+gate_as eng-none "[chore] land contracts"
+eq "gate: a [chore] with no surface runs every surface's typecheck and lint" "$GATE_RC/$(trace)/$(npm_first)" \
+  "0/api-typecheck;api-lint;web-typecheck;web-lint;worker-typecheck;worker-lint/"
+: > "$TRACE"
+out=$(echo '{"task_subject":"[chore] x","teammate_name":"eng-none"}' \
+  | PLUMBLINE_LINT='! grep -q worker-typecheck "$TRACE"' bash "$G/task-completed-gate.sh" 2>&1); rc=$?
+eq "gate: ...stopping at the first surface that fails, named" "$rc/$(head -n1 <<<"$out")" "2/Task gate: lint failed for surface worker."
+out=$(echo '{"task_subject":"[chore] x","teammate_name":"eng-none"}' \
+  | PLUMBLINE_HOOK_TIMING=1 bash "$G/task-completed-gate.sh" 2>&1)
+assert "gate: ...and its timing line names each surface" \
+  grep -qE '^Task gate passed: api: typecheck [0-9]+s · lint [0-9]+s · web-ui: .* · worker: typecheck' <<<"$out"
+gate_as eng-worker "[AC-07-001] x"
+eq "gate: a surface whose AC tests cell is empty fails the tests, before any check" \
+  "$GATE_RC/$(trace)/$GATE_ERR" \
+  "2//Task gate: AC tests: no command for surface worker in docs/product/project.md; write one (an adapter, generic, or a command), or none to skip"
+gate_as eng-worker "[chore] x"
+eq "gate: ...while its [chore] tasks still pass" "$GATE_RC/$(trace)" "0/worker-typecheck;worker-lint"
+: > "$TRACE"
+echo '{"task_subject":"[AC-07-001] x","teammate_name":"eng-worker"}' \
+  | PLUMBLINE_TEST_AC="" bash "$G/task-completed-gate.sh" >/dev/null 2>&1; rc=$?
+eq "gate: ...and PLUMBLINE_TEST_AC=\"\" still skips the tests (v0.3)" "$rc/$(trace)" "0/worker-typecheck;worker-lint"
 : > "$TRACE"
 echo '{"task_subject":"[AC-07-001] x","teammate_name":"eng-api"}' \
   | PLUMBLINE_LINT=true PLUMBLINE_TEST_AC='f(){ echo "env-tests $1" >> $TRACE; }; f' bash "$G/task-completed-gate.sh" >/dev/null 2>&1
@@ -329,12 +357,19 @@ echo '{"task_subject":"[AC-07-001] x","teammate_name":"eng-api"}' \
 eq "gate: an env typecheck that fails refuses, with a surface too" "$rc/$(trace)" "2/"
 plan '| Teammate | Model | Workstream |' '| --- | --- | --- |' '| eng-api | sonnet | API |'
 gate_as eng-api "[AC-07-001] x"
-eq "gate: a 3-column Team table behaves as before (npm defaults, two rows)" \
-  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+eq "gate: a 3-column Team table and several profile rows is refused" \
+  "$GATE_RC/$(trace)/$(npm_first)/$GATE_ERR" "2///Task gate: eng-api $several"
 write_profile "$row_api"
 gate_as eng-api "[AC-07-001] x"
 eq "gate: a 3-column table and a one-row profile use that row, as before" \
   "$GATE_RC/$(trace)" "0/api-typecheck;api-lint;api-tests AC-07-001"
+write_profile "$row_api" "| web-ui (check) | React | apps/web/** | | echo hint >> \$TRACE | | node |"
+gate_as eng-api "[AC-07-001] x"
+eq "gate: a (check) row is ignored, so the one confirmed row is still the only one" \
+  "$GATE_RC/$(trace)" "0/api-typecheck;api-lint;api-tests AC-07-001"
+rm -f docs/product/project.md
+gate_as eng-api "[AC-07-001] x"
+eq "gate: no profile keeps the npm defaults (v0.3)" "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
 write_profile "$row_api" "$row_web" "$row_worker"
 plan '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' '| eng-api | sonnet | API | web-ui |'
 gate_as eng-api "[AC-07-001] x"
@@ -348,13 +383,27 @@ eq "ac-check: --surface api runs api's commands" "$rc/$(trace)" "0/api-typecheck
 out=$(acs --surface=web-ui "AC-07-001|AC-07-002"); rc=$?
 eq "ac-check: --surface=web-ui runs web's commands" "$rc/$(trace)" \
   "0/web-typecheck;web-lint;web-tests AC-07-001|AC-07-002"
-out=$(acs AC-07-001 --surface nope); rc=$?
-eq "ac-check: an unknown surface falls back to the npm defaults" "$rc/$(trace)/$(npm_first)" "0//run -s typecheck"
+for s in nope API "api, web-ui"; do
+  out=$(acs AC-07-001 --surface "$s"); rc=$?
+  eq "ac-check: unknown surface '$s' exits 2, nothing run" "$rc/$(trace)/$(npm_first)/$out" \
+    "2///ac-check: unknown surface \"$s\"; the profile lists: api, web-ui, worker"
+done
 out=$(acs AC-07-001); rc=$?
-eq "ac-check: no surface and two rows fall back to the npm defaults" "$rc/$(trace)/$(npm_first)" "0//run -s typecheck"
+eq "ac-check: no surface and several rows exits 2, nothing run" "$rc/$(trace)/$(npm_first)/$out" \
+  "2///ac-check: several surfaces in docs/product/project.md; pass --surface <one of: api, web-ui, worker>"
+out=$(PLUMBLINE_TEST_AC=true acs AC-07-001); rc=$?
+eq "ac-check: ...also when only typecheck and lint come from the profile" "$rc/$(trace)" "2/"
 out=$(acs AC-07-001 --surface worker); rc=$?
-eq "ac-check: a surface with an empty AC tests cell is refused" "$rc/$out" "1/ac-check: no AC test command configured"
+eq "ac-check: a surface with an empty AC tests cell is refused" "$rc/$out" \
+  "1/ac-check: AC tests: no command for surface worker in docs/product/project.md; write one (an adapter, generic, or a command), or none to skip"
 eq "ac-check: ...before any check ran" "$(trace)" ""
+write_profile "$row_api" "| jobs | node | apps/jobs/** | | echo jobs-typecheck >> \$TRACE | none | \`none\` |"
+out=$(acs AC-07-001 --surface jobs); rc=$?
+eq "ac-check: an AC tests cell of none is refused too" "$rc/$out/$(trace)" "1/ac-check: no AC test command configured/"
+plan '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' '| eng-jobs | sonnet | Jobs | jobs |'
+gate_as eng-jobs "[AC-07-001] x"
+eq "gate: none skips the lint and AC tests cells on purpose" "$GATE_RC/$(trace)" "0/jobs-typecheck"
+write_profile "$row_api" "$row_web" "$row_worker"
 out=$(acs AC-07-001 --surface api); rc=$?
 eq "ac-check: ...while another surface still passes" "$rc" 0
 out=$(PLUMBLINE_TEST_AC='f(){ echo "env-tests $1" >> $TRACE; }; f' acs AC-07-001 --surface worker); rc=$?

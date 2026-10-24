@@ -1,5 +1,5 @@
 ## Mobile design rules
-Applies to surface mobile-ui. The Screen inventory above stays the single list
+Applies to the feature's mobile-ui surfaces. The Screen inventory above stays the single list
 of screens.
 
 ### Device sizes

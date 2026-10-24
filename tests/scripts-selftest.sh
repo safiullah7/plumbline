@@ -238,6 +238,29 @@ assert "signoff-check: evidence gap names only the missing kind" test -z "$(grep
 assert "signoff-check: evidence gap doesn't hand out a waiver line" test -z "$(grep 'Evidence waived:' <<<"$out")"
 printf '| authz | api | qa/evidence/authz.txt | not run |\n' >> "$P/qa-report.md"; signoff
 assert "signoff-check: a not-run evidence row is a gap that shows its result" has "$out" "no passing authz evidence for api (recorded: not run)"
+# A fail row wins over a pass row for the same kind and surface, in either order.
+surface_case api $api_ev; no_a11y_rows
+printf '| authz | api | qa/evidence/authz-2.txt | fail |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a pass row plus a fail row for the same kind is a gap" test "$rc" = 1
+assert "signoff-check: the fail gap shows what was recorded" has "$out" "no passing authz evidence for api (recorded: fail)"
+assert "signoff-check: the fail gap names only that kind" test "$(grep -c 'no passing' <<<"$out")" = 1
+surface_case api $api_ev; no_a11y_rows
+sed -i 's/^| authz | api |\(.*\)| pass |$/| authz | api |\1| FAIL |/' "$P/qa-report.md"
+printf '| authz | api | qa/evidence/authz-2.txt | pass |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a fail row before the pass row is a gap too" has "$out" "no passing authz evidence for api (recorded: fail)"
+add_after "$P/qa-report.md" '^Verdict: PASS$' "Evidence waived: authz (api) - the gateway enforces it (approved by Dana)"; signoff
+assert "signoff-check: an approved waiver still clears a failed evidence kind" test "$rc" = 0
+surface_case api $api_ev; no_a11y_rows
+printf '| authz | cli | qa/evidence/authz.txt | fail |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a fail row on another surface doesn't count" test "$rc" = 0
+# A pass row with no Location points at nothing, so it doesn't count.
+surface_case api $api_ev; no_a11y_rows
+sed -i 's/^| authz | api | qa\/evidence\/authz.txt | pass |$/| authz | api |  | pass |/' "$P/qa-report.md"; signoff
+assert "signoff-check: a pass row with an empty Location is a gap" has "$out" "no passing authz evidence for api (recorded: pass without a location)"
+printf '| authz | api | qa/evidence/authz-2.txt | pass |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a second pass row with a Location closes it" test "$rc" = 0
+surface_case api contract:api negative:api transcripts:api
+printf '| authz | api | qa/evidence/authz.txt | not run |\n' >> "$P/qa-report.md"
 cp "$P/qa-report.md" "$T/qa-noauthz.bak"
 for w in "Evidence waived: authz (api) - the gateway enforces it (approved by Dana)" \
          "Evidence waived: authz (api) — the gateway enforces it (approved by Dana Smith)" \

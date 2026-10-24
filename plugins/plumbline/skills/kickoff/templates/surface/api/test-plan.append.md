@@ -1,5 +1,5 @@
 ## API evidence plan
-Rows the QA runner must fill in qa-report.md's Evidence table for surface api.
+Rows the QA runner must fill in qa-report.md's Evidence table for each api surface (use its name from .plumbline in the Surface column).
 | Kind | What it proves | Location |
 | --- | --- | --- |
 | contract | Every endpoint matches the schema in contracts/ | qa/contract/ |

@@ -123,6 +123,31 @@ lock_cases() {
   check_out "$1: .plumbline refusal names kickoff.sh" 2 ownership-guard.sh "$(mk "$ENG" '{"file_path":"C:\\repo\\x\\.plumbline","content":"a"}')" "written by kickoff.sh"
   check "$1: .plumbline write allowed in the main session" 0 ownership-guard.sh "$(mk "" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","content":"profile=full"}')"
   check "$1: a file merely named like .plumbline-x allowed" 0 ownership-guard.sh "$(mk "$ENG" '{"file_path":"'"$T"'/repo/apps/api/.plumbline-notes","content":"a"}')"
+  # docs/product/project.md lists the commands the gates run: no agent changes it.
+  local pm="$T/repo/docs/product/project.md"
+  for a in "$ENG" "$SUBAGENT"; do
+    k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
+    check "$1: project.md Write blocked, $k"      2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$pm" 'x')")"
+    check "$1: project.md Edit blocked, $k"       2 ownership-guard.sh "$(mk "$a" "$(ti_edit_at "$pm" a b)")"
+    check "$1: project.md MultiEdit blocked, $k"  2 ownership-guard.sh "$(mk "$a" "$(jq -nc --arg f "$pm" '{file_path: $f, edits: [{old_string: "a", new_string: "b"}]}')")"
+    check "$1: project.md relative path blocked, $k" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at 'docs/product/project.md' 'x')")"
+    check "$1: project.md spelled with a trailing dot blocked, $k" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$pm." 'x')")"
+    check "$1: project.md Bash redirect blocked, $k"  2 ownership-guard.sh "$(mkb "$a" "echo x > docs/product/project.md")"
+    check "$1: project.md Bash sed -i blocked, $k"    2 ownership-guard.sh "$(mkb "$a" "sed -i s/x/y/ docs/product/project.md")"
+  done
+  if command -v cygpath >/dev/null 2>&1; then
+    pw=$(cygpath -w "$pm"); pw="${pw/project.md/Project.MD}"; pw="${pw/\\docs\\/\\DOCS\\}"
+    for a in "$ENG" "$SUBAGENT"; do
+      check "$1: project.md Windows path, odd case, blocked" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$pw" 'x')")"
+    done
+  fi
+  check "$1: project.md upper-case spelling blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/DOCS/Product/Project.MD" 'x')")"
+  check_out "$1: project.md refusal says only the user changes it" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$pm" 'x')")" "only the user changes it"
+  check "$1: project.md Write allowed in the main session" 0 ownership-guard.sh "$(mk "" "$(ti_write_at "$pm" 'x')")"
+  check "$1: project.md Bash read allowed" 0 ownership-guard.sh "$(mkb "$ENG" "cat docs/product/project.md")"
+  check "$1: project.md Bash read with grep and pipe allowed" 0 ownership-guard.sh "$(mkb "$SUBAGENT" "grep -n api docs/product/project.md | head")"
+  check "$1: project.md Bash write allowed in the main session" 0 ownership-guard.sh "$(mkb "" "echo x > docs/product/project.md")"
+  check "$1: another project.md-like file allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/apps/api/project.md.bak" 'x')")"
   # Other spellings of the same file on NTFS and APFS.
   local f
   for f in .Plumbline ".plumbline " .plumbline. '.plumbline::$DATA' ".PLUMBLINE. ."; do
@@ -244,8 +269,10 @@ cat > docs/product/project.md <<'PROFILE'
 | mobile-ui | rn | apps/mobile/** | | | | |
 PROFILE
 out=$(ctx "$SESSION" | ctx_text)
-assert "context: Surface api line has its three commands" grep -qxF "Surface api: typecheck npx tsc -p apps/api; lint npx eslint apps/api; AC tests node --dir apps/api" <<<"$out"
-assert "context: empty cells are left out" grep -qxF "Surface cli: lint golangci-lint run; AC tests go" <<<"$out"
+assert "context: Surface api line is the ac-check.sh command" grep -qxF "Surface api: check with bash \"$G/ac-check.sh\" \"<IDs>\" --surface api" <<<"$out"
+assert "context: Surface line doesn't show the raw cells" test -z "$(grep -E '^Surface .*(npx|node --dir|golangci)' <<<"$out")"
+assert "context: Surface line names the same scripts folder as the Plumbline scripts line" grep -qxF "Plumbline scripts: $G" <<<"$out"
+assert "context: a row with some cells gets its line" grep -qxF "Surface cli: check with bash \"$G/ac-check.sh\" \"<IDs>\" --surface cli" <<<"$out"
 assert "context: a profile row for a surface the feature doesn't list gets no line" test -z "$(grep -E '^Surface (web-ui|mobile-ui):' <<<"$out")"
 assert "context: a feature surface the profile lacks gets no line" test -z "$(grep '^Surface web-ui-shop' <<<"$out")"
 assert "context: profile lines stay in the Module/Surfaces block" test "$(grep -n '^Surface ' <<<"$out" | head -n1 | cut -d: -f1)" = 4

@@ -3,9 +3,9 @@
 # hand over the context each would otherwise go looking for: the active phase
 # and plan status, its own Ownership row and brief, escalations, and the answered
 # questions that involve it; for a feature with surfaces=, those surfaces and
-# their profile commands. Claude Code de-duplicates it and re-adds it after
-# compaction. While a Quick change runs (.claude/plumbline-quick) it says so
-# instead. Never blocks: on any problem it prints nothing and exits 0.
+# the ac-check.sh command that checks each (not the raw profile cells). Claude
+# Code de-duplicates it and re-adds it after compaction. While a Quick change
+# runs (.claude/plumbline-quick) it says so instead. Never blocks: on any problem it prints nothing and exits 0.
 source "$(dirname "${0//\\//}")/lib.sh"
 input=$(cat); debug_log "$input"
 command -v jq >/dev/null 2>&1 || exit 0
@@ -56,14 +56,10 @@ if [[ -n "$surfaces" ]]; then
   IFS=, read -r -a snames <<<"$surfaces"
   for s in "${snames[@]}"; do
     row=$(surface_row "$s") || continue
-    cmds=$(awk -F'\t' '{
-      split("typecheck|lint|AC tests", lab, "|"); out = ""
-      for (i = 1; i <= 3; i++) {
-        c = $(i + 4); gsub(/^[ \t]+|[ \t]+$/, "", c)
-        if (c != "") out = out (out == "" ? "" : "; ") lab[i] " " substr(c, 1, 120)
-      }
-      print out }' <<<"$row")
-    [[ -n "$cmds" ]] && ctx+=$'\n'"Surface $s: $cmds"
+    # Raw cells are not commands to paste (they need the adapter and the
+    # right folder), so point at ac-check.sh, which runs them the right way.
+    cmds=$(awk -F'\t' '{ for (i = 5; i <= 7; i++) if ($i ~ /[^ \t]/) { print "x"; exit } }' <<<"$row")
+    [[ -n "$cmds" ]] && ctx+=$'\n'"Surface $s: check with bash \"$PLUMBLINE_SCRIPTS/ac-check.sh\" \"<IDs>\" --surface $s"
   done
 fi
 ctx+=$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
