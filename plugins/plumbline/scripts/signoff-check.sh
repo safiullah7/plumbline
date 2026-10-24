@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # The /plumbline:signoff gap check as a script, so a phase can't be talked past a
 # gap: every AC has a passing test in test-plan.md, the QA verdict is PASS with no
-# open high or critical bug, no open product finding or high design finding, no
-# OPEN or ESCALATED question, and every sign-off box is ticked except the PR and
-# merge lines. Exits 1 and lists each gap, or exits 0 when there are none.
+# open high or critical bug, accessibility results (or a waiver) where there's a
+# UI, every evidence kind the feature's surfaces require (or a waiver), no open
+# product finding or high design finding, no OPEN or ESCALATED question, and every
+# sign-off box is ticked except the PR and merge lines. Exits 1 and lists each
+# gap, or exits 0 when there are none.
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "Signoff check: no active phase (.claude/current-phase is missing)."; exit 1; }
 rel=$(phase_rel)
@@ -38,15 +40,78 @@ while IFS=$'\t' read -r screen width crit ser _; do
     gaps+=("accessibility: $screen at $width has $crit critical and $ser serious violation(s) (qa-report.md)")
   fi
 done <<<"$a11y"
-screens=$(md_table "$dir/ux.md" "Screen inventory" 2>/dev/null | awk -F'\t' '$1 != ""' | grep -c .)
 # A waiver line counts only when it's filled in: no <placeholder> left and an
 # "(approved by <name>)" ending, so the template's example line waives nothing.
 accessibility_waived() {
   { tr -d '\r' < "$dir/qa-report.md"; } 2>/dev/null | grep -iE '^Accessibility waived:' \
     | grep -v '<[^>]*>' | grep -qiE '\(approved by [^)]*[^) ][^)]*\)[[:space:]]*$'
 }
-if [[ -z "$a11y" && "$screens" -gt 0 ]] && ! accessibility_waived; then
-  gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
+# Text as an ERE that matches only itself, for names put into a pattern.
+ere_quote() { sed 's/[][\.*^$+?(){}|]/\\&/g' <<<"$1"; }
+# "Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)", the dash
+# also "—" or ":", filled in the same way as the accessibility waiver.
+evidence_waived() { # kind surface
+  local k s
+  k=$(ere_quote "$1"); s=$(ere_quote "$2")
+  { tr -d '\r' < "$dir/qa-report.md"; } 2>/dev/null | grep -v '<[^>]*>' \
+    | grep -qiE "^Evidence waived:[[:space:]]*$k[[:space:]]*\\($s\\)[[:space:]]*(-|—|:)[[:space:]]*[^[:space:]].*\\(approved by [^)]*[^) ][^)]*\\)[[:space:]]*\$"
+}
+
+# Features with surfaces= in .plumbline (v0.4b) are checked by surface; legacy
+# and v0.4a features keep the v0.3 rule, which keys accessibility off ux.md.
+surfaces=$(feature_meta surfaces)
+if [[ -z "$surfaces" ]]; then
+  screens=$(md_table "$dir/ux.md" "Screen inventory" 2>/dev/null | awk -F'\t' '$1 != ""' | grep -c .)
+  if [[ -z "$a11y" && "$screens" -gt 0 ]] && ! accessibility_waived; then
+    gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
+  fi
+else
+  # Evidence rows with Result pass, as "kind<TAB>surface"; kind and result in any case.
+  passed=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null \
+    | awk -F'\t' '$1 != "" && tolower($4) == "pass" { print tolower($1) "\t" $2 }')
+  recorded=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null | awk -F'\t' '{ print tolower($1) "\t" $2 "\t" tolower($4) }')
+  seen="," axe_for="" checklist_for=""
+  IFS=, read -r -a snames <<<"$surfaces"
+  for s in "${snames[@]}"; do
+    s=$(sed -E 's/^[[:space:]]+|[[:space:]]+$//g' <<<"$s")
+    [[ -n "$s" && "$seen" != *",$s,"* ]] || continue
+    seen="$seen$s,"
+    if ! kind=$(surface_kind "$s"); then
+      gaps+=("unknown surface \"$s\" in .plumbline surfaces=: a surface is web-ui, mobile-ui, desktop-ui, api, service, cli, library, data, ai or infra, or <kind>-<name>; ask the user to correct it")
+      continue
+    fi
+    # Required evidence kinds by surface kind (dev plan §6.4, the table rules).
+    case "$kind" in
+      web-ui)     need="screenshots axe journeys"; axe_for="$axe_for${axe_for:+, }$s" ;;
+      mobile-ui)  need="screenshots flow-tests checklist"; checklist_for="$checklist_for${checklist_for:+, }$s" ;;
+      desktop-ui) need="screenshots checklist"; checklist_for="$checklist_for${checklist_for:+, }$s" ;;
+      api)        need="contract authz negative transcripts" ;;
+      service)    need="job-tests failure-cases" ;;
+      cli)        need="golden-output" ;;
+      library)    need="doc-examples api-diff" ;;
+      data)       need="sample-run idempotency" ;;
+      ai)         need="eval-set injection" ;;
+      infra)      need="plan-output" ;;
+    esac
+    for k in $need; do
+      grep -qxF "$(printf '%s\t%s' "$k" "$s")" <<<"$passed" && continue
+      evidence_waived "$k" "$s" && continue
+      # The scan the user waived is this evidence too: don't ask twice.
+      [[ "$k" == axe || "$k" == checklist ]] && accessibility_waived && continue
+      got=$(awk -F'\t' -v k="$k" -v s="$s" '$1 == k && $2 == s && $3 != "" { print $3 }' <<<"$recorded" | sort -u | paste -sd, -)
+      gaps+=("no passing $k evidence for $s${got:+ (recorded: $got)}: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line (qa-report.md)")
+    done
+  done
+  # Accessibility by surface: web-ui needs axe rows, mobile-ui and desktop-ui
+  # checklist rows; surfaces with no UI are exempt. A row without a Method is a
+  # v0.3 row, which was always axe. One Accessibility waiver covers both.
+  methods=$(awk -F'\t' '$1 != "" { m = tolower($8); print (m == "" ? "axe" : m) }' <<<"$a11y")
+  if [[ -n "$axe_for" ]] && ! grep -qx axe <<<"$methods" && ! accessibility_waived; then
+    gaps+=("no axe accessibility results for $axe_for: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
+  fi
+  if [[ -n "$checklist_for" ]] && ! grep -qx checklist <<<"$methods" && ! accessibility_waived; then
+    gaps+=("no checklist accessibility results for $checklist_for: fill in qa/a11y-checklist.tsv and run qa-summary.sh, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
+  fi
 fi
 
 closed='^(FIXED|RESOLVED|CLOSED|WONTFIX|VERIFIED|DONE)$'

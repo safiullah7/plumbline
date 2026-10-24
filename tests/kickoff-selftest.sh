@@ -2,7 +2,8 @@
 # Self-test for kickoff.sh: the legacy <area> phase-NN form (v0.3's file set,
 # exactly) and the module form (Standard and Full, new and existing modules,
 # repo-wide numbering across both layouts, --no-ux, the standard overlay,
-# .plumbline, errors that change nothing). Run from the repo root:
+# .plumbline, --surfaces: overlays, the UX default, unknown names; errors that
+# change nothing). Run from the repo root:
 #   bash tests/kickoff-selftest.sh
 # Works in bash on macOS and Linux, and in Git Bash on Windows.
 set -u
@@ -223,6 +224,112 @@ out=$(kickoff 2>&1); rc=$?
 eq "no arguments: exit 1" "$rc" 1
 assert "no arguments: prints usage" grep -q '^usage: kickoff.sh' <<<"$out"
 eq "errors: nothing changed" "$(snapshot)" "$before"
+
+# --- Surfaces: overlays and the UX default ---
+rm -rf docs .claude
+# mobile-ui: UX by default; ux.md gets the mobile section once.
+out=$(kickoff shop checkout --surfaces mobile-ui); rc=$?
+F=docs/product/shop/01-checkout
+eq "surfaces mobile-ui: exit 0" "$rc" 0
+eq "surfaces mobile-ui: last line is the folder" "$(tail -n1 <<<"$out")" "$F"
+assert "surfaces mobile-ui: UX by default, ux.md and prototypes/" test -f "$F/ux.md" -a -f "$F/prototypes/.gitkeep"
+eq "surfaces mobile-ui: mobile section appended once" "$(grep -c '^## Mobile design rules' "$F/ux.md")" 1
+assert "surfaces mobile-ui: the template's Screen inventory is still there" grep -q '^## Screen inventory' "$F/ux.md"
+want=$({ sed -e 's/Phase <phase>/Feature 01/g' -e 's/<phase>/01/g' -e 's/<Module>/Shop/g' -e 's/<module>/shop/g' "$TPL/phase/ux.md"; echo; cat "$TPL/surface/mobile/ux.append.md"; })
+eq "surfaces mobile-ui: ux.md is the template, a blank line, then the overlay" "$(cat "$F/ux.md")" "$want"
+assert "surfaces mobile-ui: only ux.md got the section" bash -c "! grep -rq 'Mobile design rules' '$F' --exclude=ux.md"
+eq "surfaces mobile-ui: .plumbline surfaces" "$(feature_meta surfaces)" mobile-ui
+eq "surfaces mobile-ui: .plumbline ux" "$(feature_meta ux)" yes
+eq "surfaces mobile-ui: no <phase> left" "$(grep -rl '<phase>' "$F" | wc -l | tr -d ' ')" 0
+
+# mobile-ui with --no-ux: no ux.md, so no ux append.
+out=$(kickoff shop wallet --surfaces mobile-ui --no-ux); rc=$?
+F=docs/product/shop/02-wallet
+eq "surfaces mobile-ui --no-ux: exit 0" "$rc" 0
+assert "surfaces mobile-ui --no-ux: no ux.md" test ! -e "$F/ux.md"
+assert "surfaces mobile-ui --no-ux: no mobile section anywhere" bash -c "! grep -rq 'Mobile design rules' '$F'"
+eq "surfaces mobile-ui --no-ux: ux=no" "$(feature_meta ux)" no
+
+# api alone: no UX by default; the overlay's contracts/README.md and test-plan section.
+out=$(kickoff shop orders-api --surfaces api); rc=$?
+F=docs/product/shop/03-orders-api
+eq "surfaces api: exit 0" "$rc" 0
+assert "surfaces api: UX defaults to no (no ux.md, no prototypes/)" test ! -e "$F/ux.md" -a ! -e "$F/prototypes"
+assert "surfaces api: no Design verification box" bash -c "! grep -q 'Design verification' '$F/signoff.md'"
+eq "surfaces api: ux=no in .plumbline" "$(feature_meta ux)" no
+assert "surfaces api: contracts/README.md copied next to .gitkeep" test -f "$F/contracts/README.md" -a -f "$F/contracts/.gitkeep"
+assert "surfaces api: README is the template with placeholders filled" same_as "$F/contracts/README.md" "$TPL/surface/api/contracts/README.md" \
+  -e 's/Phase <phase>/Feature 03/g' -e 's/<phase>/03/g' -e 's/<Module>/Shop/g' -e 's/<module>/shop/g'
+assert "surfaces api: README says Feature 03, module shop" grep -q '^Feature 03, module shop\.' "$F/contracts/README.md"
+eq "surfaces api: API evidence plan appended once" "$(grep -c '^## API evidence plan' "$F/test-plan.md")" 1
+assert "surfaces api: the full test plan's own sections are kept" grep -q '^## Traceability' "$F/test-plan.md"
+eq "surfaces api: test-plan ends with the overlay" "$(tail -n 8 "$F/test-plan.md")" "$(tail -n 8 "$TPL/surface/api/test-plan.append.md")"
+
+# api with an explicit --ux wins over the default.
+out=$(kickoff shop orders-ui --surfaces api --ux); rc=$?
+F=docs/product/shop/04-orders-ui
+eq "surfaces api --ux: exit 0" "$rc" 0
+assert "surfaces api --ux: ux.md and prototypes/" test -f "$F/ux.md" -a -f "$F/prototypes/.gitkeep"
+eq "surfaces api --ux: ux=yes" "$(feature_meta ux)" yes
+assert "surfaces api --ux: no mobile section" bash -c "! grep -q 'Mobile design rules' '$F/ux.md'"
+
+# ai: spec and test-plan sections, once each.
+out=$(kickoff shop assistant --surfaces ai); rc=$?
+F=docs/product/shop/05-assistant
+eq "surfaces ai: exit 0" "$rc" 0
+eq "surfaces ai: spec section once" "$(grep -c '^## Model, prompts and limits' "$F/spec.md")" 1
+eq "surfaces ai: test-plan section once" "$(grep -c '^## Eval set' "$F/test-plan.md")" 1
+assert "surfaces ai: no ux.md" test ! -e "$F/ux.md"
+assert "surfaces ai: no contracts/README.md" test ! -e "$F/contracts/README.md"
+
+# cli on the standard profile: the append comes after the profile overlay's spec.
+out=$(kickoff shop export-cli --surfaces cli --profile standard); rc=$?
+F=docs/product/shop/06-export-cli
+eq "surfaces cli standard: exit 0" "$rc" 0
+eq "surfaces cli standard: command surface once" "$(grep -c '^## Command surface' "$F/spec.md")" 1
+assert "surfaces cli standard: spec keeps the slim overlay (Data and permissions)" grep -q '^## Data and permissions' "$F/spec.md"
+eq "surfaces cli standard: command surface is last in spec.md" "$(tail -n 3 "$F/spec.md")" "$(tail -n 3 "$TPL/surface/cli/spec.append.md")"
+assert "surfaces cli standard: no ux.md" test ! -e "$F/ux.md"
+
+# Several surfaces: two of a kind apply their overlay once; names are kept as given.
+out=$(kickoff shop multi --surfaces web-ui-shop,api,api-admin,cli,mobile-ui,mobile-ui-kiosk); rc=$?
+F=docs/product/shop/07-multi
+eq "surfaces multi: exit 0" "$rc" 0
+eq "surfaces multi: .plumbline keeps the names as given" "$(feature_meta surfaces)" web-ui-shop,api,api-admin,cli,mobile-ui,mobile-ui-kiosk
+eq "surfaces multi: api overlay once (test-plan)" "$(grep -c '^## API evidence plan' "$F/test-plan.md")" 1
+eq "surfaces multi: mobile overlay once (ux.md)" "$(grep -c '^## Mobile design rules' "$F/ux.md")" 1
+eq "surfaces multi: cli overlay once (spec.md)" "$(grep -c '^## Command surface' "$F/spec.md")" 1
+assert "surfaces multi: UX default yes with a UI surface" test -f "$F/ux.md"
+out=$(kickoff shop shop-front --surfaces web-ui-shop); rc=$?
+eq "surfaces web-ui-shop: accepted" "$rc" 0
+assert "surfaces web-ui-shop: UX default yes, no overlay sections" bash -c "test -f docs/product/shop/08-shop-front/ux.md && ! grep -rq 'Mobile design rules' docs/product/shop/08-shop-front"
+out=$(kickoff shop svc --surfaces service,library,data,infra); rc=$?
+eq "surfaces without UI or overlays: exit 0" "$rc" 0
+assert "surfaces without UI or overlays: no ux.md" test ! -e docs/product/shop/09-svc/ux.md
+out=$(kickoff shop desk --surfaces desktop-ui); rc=$?
+assert "surfaces desktop-ui: UX default yes" test -f docs/product/shop/10-desk/ux.md
+
+# An unknown surface is a usage error that lists the kinds and creates nothing.
+before=$(snapshot)
+out=$(kickoff shop bad --surfaces api,webui 2>&1); rc=$?
+eq "surfaces unknown: exit 1" "$rc" 1
+assert "surfaces unknown: names the surface" test "$out" != "${out//\'webui\'/}"
+assert "surfaces unknown: lists the kinds" test "$out" != "${out//mobile-ui/}" -a "$out" != "${out//infra/}"
+eq "surfaces unknown: nothing created" "$(snapshot)" "$before"
+kickoff shop bad --surfaces apis >/dev/null 2>&1; eq "surfaces 'apis' is not a surface: exit 1" "$?" 1
+kickoff shop bad --surfaces=cli,Web >/dev/null 2>&1; eq "surfaces uppercase: exit 1" "$?" 1
+eq "surfaces errors: nothing created" "$(snapshot)" "$before"
+
+# Without --surfaces nothing changes: UX yes, no overlay files or sections, no surfaces= line.
+out=$(kickoff shop plain); rc=$?
+F=docs/product/shop/11-plain
+eq "no surfaces: exit 0" "$rc" 0
+assert "no surfaces: UX stays yes" test -f "$F/ux.md" -a -f "$F/prototypes/.gitkeep"
+assert "no surfaces: no overlay files or sections" bash -c "test ! -e '$F/contracts/README.md' && ! grep -rqE 'Mobile design rules|API evidence plan|Eval set|Command surface|Model, prompts' '$F'"
+bad=0
+for t in "$TPL"/phase/*; do same_as "$F/${t##*/}" "$t" -e 's/Phase <phase>/Feature 11/g' -e 's/<phase>/11/g' -e 's/<Module>/Shop/g' -e 's/<module>/shop/g' || bad=1; done
+eq "no surfaces: every doc is its template" "$bad" 0
+assert "no surfaces: .plumbline has no surfaces line" bash -c "! grep -q '^surfaces=' '$F/.plumbline'"
 
 # Numbering continues across modules and legacy phases/ folders.
 rm -rf docs .claude

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Writes briefs/<teammate>.md for each engineer in the dev plan's Team table: its
-# Ownership row, its tasks, only the AC rows those tasks cite, the screens for
-# those use cases, and the contracts it consumes, ending with links to the full
-# docs. Engineers read their brief first instead of every phase doc, which is
+# Ownership row, its surface (the Team table's Surface column, when there is one)
+# with that surface's checks from docs/product/project.md, its tasks, only the AC
+# rows those tasks cite, the screens for those use cases, and the contracts it
+# consumes, ending with links to the full docs. Engineers read their brief first instead of every phase doc, which is
 # most of a build's reading. The lead runs this when it marks the plan READY and
 # again whenever the plan changes. Prints each brief's path.
 source "$(dirname "${0//\\//}")/lib.sh"
@@ -47,6 +48,20 @@ while IFS=$'\t' read -r name _; do
     contracts=$(filter_rows "(^|[^[:alnum:]_-])($name|all)([^[:alnum:]_-]|$)" <<<"$contracts")
   fi
 
+  # The workstream's surface: Team column 4, absent in a v0.3-style 3-column plan.
+  # With a profile row for it, the row's check commands and the ac-check line.
+  surface=$(md_table "$plan" Team | awk -F'\t' -v w="$name" '$1 == w { print $4; exit }' | tr -d '`[:space:]')
+  checks=""
+  if [[ -n "$surface" ]] && row=$(surface_row "$surface"); then
+    cell() { awk -F'\t' -v c="$1" '{ v = $c; gsub(/`/, "", v); print (v == "" ? "(none)" : v) }' <<<"$row"; }
+    checks="Typecheck: $(cell 5)
+Lint: $(cell 6)
+AC tests: $(cell 7)"
+    [[ -n "$acs" ]] && checks="$checks
+Before you report a task done: bash \"<scripts>/ac-check.sh\" \"$(alt <<<"$acs")\" --surface $surface
+(<scripts> is the \"Plumbline scripts\" folder in your context; briefs are committed, so they name no machine path.)"
+  fi
+
   out="$dir/briefs/$name.md"
   {
     echo "# Brief: $name, $(basename "$dir")"
@@ -56,6 +71,11 @@ while IFS=$'\t' read -r name _; do
     echo
     echo "## You own"
     echo "$(owned_globs "$name")"
+    if [[ -n "$surface" ]]; then
+      echo; echo "## Your surface"
+      echo "Surface: $surface"
+      [[ -n "$checks" ]] && echo "$checks"
+    fi
     echo
     echo "## Your tasks"
     echo "${tasks:-(none listed in dev-plan.md)}"

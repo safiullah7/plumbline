@@ -266,5 +266,135 @@ checks true true true
 bash "$G/ac-check.sh" AC-07-001 >/dev/null 2>&1
 eq "gate and ac-check remove their logs" "$(ls -A "$T/tmp" | grep -c .)" "$before"
 
+# --- The surface's own checks: the task gate, ac-check.sh and make-briefs.sh ---
+# A profile with several surfaces whose commands and stub adapters leave a trace,
+# so each case can say which surface's commands ran.
+unset PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC
+export TRACE="$T/trace.log" NPM_LOG="$T/npm.log"
+mkdir -p "$T/stubs"
+for s in api web; do
+  printf '#!/usr/bin/env bash\necho "%s-tests $*" >> "$TRACE"\n' "$s" > "$T/stubs/$s.sh"
+done
+row_api="| api | node | apps/api/** | npm start | echo api-typecheck >> \$TRACE | echo api-lint >> \$TRACE | bash $T/stubs/api.sh |"
+row_web="| web-ui | node | apps/web/** | npm start | echo web-typecheck >> \$TRACE | echo web-lint >> \$TRACE | bash $T/stubs/web.sh |"
+row_worker="| worker | node | apps/worker/** | npm start | echo worker-typecheck >> \$TRACE | echo worker-lint >> \$TRACE | |"
+write_profile() { # surface rows (full table lines)
+  { echo '# Project'; echo; echo '## Surfaces'
+    echo '| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |'
+    echo '| --- | --- | --- | --- | --- | --- | --- |'
+    printf '%s\n' "$@"
+  } > docs/product/project.md
+}
+write_profile "$row_api" "$row_web" "$row_worker"
+P=docs/product/rooms/07-room-schedules
+trace() { paste -sd';' - < "$TRACE"; }
+npm_first() { head -n1 "$NPM_LOG"; }
+gate_as() { # teammate, subject: runs the task gate with the stand-in npm first on PATH
+  : > "$TRACE"; : > "$NPM_LOG"
+  echo "{\"task_subject\":\"$2\",\"teammate_name\":\"$1\"}" | PATH="$T/bin:$PATH" bash "$G/task-completed-gate.sh" >/dev/null 2>&1
+  GATE_RC=$?
+}
+plan() { # the Team table's lines (header, separator, rows), as a CRLF plan
+  { printf '# 07 dev plan\r\n\r\nStatus: READY\r\n\r\n## Team\r\n'; printf '%s\r\n' "$@"
+    printf '\r\n## Ownership\r\n| Teammate | Owned globs |\r\n| --- | --- |\r\n'; } > "$P/dev-plan.md"
+}
+plan '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' \
+  '| eng-api | sonnet | API | api |' '| eng-web | sonnet | UI | `web-ui` |' \
+  '| eng-none | sonnet | Misc |  |' '| eng-x | sonnet | Misc | mobile |'
+gate_as eng-api "[AC-07-001] x"
+eq "gate: a 4-column Team table picks the teammate's surface" "$GATE_RC/$(trace)" \
+  "0/api-typecheck;api-lint;api-tests AC-07-001"
+gate_as eng-web "[AC-07-001][AC-07-002] x"
+eq "gate: another teammate, another surface (backticks, CRLF plan)" "$GATE_RC/$(trace)" \
+  "0/web-typecheck;web-lint;web-tests AC-07-001|AC-07-002"
+gate_as eng-api "[chore] land contracts"
+eq "gate: a [chore] runs the surface's typecheck and lint only" "$GATE_RC/$(trace)" \
+  "0/api-typecheck;api-lint"
+gate_as eng-none "[AC-07-001] x"
+eq "gate: an empty Surface cell passes no surface (npm defaults, two rows)" \
+  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+gate_as eng-x "[AC-07-001] x"
+eq "gate: a surface the profile doesn't list falls back to the npm defaults" \
+  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+gate_as nobody "[AC-07-001] x"
+eq "gate: a teammate with no Team row passes no surface" \
+  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+: > "$TRACE"
+echo '{"task_subject":"[AC-07-001] x","teammate_name":"eng-api"}' \
+  | PLUMBLINE_LINT=true PLUMBLINE_TEST_AC='f(){ echo "env-tests $1" >> $TRACE; }; f' bash "$G/task-completed-gate.sh" >/dev/null 2>&1
+eq "gate: env vars still override the surface's commands" "$(trace)" "api-typecheck;env-tests AC-07-001"
+: > "$TRACE"
+echo '{"task_subject":"[AC-07-001] x","teammate_name":"eng-api"}' \
+  | PLUMBLINE_TYPECHECK=false bash "$G/task-completed-gate.sh" >/dev/null 2>&1; rc=$?
+eq "gate: an env typecheck that fails refuses, with a surface too" "$rc/$(trace)" "2/"
+plan '| Teammate | Model | Workstream |' '| --- | --- | --- |' '| eng-api | sonnet | API |'
+gate_as eng-api "[AC-07-001] x"
+eq "gate: a 3-column Team table behaves as before (npm defaults, two rows)" \
+  "$GATE_RC/$(trace)/$(npm_first)" "0//run -s typecheck"
+write_profile "$row_api"
+gate_as eng-api "[AC-07-001] x"
+eq "gate: a 3-column table and a one-row profile use that row, as before" \
+  "$GATE_RC/$(trace)" "0/api-typecheck;api-lint;api-tests AC-07-001"
+write_profile "$row_api" "$row_web" "$row_worker"
+plan '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' '| eng-api | sonnet | API | web-ui |'
+gate_as eng-api "[AC-07-001] x"
+eq "gate: the plan's surface decides, not the profile's order" "$GATE_RC/$(trace)" \
+  "0/web-typecheck;web-lint;web-tests AC-07-001"
+
+# ac-check.sh --surface
+acs() { : > "$TRACE"; : > "$NPM_LOG"; PATH="$T/bin:$PATH" bash "$G/ac-check.sh" "$@" 2>&1; }
+out=$(acs AC-07-001 --surface api); rc=$?
+eq "ac-check: --surface api runs api's commands" "$rc/$(trace)" "0/api-typecheck;api-lint;api-tests AC-07-001"
+out=$(acs --surface=web-ui "AC-07-001|AC-07-002"); rc=$?
+eq "ac-check: --surface=web-ui runs web's commands" "$rc/$(trace)" \
+  "0/web-typecheck;web-lint;web-tests AC-07-001|AC-07-002"
+out=$(acs AC-07-001 --surface nope); rc=$?
+eq "ac-check: an unknown surface falls back to the npm defaults" "$rc/$(trace)/$(npm_first)" "0//run -s typecheck"
+out=$(acs AC-07-001); rc=$?
+eq "ac-check: no surface and two rows fall back to the npm defaults" "$rc/$(trace)/$(npm_first)" "0//run -s typecheck"
+out=$(acs AC-07-001 --surface worker); rc=$?
+eq "ac-check: a surface with an empty AC tests cell is refused" "$rc/$out" "1/ac-check: no AC test command configured"
+eq "ac-check: ...before any check ran" "$(trace)" ""
+out=$(acs AC-07-001 --surface api); rc=$?
+eq "ac-check: ...while another surface still passes" "$rc" 0
+out=$(PLUMBLINE_TEST_AC='f(){ echo "env-tests $1" >> $TRACE; }; f' acs AC-07-001 --surface worker); rc=$?
+eq "ac-check: the env var fills in a surface's empty AC tests cell" "$rc/$(trace)" "0/worker-typecheck;worker-lint;env-tests AC-07-001"
+
+# make-briefs.sh
+printf '%s\n' '| ID | Use case | Criterion |' '| --- | --- | --- |' '| AC-07-001 | UC-07-001 | one |' \
+  '| AC-07-002 | UC-07-001 | two |' > "$P/acceptance-criteria.md"
+mkbriefs() { # the Team table's lines
+  { printf '# 07 dev plan\n\nStatus: READY\n\n## Team\n'; printf '%s\n' "$@"
+    printf '\n## Ownership\n| Teammate | Owned globs |\n| --- | --- |\n| eng-api | apps/api/** |\n| eng-web | apps/web/** |\n'
+    printf '\n## Tasks\n### eng-api\n- [AC-07-001] one (NORMAL)\n- [AC-07-002] two (NORMAL)\n### eng-web\n- [AC-07-001] ui (NORMAL)\n'
+  } > "$P/dev-plan.md"
+  rm -rf "$P/briefs"
+  bash "$G/make-briefs.sh" 2>&1
+}
+out=$(mkbriefs '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' \
+  '| eng-api | sonnet | API | api |' '| eng-web | sonnet | UI | web-ui |' '| eng-ghost | sonnet | UI | ghost |'); rc=$?
+eq "make-briefs: a 4-column plan writes a brief per teammate" "$rc/$(grep -c 'briefs/' <<<"$out")" "0/3"
+b=$(cat "$P/briefs/eng-api.md")
+assert "make-briefs: the brief names the surface" has "$b" "Surface: api"
+assert "make-briefs: ...and its typecheck cell" has "$b" 'Typecheck: echo api-typecheck >> $TRACE'
+assert "make-briefs: ...and its AC tests cell" has "$b" "AC tests: bash $T/stubs/api.sh"
+assert "make-briefs: ...and the ac-check line with its task IDs and surface" \
+  has "$b" 'ac-check.sh" "AC-07-001|AC-07-002" --surface api'
+assert "make-briefs: ...from the scripts folder named in context, not a machine path" has "$b" 'bash "<scripts>/ac-check.sh"'
+assert "make-briefs: the other surface's commands stay out" test -z "$(grep web- <<<"$b")"
+assert "make-briefs: the AC rows are still there" has "$b" "| AC-07-002 |"
+assert "make-briefs: the second brief has its own surface" has "$(cat "$P/briefs/eng-web.md")" "--surface web-ui"
+b=$(cat "$P/briefs/eng-ghost.md")
+assert "make-briefs: a surface with no profile row is named, without commands" \
+  test -n "$(grep -x 'Surface: ghost' <<<"$b")" -a -z "$(grep -E 'Typecheck:|ac-check' <<<"$b")"
+out=$(mkbriefs '| Teammate | Model | Workstream |' '| --- | --- | --- |' '| eng-api | sonnet | API |'); rc=$?
+b=$(cat "$P/briefs/eng-api.md")
+eq "make-briefs: a 3-column plan still works" "$rc/$(grep -c 'briefs/' <<<"$out")" "0/1"
+assert "make-briefs: ...with no surface section" test -z "$(grep -E 'Your surface|ac-check' <<<"$b")"
+assert "make-briefs: ...and its tasks" has "$b" "- [AC-07-002] two (NORMAL)"
+out=$(mkbriefs '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' '| eng-api | sonnet | API |  |'); rc=$?
+assert "make-briefs: an empty Surface cell gives no surface section" \
+  test "$rc" = 0 -a -z "$(grep 'Your surface' "$P/briefs/eng-api.md")"
+
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

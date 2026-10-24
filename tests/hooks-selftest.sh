@@ -225,6 +225,45 @@ assert "context: lead sees Module from .plumbline" grep -qx "Module: room-schedu
 assert "context: Module follows the phase line" test "$(ctx "$SESSION" | ctx_text | sed -n 2p)" = "Module: room-schedules"
 assert "context: teammate sees Module" grep -qx "Module: room-schedules" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
 rm -f "$P/.plumbline"
+# Surfaces: a Surfaces line from .plumbline, plus each surface's profile commands.
+assert "context: no Surfaces line without surfaces=" test -z "$(ctx "$SESSION" | ctx_text | grep -E '^Surfaces?')"
+printf 'module=rooms\nsurfaces=api,cli,web-ui-shop\n' > "$P/.plumbline"
+assert "context: Surfaces line without a profile" grep -qx "Surfaces: api,cli,web-ui-shop" <<<"$(ctx "$SESSION" | ctx_text)"
+assert "context: no per-surface lines without a profile" test -z "$(ctx "$SESSION" | ctx_text | grep '^Surface ')"
+assert "context: Surfaces comes right after Module" test "$(ctx "$SESSION" | ctx_text | sed -n 3p)" = "Surfaces: api,cli,web-ui-shop"
+mkdir -p docs/product
+cat > docs/product/project.md <<'PROFILE'
+# Project profile
+
+## Surfaces
+| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| api | node | apps/api/** | npm start | npx tsc -p apps/api | npx eslint apps/api | node --dir apps/api |
+| cli | go | cmd/** | | | golangci-lint run | go |
+| web-ui | react | apps/web/** | npm run dev | | | generic |
+| mobile-ui | rn | apps/mobile/** | | | | |
+PROFILE
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: Surface api line has its three commands" grep -qxF "Surface api: typecheck npx tsc -p apps/api; lint npx eslint apps/api; AC tests node --dir apps/api" <<<"$out"
+assert "context: empty cells are left out" grep -qxF "Surface cli: lint golangci-lint run; AC tests go" <<<"$out"
+assert "context: a profile row for a surface the feature doesn't list gets no line" test -z "$(grep -E '^Surface (web-ui|mobile-ui):' <<<"$out")"
+assert "context: a feature surface the profile lacks gets no line" test -z "$(grep '^Surface web-ui-shop' <<<"$out")"
+assert "context: profile lines stay in the Module/Surfaces block" test "$(grep -n '^Surface ' <<<"$out" | head -n1 | cut -d: -f1)" = 4
+assert "context: teammate sees the Surfaces line too" grep -qx "Surfaces: api,cli,web-ui-shop" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
+printf 'module=rooms\nsurfaces=mobile-ui\n' > "$P/.plumbline"
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: Surfaces line when the row has no commands" grep -qx "Surfaces: mobile-ui" <<<"$out"
+assert "context: a row with only empty cells adds no line" test -z "$(grep '^Surface mobile-ui' <<<"$out")"
+printf 'module=rooms\nsurfaces=api\n' > "$P/.plumbline"
+sb=$(git symbolic-ref --short HEAD); git checkout -q -b quick/surf-check
+printf 'branch=quick/surf-check\nids=AC-01-001\n' > .claude/plumbline-quick
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: Quick marker still swaps the context with surfaces=" grep -qxF "Plumbline Quick change in progress (branch quick/surf-check): no feature folder; don't write phase docs." <<<"$out"
+assert "context: Quick marker hides Surfaces lines" test -z "$(grep -E '^Surfaces?[: ]' <<<"$out")"
+rm -f .claude/plumbline-quick
+git checkout -q "$sb" && git branch -q -D quick/surf-check
+rm -f "$P/.plumbline" docs/product/project.md
+assert "context: no Surfaces line once surfaces= is gone" test -z "$(ctx "$SESSION" | ctx_text | grep -E '^Surfaces?')"
 # A Quick change swaps the feature context for a one-line notice and keeps the scripts line.
 # The build skill creates the quick branch before it writes the marker.
 main_branch=$(git symbolic-ref --short HEAD)

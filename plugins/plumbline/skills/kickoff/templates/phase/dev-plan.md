@@ -7,10 +7,12 @@ approves this plan. The Plumbline hooks enforce ownership and task gates only
 when it says READY.
 
 ## Team
-| Teammate | Model | Workstream |
-| --- | --- | --- |
-| eng-api | sonnet | Example: appointment API |
-| eng-web | sonnet | Example: appointment UI |
+Surface names a row of docs/product/project.md and picks that workstream's checks
+(typecheck, lint, AC tests).
+| Teammate | Model | Workstream | Surface |
+| --- | --- | --- | --- |
+| eng-api | sonnet | Example: appointment API | api |
+| eng-web | sonnet | Example: appointment UI | web-ui |
 
 ## Ownership
 One row per teammate, including product, design, qa and qa-runner: a teammate without a row

@@ -2,7 +2,8 @@
 # SessionStart (the lead) and SubagentStart (teammates and Plumbline agents):
 # hand over the context each would otherwise go looking for: the active phase
 # and plan status, its own Ownership row and brief, escalations, and the answered
-# questions that involve it. Claude Code de-duplicates it and re-adds it after
+# questions that involve it; for a feature with surfaces=, those surfaces and
+# their profile commands. Claude Code de-duplicates it and re-adds it after
 # compaction. While a Quick change runs (.claude/plumbline-quick) it says so
 # instead. Never blocks: on any problem it prints nothing and exits 0.
 source "$(dirname "${0//\\//}")/lib.sh"
@@ -47,6 +48,24 @@ q="$dir/questions.md"
 ctx="Plumbline phase: $rel (dev plan: ${status:-not written yet})."
 module=$(feature_meta module)
 [[ -n "$module" ]] && ctx+=$'\n'"Module: $module"
+# The feature's surfaces, each with its profile commands (a row in
+# docs/product/project.md; an empty cell is left out).
+surfaces=$(feature_meta surfaces)
+if [[ -n "$surfaces" ]]; then
+  ctx+=$'\n'"Surfaces: $surfaces"
+  IFS=, read -r -a snames <<<"$surfaces"
+  for s in "${snames[@]}"; do
+    row=$(surface_row "$s") || continue
+    cmds=$(awk -F'\t' '{
+      split("typecheck|lint|AC tests", lab, "|"); out = ""
+      for (i = 1; i <= 3; i++) {
+        c = $(i + 4); gsub(/^[ \t]+|[ \t]+$/, "", c)
+        if (c != "") out = out (out == "" ? "" : "; ") lab[i] " " substr(c, 1, 120)
+      }
+      print out }' <<<"$row")
+    [[ -n "$cmds" ]] && ctx+=$'\n'"Surface $s: $cmds"
+  done
+fi
 ctx+=$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
 if [[ -n "$who" ]]; then
   ctx+=$'\n'"You are $who. You own: $globs"

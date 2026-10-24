@@ -12,7 +12,10 @@ who=$(jqr '.teammate_name // empty' <<<"$input")
 
 # The checks run through run_checks in lib.sh. Their commands are overridable per
 # repo through PLUMBLINE_TYPECHECK, PLUMBLINE_LINT and PLUMBLINE_TEST_AC in the env
-# block of .claude/settings.json. Set one to "" to skip that check.
+# block of .claude/settings.json. Set one to "" to skip that check. Otherwise the
+# commands come from the teammate's surface: the Surface column (4) of its row in
+# the dev plan's Team table names a row of docs/product/project.md. A plan without
+# that column, or a row with an empty cell, passes no surface, as in v0.3.
 subject=$(jqr '.task_subject // empty' <<<"$input")
 ids=$(grep -oE 'AC-[0-9]+-[0-9]+' <<<"$subject" | sort -u | paste -sd'|' -)
 chore=""
@@ -28,7 +31,12 @@ fail() {
 
 cd "$PROJECT_DIR" || exit 0
 [[ -n "$ids" || -n "$chore" ]] || fail "the task subject has no AC IDs. Ask the lead to prefix it, e.g. [AC-03-004]."
-if ! run_checks "$ids"; then   # a [chore] has no IDs, so its tests are skipped
+surface=""
+if dir=$(phase_dir); then
+  surface=$(md_table "$dir/dev-plan.md" Team 2>/dev/null \
+    | awk -F'\t' -v w="$who" '$1 == w { print $4; exit }' | tr -d '`[:space:]')
+fi
+if ! run_checks "$ids" "$surface"; then   # a [chore] has no IDs, so its tests are skipped
   case "$RUN_CHECKS_FAILED" in
     typecheck) fail "typecheck failed." ;;
     lint)      fail "lint failed." ;;
