@@ -59,6 +59,57 @@ build_active() {
   grep -qiE '^Status:[[:space:]]*READY' "$dir/dev-plan.md" 2>/dev/null
 }
 
+# Absolute path of the active feature's module folder: the feature folder's
+# parent, or its grandparent in the legacy docs/product/<area>/phases/<phase>/ layout.
+module_dir() {
+  local dir
+  dir=$(phase_dir) || return 1
+  dir="${dir%/}"
+  [[ "$dir" != "$PROJECT_DIR" ]] || return 1   # line 1 of current-phase is empty
+  dir="${dir%/*}"
+  [[ "${dir##*/}" == phases ]] && dir="${dir%/*}"
+  printf '%s\n' "$dir"
+}
+
+# A value from the active feature's .plumbline file (key=value lines, # starts a
+# comment). A feature without the file, or without the key, reads as a v0.3 phase:
+# profile=full, ux=yes, module=<module folder name>, no surfaces. An unknown key
+# prints nothing.
+feature_meta() { # key
+  local dir v=""
+  dir=$(phase_dir) && [[ -f "$dir/.plumbline" ]] && v=$(awk -v k="$1" '
+    { gsub(/\r/, ""); sub(/#.*/, ""); i = index($0, "=") }
+    !i { next }
+    {
+      key = substr($0, 1, i - 1); val = substr($0, i + 1)
+      gsub(/^[ \t]+|[ \t]+$/, "", key); gsub(/^[ \t]+|[ \t]+$/, "", val)
+      if (key == k) { print val; exit }
+    }' "$dir/.plumbline")
+  if [[ -z "$v" ]]; then
+    case "$1" in
+      profile) v=full ;;
+      ux) v=yes ;;
+      module) v=$(module_dir) && v="${v##*/}" ;;
+    esac
+  fi
+  [[ -n "$v" ]] && printf '%s\n' "$v"
+  return 0
+}
+
+# Number for the next feature folder, repo-wide: the highest number among
+# docs/product/*/<nn>-<slug>/ and legacy docs/product/*/phases/phase-<nn>/, plus 1,
+# zero-padded to two digits (01 when there are none).
+next_feature_number() {
+  local d max=0
+  for d in "$PROJECT_DIR"/docs/product/*/[0-9][0-9]*-*/ "$PROJECT_DIR"/docs/product/*/phases/phase-[0-9]*/; do
+    [[ -d "$d" ]] || continue   # an unmatched glob stays as written
+    d="${d%/}"; d="${d##*/}"; d="${d#phase-}"
+    [[ "$d" =~ ^([0-9]+) ]] || continue
+    (( 10#${BASH_REMATCH[1]} > max )) && max=$((10#${BASH_REMATCH[1]}))
+  done
+  printf '%02d\n' $((max + 1))
+}
+
 # Data rows of a Markdown table, one per line, cells trimmed and tab-separated.
 # With a heading, only tables under the "## <heading>" section; without one, every
 # table in the file. Header and separator rows are skipped.
@@ -146,6 +197,51 @@ teammate_name_for() {
     name="$type"
   fi
   [[ -n "$name" ]] && printf '%s\n' "$name"
+}
+
+# The command for one check: its env var when set (set to "" skips the check),
+# else the legacy npm default.
+check_command() { # env var name, surface, legacy default
+  if [[ -n "${!1+set}" ]]; then printf '%s\n' "${!1}"; return 0; fi
+  # v0.4b: the surface's commands (and AC-test adapter) from docs/product/project.md
+  # go here, between the env vars and the legacy defaults (dev plan §6.8).
+  printf '%s\n' "$3"
+}
+
+# One check for run_checks, in the repo root; an empty command is skipped. The
+# output replaces the log, so on failure the log holds the failing check's output.
+run_check() { # label, command
+  [[ -n "$2" ]] || return 0
+  local t0=$SECONDS
+  if ! (cd "$PROJECT_DIR" && eval "$2") >"$RUN_CHECKS_LOG" 2>&1; then
+    RUN_CHECKS_FAILED="$1"
+    return 1
+  fi
+  RUN_CHECKS_TIMING="$RUN_CHECKS_TIMING${RUN_CHECKS_TIMING:+ · }$1 $((SECONDS - t0))s"
+}
+
+# Typecheck, lint, then the tests named after the given AC IDs, stopping at the
+# first failure. Shared by the task gate and ac-check.sh. Each command is
+# PLUMBLINE_TYPECHECK, PLUMBLINE_LINT or PLUMBLINE_TEST_AC when set (to "" to skip
+# that check), else `npm run -s typecheck`, `npm run -s lint` and
+# `npm run -s test:ac --`. The test command gets the IDs as one quoted argument;
+# empty IDs skip the tests (a [chore] task). The surface is accepted for v0.4b and
+# not used yet. Returns 0 or 1 and leaves, for the caller:
+#   RUN_CHECKS_FAILED  the check that failed: typecheck, lint or tests ("" on a pass)
+#   RUN_CHECKS_LOG     temp file with the last check's output; the caller removes it
+#   RUN_CHECKS_TIMING  the checks that passed, e.g. "typecheck 12s · lint 4s · tests 9s"
+run_checks() { # "<IDs separated by |>" [surface]
+  local ids="$1" surface="${2:-}" typecheck lint test_ac
+  typecheck=$(check_command PLUMBLINE_TYPECHECK "$surface" "npm run -s typecheck")
+  lint=$(check_command PLUMBLINE_LINT "$surface" "npm run -s lint")
+  test_ac=$(check_command PLUMBLINE_TEST_AC "$surface" "npm run -s test:ac --")
+  RUN_CHECKS_FAILED="" RUN_CHECKS_TIMING="" RUN_CHECKS_LOG=$(mktemp)
+  run_check typecheck "$typecheck" || return 1
+  run_check lint "$lint" || return 1
+  if [[ -n "$test_ac" && -n "$ids" ]]; then
+    run_check tests "$test_ac \"\$ids\"" || return 1
+  fi
+  return 0
 }
 
 debug_log() {

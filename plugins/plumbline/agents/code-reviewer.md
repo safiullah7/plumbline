@@ -15,8 +15,8 @@ it.
 
 Check, in order: tenant isolation and authorization on every query and endpoint;
 contract conformance; AC coverage by tests; error handling and validation; UI
-states and accessibility against ux.md; security (injection, secrets, patient or
-personal data in logs); performance (N+1 queries, missing indexes); readability.
+states and accessibility against ux.md; security (injection, secrets, personal or
+sensitive data in logs); performance (N+1 queries, missing indexes); readability.
 
 Report gaps against those criteria, not style preferences. List Critical and
 Warning findings, each with file:line and a concrete fix; add Suggestions only

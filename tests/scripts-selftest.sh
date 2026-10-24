@@ -106,14 +106,31 @@ echo '[{"violations":[{"id":"label","impact":"minor"}]},{"violations":[]}]' > "$
 bash "$G/qa-summary.sh" >/dev/null
 report=$(cat "$P/qa-report.md")
 assert "qa-summary: visual row written" has "$report" "| rooms-list | 390 | 3.1% | 20% | ok | qa/diff/rooms-list-390.png |"
-assert "qa-summary: counts one axe result by impact" has "$report" "| rooms-list | 390 | 1 | 1 | 1 | 0 | qa/a11y/rooms-list-390.json |"
-assert "qa-summary: counts an array of axe results" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json |"
+assert "qa-summary: counts one axe result by impact" has "$report" "| rooms-list | 390 | 1 | 1 | 1 | 0 | qa/a11y/rooms-list-390.json | axe |"
+assert "qa-summary: counts an array of axe results" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json | axe |"
 assert "qa-summary: keeps the rest of the report" has "$report" "BUG-01-001"
 bash "$G/qa-summary.sh" >/dev/null
 assert "qa-summary: rerunning doesn't duplicate rows" test "$(grep -c '| rooms-list | 390 | 1 |' "$P/qa-report.md")" = 1
 out=$(bash "$G/signoff-check.sh")
 assert "signoff-check: serious accessibility violations named" has "$out" "rooms-list at 390 has 1 critical and 1 serious violation(s)"
 echo '{"violations":[{"id":"region","impact":"moderate"}]}' > "$P/qa/a11y/rooms-list-390.json"
+
+# qa-summary: the manual accessibility checklist adds Method "checklist" rows.
+printf '# screen\twidth\tcheck\tresult\timpact\tevidence\r\nsettings\t390\tfocus-visible\tfail\tcritical\tqa/shots/a.png\r\n\r\nsettings\t390\tlabels\tfail\tminor\tqa/shots/b.png\nsettings\t390\ttargets\tpass\tserious\tqa/shots/c.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+report=$(cat "$P/qa-report.md")
+assert "qa-summary: checklist failures add up by impact" has "$report" "| settings | 390 | 1 | 0 | 0 | 1 | qa/a11y-checklist.tsv | checklist |"
+assert "qa-summary: all-pass checklist screen gets zeros" has "$report" "| home | 390 | 0 | 0 | 0 | 0 | qa/a11y-checklist.tsv | checklist |"
+assert "qa-summary: axe rows keep Method axe beside checklist rows" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json | axe |"
+assert "qa-summary: Accessibility header has Method" has "$report" "| Screen | Width | Critical | Serious | Moderate | Minor | Report | Method |"
+assert "qa-summary: axe rows come before checklist rows" test "$(grep -n 'add-room-dialog | 1280' "$P/qa-report.md" | cut -d: -f1)" -lt "$(grep -n '| settings | 390' "$P/qa-report.md" | cut -d: -f1)"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: rerunning doesn't duplicate checklist rows" test "$(grep -c '| settings | 390 |' "$P/qa-report.md")" = 1
+printf 'settings\t390\tcontrast\tfail\tserious\tqa/shots/e.png\n' >> "$P/qa/a11y-checklist.tsv"
+bash "$G/qa-summary.sh" >/dev/null
+assert "qa-summary: checklist serious failure is counted" has "$(cat "$P/qa-report.md")" "| settings | 390 | 1 | 1 | 0 | 1 | qa/a11y-checklist.tsv | checklist |"
+assert "signoff-check: serious checklist failure named" has "$(bash "$G/signoff-check.sh")" "settings at 390 has 1 critical and 1 serious violation(s)"
+printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
 bash "$G/qa-summary.sh" >/dev/null
 
 sed -i 's/| Fail |/| Pass |/' "$P/test-plan.md"
@@ -129,7 +146,7 @@ assert "signoff-check: says no gaps" has "$out" "no gaps"
 cp "$P/qa-report.md" "$T/qa-report.bak"
 sed -i 's/^| rooms-list | 390 | 0 | 0 |/| rooms-list | 390 | skipped | skipped |/' "$P/qa-report.md"
 assert "signoff-check: non-numeric accessibility counts are a gap" has "$(bash "$G/signoff-check.sh")" "aren't counts"
-rm -f "$P"/qa/a11y/*.json && bash "$G/qa-summary.sh" >/dev/null
+rm -f "$P"/qa/a11y/*.json "$P/qa/a11y-checklist.tsv" && bash "$G/qa-summary.sh" >/dev/null
 assert "signoff-check: no accessibility results is a gap" has "$(bash "$G/signoff-check.sh")" "no accessibility results"
 add_after() { # file line-regex text: insert text after the first matching line
   awk -v re="$2" -v text="$3" '{ print } !done && $0 ~ re { print text; done = 1 }' "$1" > "$T/edit" && mv "$T/edit" "$1"

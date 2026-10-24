@@ -19,6 +19,10 @@ Test plan (test-plan.md, written before the build starts):
   Environments so the UX engineer's prototypes use the same data.
 - Write each case so someone else can run it without asking you: preconditions,
   exact steps, exact expected result, viewport, account.
+- Evidence section: for each AC, the evidence it will produce and where it will
+  be kept: test names (named after the AC ID), command or API transcripts,
+  screenshots, accessibility scans. One line per kind, naming the AC IDs it
+  covers; the QA report links to each.
 
 Execution:
 - The plumbline:qa-runner agent (teammate "qa-runner") executes the plan and
@@ -26,7 +30,7 @@ Execution:
   Without a runner, execute the plan yourself the same way.
 - Run the automated suites, then exercise every journey in the browser at
   desktop and mobile widths.
-- Each defect: ID (BUG-<phase>-<nnn>), AC ID, steps, expected, actual, severity
+- Each defect: ID (BUG-<nn>-<nnn>), AC ID, steps, expected, actual, severity
   (critical, high, medium, low), status (OPEN, FIXED, VERIFIED, WONTFIX),
   evidence (screenshot path or test output).
 - Ask product when the spec is ambiguous and design when ux.md is; log it in
