@@ -315,8 +315,21 @@ UX: yes | no
 Engineers: <n>
 Docs: none | slim | full
 Team: no | yes
+Models: lead opus, <each other role in Roles> <opus | sonnet>
 Why: <one line>
 ```
+
+**Models (revision 5, Safi 2026-10-26):** the lead is always Opus and only
+plans (a step-by-step plan per engineer), coordinates and reviews; it never
+writes code. Other roles get Opus only where the judgement carries risk:
+product for Full, a new module, or rules on permissions, money, personal data,
+migrations or many cases; UX for a new screen or flow; QA for auth or
+permissions, data separation, billing, migrations, concurrency or an ai eval
+design; engineers and reviewers for work in those areas (the lead may raise a
+HIGH workstream to Opus). Triage and the QA runner run on Sonnet. The build
+skill dispatches each role with its model and never overrides the lead's.
+The v0.4b trial of a Sonnet Quick lead was dropped: it skipped the code review
+in 2 eval runs.
 
 **Quick criteria IDs** are `AC-<yymmdd>-<nn>` (e.g. `AC-261024-01`): unique
 per day, and matching the gate regex and test naming.

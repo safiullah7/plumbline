@@ -112,6 +112,13 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   QA and QA runner for Standard and Full.
 - Evidence: each surface's kinds from By surface, as `<surface>: <kind>, <kind>`,
   surfaces separated by `; `.
+- Models: opus only where the judgement carries risk; the lead is always opus.
+  | Role | opus when | else |
+  | --- | --- | --- |
+  | product | Full, a new module, or rules on permissions, money, personal data, migrations or many cases | sonnet |
+  | UX | a new screen or flow | sonnet |
+  | QA | auth or permissions, data separation, billing, migrations, concurrency, an ai eval design | sonnet |
+  | engineers, reviewer | the work is in one of the QA opus areas (the lead may still raise a HIGH workstream to opus) | sonnet |
 - Return this block exactly, one chosen value per line:
   ```
   Plumbline triage
@@ -125,6 +132,7 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   Engineers: <n>
   Docs: none | slim | full
   Team: no | yes
+  Models: lead opus, <each other role in Roles> <opus | sonnet>
   Why: <one line>
   ```
 - Quick: then 1-3 criteria, IDs AC-<yymmdd>-<nn> from today (e.g. AC-261024-01),

@@ -13,9 +13,10 @@ Arguments, in either form:
 
 <plugin> is the folder two levels above this SKILL.md.
 
-1. Module form with docs/product/project.md and no `--surfaces`: ask which of
-   the profile's surfaces the feature touches (propose the ones whose Paths
-   fit), and add `--surfaces` with the answer. With a shell, if
+1. Module form with docs/product/project.md and no `--surfaces`: add
+   `--surfaces` yourself, with the profile surfaces whose Paths hold the
+   module's code (every profile surface when you can't tell), and say which
+   you used in your report; don't ask. With a shell, if
    `git rev-parse --show-toplevel` isn't the folder this session started in,
    stop and say to start Claude Code in the repo root. Then run
    `bash <plugin>/scripts/kickoff.sh <arguments, without the short name>`.

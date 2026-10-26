@@ -65,12 +65,24 @@ Plumbline triage
 Size: Quick
 Module: rooms (existing)
 Folder: none
+Surfaces: api
+Roles: product, lead, 1 engineer, reviewer
+Evidence: api: contract, authz, negative, transcripts
 UX: no
 Engineers: 1
 Docs: none
 Team: no
+Models: lead opus, product sonnet, engineers sonnet, reviewer sonnet
 Why: one rule changes in one module; no new screen, schema or shared contract
 ```
+
+**Models by complexity.** The lead always runs on Opus and never writes the code: it
+reads it, writes each engineer a step-by-step plan, and reviews. Every other role gets
+Opus only where the judgement carries risk: product for Full work, new modules or rules
+about permissions, money, personal data or migrations; UX for a new screen or flow; QA
+for auth, data separation, billing, migrations, concurrency or AI evals; engineers and
+reviewers for HIGH-risk workstreams. Everything else runs on Sonnet. The triage block's
+`Models:` line shows the choice before any work starts.
 
 | | **Quick** | **Standard** | **Full** |
 | --- | --- | --- | --- |
@@ -550,7 +562,7 @@ still read by every script, nothing is moved, and new features in such an area g
 | **v0.2** | ✅ shipped | A method for every role, the creation gate, injected context, briefs, the eval suite (0.84 → 1.00) |
 | **v0.3** | ✅ shipped | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
 | **v0.4a** | ✅ shipped | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
-| **v0.4b** | 🔍 in review | **Project awareness:** a confirmed project profile, ten surfaces, test adapters (node, pytest, go, generic), QA evidence per surface checked at signoff, and agents that adapt to each surface. Evals and live smoke test pending |
+| **v0.4b** | 🔍 in review | **Project awareness:** a confirmed project profile, ten surfaces, test adapters (node, pytest, go, generic), QA evidence per surface checked at signoff, and agents that adapt to each surface. live smoke test pending |
 
 The full plan, with every task and its acceptance check, is in [`docs/dev-plan.md`](docs/dev-plan.md).
 

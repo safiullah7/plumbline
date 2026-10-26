@@ -64,6 +64,7 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    Engineers: <n>
    Docs: none | slim | full
    Team: no | yes
+   Models: lead opus, <each other role in Roles> <opus | sonnet>
    Why: <one line>
    ```
 
@@ -76,7 +77,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    Otherwise go straight on. If an answer changes the module, size, surfaces
    or criteria, re-run step 2 with the answers added and print the new block.
    From here on, dispatch only the roles the Roles line lists, and
-   plumbline:ux-engineer only when the block says `UX: yes`.
+   plumbline:ux-engineer only when the block says `UX: yes`. Dispatch each
+   role with its model from the Models line; never give the lead a model: it
+   always runs on opus.
    Never start Full work without the user's yes. If the size is Full and teams
    aren't available, stop: say Full needs an agent team and print the launch
    command `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude`.
@@ -104,8 +107,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    2. Dispatch plumbline:lead-engineer with: "Quick mode. Request: <request>.
       Module: <module>. Surface: <the block's one surface, or none without a
       profile>. Criteria: <IDs and
-      text>. Branch: <branch> (created; you're on it). Scripts: <plugin>/scripts."
-      Model trial (v0.4b; delete this line to revert): dispatch it with model sonnet.
+      text>. Branch: <branch> (created; you're on it). Scripts: <plugin>/scripts.
+      Models: engineer <model>, reviewer <model>." (from the Models line).
       The lead dispatches one senior engineer, runs
       `ac-check.sh "<IDs>" --surface <surface>`, gets a review, pushes and
       opens the PR; it never creates a folder or merges. If it reports the
@@ -123,14 +126,15 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       project.md you wrote in step 1) by path.
    2. Dispatch plumbline:product-engineer: write the slim spec.md and
       acceptance-criteria.md for the request in the folder. Then dispatch,
-      together: plumbline:qa-engineer with model sonnet to write test-plan.md
+      together: plumbline:qa-engineer to write test-plan.md
       (one Traceability row per AC with Status `planned`, and an Evidence line
       per kind and surface, from the block's Evidence line, which you quote),
       and, if `UX: yes`, plumbline:ux-engineer for ux.md and one mockup
       per key screen.
    3. Dispatch plumbline:lead-engineer to write dev-plan.md (Status: DRAFT,
-      1-2 engineers). Show its summary and ask one question: approve the plan,
-      or change it (say what). Relay changes to the lead until approved.
+      1-2 engineers), quoting the block's Models line for the Team table.
+      Show its summary and ask one question: approve the plan, or change it
+      (say what). Relay changes to the lead until approved.
    4. Tell the lead the plan is approved: it sets READY, runs make-briefs.sh and
       builds, dispatching the engineers and a reviewer per workstream as
       subagents, and checks each workstream with
