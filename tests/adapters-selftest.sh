@@ -10,8 +10,8 @@
 set -u
 A="$(cd "$(dirname "${0//\\//}")/.." && pwd)/plugins/plumbline/scripts/ac-tests"
 CACHE="${TMPDIR:-/tmp}/plumbline-adapters-npm"   # before TMPDIR moves below
-T=$(mktemp -d); FXJ="" FXV=""
-trap 'rm -rf "$T" ${FXJ:+"$FXJ"} ${FXV:+"$FXV"}' EXIT
+T=$(mktemp -d); FXJ="" FXV="" FXP=""
+trap 'rm -rf "$T" ${FXJ:+"$FXJ"} ${FXV:+"$FXV"} ${FXP:+"$FXP"}' EXIT
 mkdir -p "$T/tmp"
 export TMPDIR="$T/tmp"
 unset CLAUDE_PROJECT_DIR PLUMBLINE_TEST_AC
@@ -182,6 +182,245 @@ else
     adapter node "$root" "AC-261024-01|AC-01-099"
     expect "$r: Quick ID passes, other missing" 1 "AC-261024-01: pass (1)" "AC-01-099: missing"
   done
+fi
+
+# --- playwright: parsing, on recorded JSON (needs only node) ---
+# A stand-in `playwright` that writes a recorded report to the file the adapter names
+# (or to stdout, as older versions did) and records how it was called.
+if command -v node >/dev/null 2>&1; then
+  W="$T/pw-fake"; mkdir -p "$W/node_modules/.bin" "$W/apps/web"
+  cat > "$W/node_modules/.bin/playwright" <<'EOF'
+#!/usr/bin/env bash
+echo "$PWD $*" > "$FAKE_ARGS"
+if [[ -n "${FAKE_STDOUT:-}" ]]; then cat "$FAKE_JSON"; exit "${FAKE_RC:-1}"; fi
+cp "$FAKE_JSON" "$PLAYWRIGHT_JSON_OUTPUT_NAME"
+echo "fake playwright output"
+exit "${FAKE_RC:-1}"
+EOF
+  chmod +x "$W/node_modules/.bin/playwright"
+  # mkjson <out>: file|path (describes > title)|status|expectedStatus|attempts, one test per line,
+  # to Playwright's JSON shape: suites (files) > suites (describes) > specs > tests > results.
+  mkjson() {
+    node -e '
+      const lines = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean);
+      const files = {};
+      for (const l of lines) {
+        const [file, path, status, expected, attempts] = l.split("|");
+        const f = files[file] || (files[file] = { title: file, file, specs: [], suites: [] });
+        const titles = path.split(" > "), title = titles.pop();
+        let s = f;
+        for (const t of titles) {
+          let c = s.suites.find((x) => x.title === t);
+          if (!c) { c = { title: t, file, specs: [], suites: [] }; s.suites.push(c); }
+          s = c;
+        }
+        s.specs.push({ title, ok: status === "expected", file, tests: [{
+          projectName: "", expectedStatus: expected, annotations: [], status,
+          results: attempts.split(",").map((a, i) => ({ status: a, retry: i })) }] });
+      }
+      const out = { config: {}, suites: Object.values(files), errors: [], stats: {} };
+      require("fs").writeFileSync(process.argv[1], JSON.stringify(out));
+    ' "$1"
+  }
+  mkjson "$T/pw.json" <<'EOF'
+a.spec.js|AC-01-001 plain|expected|passed|passed
+a.spec.js|AC-01-001 other|expected|passed|passed
+a.spec.js|AC-01-0010 not the same ID|unexpected|passed|failed
+a.spec.js|Checkout > AC-01-002 flaky|flaky|passed|failed,passed
+a.spec.js|AC-01-003 interrupted|unexpected|passed|interrupted
+a.spec.js|AC-01-004 timed out|unexpected|passed|timedOut
+a.spec.js|AC-01-005 marked test.fail|expected|failed|failed
+a.spec.js|AC-01-006 skipped|skipped|passed|skipped
+a.spec.js|AC-01-007 group > works|expected|passed|passed
+a.spec.js|Outer > AC-01-007 inner > works|expected|passed|passed
+a.spec.js|AC-01-008 per project|expected|passed|passed
+a.spec.js|AC-01-008 per project|unexpected|passed|failed
+a.spec.js|AC-01-009 per project|expected|passed|passed
+a.spec.js|AC-01-009 per project|expected|passed|passed
+AC-01-011.spec.js|works|expected|passed|passed
+a.spec.js|   AC-01-012   spaced   |expected|passed|passed
+EOF
+  pw_fake() { # root args...: sets out, all and rc, with the recorded report in $T/pw.json
+    local root="$1"; shift
+    FAKE_JSON="$T/pw.json" FAKE_ARGS="$T/pw.args" adapter playwright "$root" "$@"
+  }
+  pw_fake "$W" "AC-01-001";   expect "playwright json: pass, counted" 0 "AC-01-001: pass (2)"
+  pw_fake "$W" "AC-01-0010";  expect "playwright json: a failure of AC-01-0010 stays with it" 1 "AC-01-0010: fail"
+  pw_fake "$W" "AC-01-002";   expect "playwright json: flaky (passed only on a retry) is a fail" 1 "AC-01-002: fail"
+  pw_fake "$W" "AC-01-003";   expect "playwright json: interrupted isn't a pass" 1 "AC-01-003: missing"
+  pw_fake "$W" "AC-01-004";   expect "playwright json: timedOut is a fail" 1 "AC-01-004: fail"
+  pw_fake "$W" "AC-01-005";   expect "playwright json: test.fail (an expected failure) isn't a pass" 1 "AC-01-005: missing"
+  pw_fake "$W" "AC-01-006";   expect "playwright json: skipped isn't a pass" 1 "AC-01-006: missing"
+  pw_fake "$W" "AC-01-007";   expect "playwright json: the ID in a describe title counts, at any depth" 0 "AC-01-007: pass (2)"
+  pw_fake "$W" "AC-01-008";   expect "playwright json: a project's failure fails the ID" 1 "AC-01-008: fail"
+  pw_fake "$W" "AC-01-009";   expect "playwright json: every project run is counted" 0 "AC-01-009: pass (2)"
+  pw_fake "$W" "AC-01-011";   expect "playwright json: an ID only in the file name isn't a test's" 1 "AC-01-011: missing"
+  pw_fake "$W" "AC-01-012";   expect "playwright json: whitespace in a title is collapsed" 0 "AC-01-012: pass (1)"
+  pw_fake "$W" "AC-01-001|AC-01-099|AC-01-004"
+  expect "playwright json: per-ID lines in the order given" 1 "AC-01-001: pass (2)" "AC-01-099: missing" "AC-01-004: fail"
+  pw_fake "$W" "AC-01-001, ac_01_007"
+  expect "playwright json: comma list and underscore form" 0 "AC-01-001: pass (2)" "AC-01-007: pass (2)"
+  if [[ "$(cat "$T/pw.args")" == */pw-fake" test --grep [Aa][Cc][-_]01[-_]001|[Aa][Cc][-_]01[-_]007 --reporter=json --retries=0" ]]; then
+    ok "playwright: the runner is called with --grep <regex>, --reporter=json and --retries=0, in the run folder"
+  else fail "playwright: runner arguments ('$(cat "$T/pw.args")')"; fi
+  pw_fake "$W" --dir apps/web "AC-01-001"
+  if [[ "$(cut -d' ' -f1 "$T/pw.args")" == */pw-fake/apps/web && "$out" == "AC-01-001: pass (2)" ]]; then
+    ok "playwright: --dir runs it in that folder, finding the bin in a parent's node_modules"
+  else fail "playwright: --dir ('$(cat "$T/pw.args")', '$out')"; fi
+  FAKE_STDOUT=1 pw_fake "$W" "AC-01-001"; expect "playwright json: older versions' JSON on stdout still reads" 0 "AC-01-001: pass (2)"
+  echo 'not json' > "$T/bad.json"
+  FAKE_JSON="$T/bad.json" FAKE_ARGS="$T/pw.args" adapter playwright "$W" "AC-01-001"
+  if [[ "$rc" == 1 && "$out" == "AC-01-001: missing" && "$all" == *"fake playwright output"* ]]; then
+    ok "playwright: unreadable JSON is all missing, exit 1, with the runner's output"
+  else fail "playwright: bad JSON (rc $rc, '$all')"; fi
+  echo '{"config":{},"suites":[],"errors":[{"message":"boom"}],"stats":{}}' > "$T/empty.json"
+  FAKE_JSON="$T/empty.json" FAKE_ARGS="$T/pw.args" adapter playwright "$W" "AC-01-001"
+  expect "playwright json: a run with no tests is missing" 1 "AC-01-001: missing"
+
+  # combine.sh on stand-in commands (each ends in a comment, so the appended IDs are ignored)
+  comb() { # args...: combine.sh, with CLAUDE_PROJECT_DIR=$W; sets out, all and rc
+    adapter combine "$W" "$@"
+  }
+  comb --cmd "echo 'AC-01-001: pass (2)'; echo 'AC-01-002: pass (1)'; echo 'AC-01-003: missing'; echo 'AC-01-004: fail'; false #" \
+       --cmd "echo 'AC-01-001: pass (1)'; echo 'AC-01-002: missing'; echo 'AC-01-003: missing'; echo 'AC-01-004: pass (3)'; false #" \
+       "AC-01-001|AC-01-002|AC-01-003|AC-01-004"
+  expect "combine: pass sums, one runner is enough, missing in both, fail wins" 1 \
+    "AC-01-001: pass (3)" "AC-01-002: pass (1)" "AC-01-003: missing" "AC-01-004: fail"
+  comb --cmd "echo 'AC-01-001: pass (2)'; true #" --cmd "echo 'AC-01-001: missing'; false #" "AC-01-001"
+  expect "combine: another command's exit 1 for an ID passed elsewhere isn't a failure" 0 "AC-01-001: pass (2)"
+  comb --cmd "echo 'AC-01-001: pass (1)'; echo 'AC-01-002: pass (1)' #" "ac_01_002, AC-01-001"
+  expect "combine: IDs in the normal form, each once, in the order given" 0 "AC-01-002: pass (1)" "AC-01-001: pass (1)"
+  comb --cmd "echo 'AC-01-001: pass (1)' #" --cmd "echo 'playwright: not installed'; false #" "AC-01-001"
+  if [[ "$rc" == 1 && "$out" == "AC-01-001: pass (1)" && "$all" == *"playwright: not installed"* ]]; then
+    ok "combine: a runner problem (exit 1, no per-ID lines) fails the run and shows its output"
+  else fail "combine: runner problem (rc $rc, '$all')"; fi
+  comb --cmd "echo hello #" --cmd "echo 'AC-01-001: pass (1)' #" "AC-01-001"
+  if [[ "$rc" == 0 && "$out" == "AC-01-001: pass (1)" && "$all" == *"no per-ID lines"* ]]; then
+    ok "combine: a command with no lines and exit 0 proves nothing, and says so"
+  else fail "combine: no lines (rc $rc, '$all')"; fi
+  comb --cmd "echo 'AC-01-001: pass (1)'; printf 'AC-01-002: pass (1)\r\n' #" "AC-01-001|AC-01-002"
+  expect "combine: CRLF output is read" 0 "AC-01-001: pass (1)" "AC-01-002: pass (1)"
+  comb --cmd "echo 'AC-01-001: fail'; seq 1 60; false #" "AC-01-001"
+  if [[ "$rc" == 1 && "$all" == *"(last 40 lines)"* && "$all" == *$'\n60' && "$all" != *$'\n20\n'* ]]; then
+    ok "combine: a failing command's output tail is the last 40 lines"
+  else fail "combine: tail (rc $rc)"; fi
+  comb "AC-01-001"; eq_rc "combine: usage: no --cmd exits 2" 2
+  comb --cmd "true #"; eq_rc "combine: usage: no IDs exits 2" 2
+  comb --cmd "true #" "AC-01-001|foo"; eq_rc "combine: usage: a token that isn't an ID exits 2" 2
+  comb --cmd "  " "AC-01-001"; eq_rc "combine: usage: a blank --cmd exits 2" 2
+  comb --bogus --cmd "true #" "AC-01-001"; eq_rc "combine: usage: unknown option exits 2" 2
+  comb --cmd "test -d node_modules/.bin && echo 'AC-01-001: pass (1)' #" "AC-01-001"
+  expect "combine: commands run in the repo root" 0 "AC-01-001: pass (1)"
+else
+  skip "playwright json cases (node not installed)"
+fi
+
+# --- playwright: real runs (no browser: the tests don't use one) ---
+have_playwright() {
+  [[ -x "$CACHE/node_modules/.bin/playwright" ]] && return 0
+  command -v npm >/dev/null 2>&1 || return 1
+  mkdir -p "$CACHE" || return 1
+  echo "      (installing @playwright/test into $CACHE, once)"
+  (cd "$CACHE" && { [[ -f package.json ]] || printf '{ "name": "plumbline-adapters-npm", "private": true }\n' > package.json
+                    npm install --no-save --no-audit --no-fund --loglevel=error \
+                      --fetch-retries=1 --fetch-timeout=30000 @playwright/test@1.64.0 >/dev/null 2>&1; }) || return 1
+  [[ -x "$CACHE/node_modules/.bin/playwright" ]]
+}
+if ! command -v node >/dev/null 2>&1; then
+  skip "playwright (node not installed)"
+elif ! have_playwright; then
+  skip "playwright (no network)"
+else
+  # Inside the cache, so the bin and @playwright/test resolve from the parent.
+  FXP=$(mktemp -d "$CACHE/fx-pw.XXXXXX")
+  mkdir -p "$FXP/e2e"
+  printf '{ "name": "fxp", "private": true }\n' > "$FXP/package.json"
+  # retries: 2 in the config, so the adapter's --retries=0 is what makes AC-01-009 fail.
+  printf "module.exports = { testDir: 'e2e', retries: 2, timeout: 1000 };\n" > "$FXP/playwright.config.js"
+  cat > "$FXP/e2e/ac.spec.js" <<'EOF'
+const { test, expect } = require('@playwright/test');
+test('AC-01-001 one', () => { expect(1 + 1).toBe(2); });
+test.describe('AC-01-001 suite', () => { test('two', () => { expect(1).toBe(1); }); });
+test('AC-01-002 fails', () => { expect(1).toBe(2); });
+test.skip('AC-01-003 skipped', () => {});
+test('AC-01-003 skipped inside', () => { test.skip(true, 'later'); });
+test.fixme('AC-01-004 fixme', () => {});
+test('ac_01_005 lowercase underscores', () => {});
+test('AC-261024-01 quick', () => {});
+test('AC-01-0010 other', () => { expect(1).toBe(2); });
+test('AC-01-006 times out', async () => { await new Promise((r) => setTimeout(r, 3000)); });
+test.describe('serial', () => {
+  test.describe.configure({ mode: 'serial' });
+  test('AC-01-007 first fails', () => { expect(1).toBe(2); });
+  test('AC-01-008 not run after it', () => {});
+});
+test('AC-01-009 flaky: passes only on a retry', ({}, info) => { expect(info.retry).toBeGreaterThan(0); });
+test('unrelated', () => { expect(1).toBe(2); });
+EOF
+  common_cases playwright "$FXP" playwright "fixme"
+  adapter playwright "$FXP" "AC-01-006";  expect "playwright: a timed-out test is a fail" 1 "AC-01-006: fail"
+  adapter playwright "$FXP" "AC-01-007|AC-01-008"
+  expect "playwright: a test not run after a serial failure is missing" 1 "AC-01-007: fail" "AC-01-008: missing"
+  adapter playwright "$FXP" "AC-01-009"
+  expect "playwright: flaky (config retries 2, adapter --retries=0) is a fail" 1 "AC-01-009: fail"
+  adapter playwright "$FXP" "AC-01-001" --surface web-ui
+  expect "playwright: --surface is accepted and ignored" 0 "AC-01-001: pass (2)"
+  adapter playwright "$FXP" "AC-01-002"
+  [[ "$all" == *"--- playwright output (last 40 lines) ---"* ]] && ok "playwright: a fail shows the runner's output tail" \
+    || fail "playwright: output tail"
+  # Monorepo: the bin is hoisted to a parent's node_modules, the config is in the package.
+  M="$FXP/mono"; mkdir -p "$M/apps/web/e2e"
+  printf '{ "name": "root", "private": true }\n' > "$M/package.json"
+  printf '{ "name": "web", "private": true }\n' > "$M/apps/web/package.json"
+  printf "module.exports = { testDir: 'e2e' };\n" > "$M/apps/web/playwright.config.js"
+  printf "const { test } = require('@playwright/test');\ntest('AC-02-001 web', () => {});\n" > "$M/apps/web/e2e/w.spec.js"
+  adapter playwright "$M" --dir apps/web "AC-02-001"
+  expect "playwright: --dir monorepo subfolder" 0 "AC-02-001: pass (1)"
+  # Not found above the fixture, and npx can't find it either (a global install
+  # would): exit 1 with the message.
+  mkdir -p "$T/pw-none/e2e" "$T/no-npx"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$T/no-npx/npx"; chmod +x "$T/no-npx/npx"
+  all=$(PATH="$T/no-npx:$PATH" CLAUDE_PROJECT_DIR="$T/pw-none" bash "$A/playwright.sh" AC-01-001 2>&1); rc=$?
+  if [[ "$rc" == 1 && "$all" == "playwright: not installed" ]]; then ok "playwright: not installed exits 1"
+  else fail "playwright: not installed (rc $rc, '$all')"; fi
+
+  # combine.sh over the real runners: node:test and Playwright, one project.
+  C="$FXP/combo"; mkdir -p "$C/test" "$C/e2e"
+  printf '{ "name": "combo", "private": true }\n' > "$C/package.json"
+  printf "module.exports = { testDir: 'e2e' };\n" > "$C/playwright.config.js"
+  cat > "$C/test/unit.test.js" <<'EOF'
+const test = require('node:test');
+const assert = require('node:assert');
+test('AC-05-001 unit only', () => {});
+test('AC-05-004 unit passes', () => {});
+test('AC-05-005 unit and e2e', () => {});
+test('AC-05-006 unit fails', () => { assert.equal(1, 2); });
+EOF
+  cat > "$C/e2e/flow.spec.js" <<'EOF'
+const { test, expect } = require('@playwright/test');
+test('AC-05-002 e2e only', () => {});
+test('AC-05-004 e2e fails', () => { expect(1).toBe(2); });
+test('AC-05-005 unit and e2e', () => {});
+test('AC-05-006 e2e passes', () => {});
+EOF
+  both=(--cmd "bash '$A/node.sh'" --cmd "bash '$A/playwright.sh'")
+  adapter combine "$C" "${both[@]}" "AC-05-001|AC-05-002|AC-05-003|AC-05-004|AC-05-005|AC-05-006"
+  expect "combine: node + playwright (unit only, e2e only, neither, one fails, both, the other fails)" 1 \
+    "AC-05-001: pass (1)" "AC-05-002: pass (1)" "AC-05-003: missing" "AC-05-004: fail" "AC-05-005: pass (2)" "AC-05-006: fail"
+  adapter combine "$C" "${both[@]}" "AC-05-001, ac_05_002, AC-05-005"
+  expect "combine: ...all passing exits 0" 0 "AC-05-001: pass (1)" "AC-05-002: pass (1)" "AC-05-005: pass (2)"
+  # The same two runners from one --dir each, as a profile cell would write them.
+  M2="$FXP/combo2"; mkdir -p "$M2/web/test" "$M2/web/e2e"
+  cp "$C/package.json" "$C/playwright.config.js" "$M2/web/"
+  cp "$C/test/unit.test.js" "$M2/web/test/"; cp "$C/e2e/flow.spec.js" "$M2/web/e2e/"
+  adapter combine "$M2" --cmd "bash '$A/node.sh' --dir web" --cmd "bash '$A/playwright.sh' --dir web" "AC-05-005"
+  expect "combine: each command's own --dir" 0 "AC-05-005: pass (2)"
+  # A project without Playwright: the runner problem fails the run, node's pass still shows.
+  all=$(PATH="$T/no-npx:$PATH" CLAUDE_PROJECT_DIR="$N" bash "$A/combine.sh" "${both[@]}" "AC-01-001" 2>&1); rc=$?
+  out=$(grep -E '^AC-[0-9]+-[0-9]+: ' <<<"$all")
+  if [[ "$rc" == 1 && "$out" == "AC-01-001: pass (2)" && "$all" == *"playwright: not installed"* ]]; then
+    ok "combine: Playwright not installed fails the whole run, saying so"
+  else fail "combine: playwright missing (rc $rc, '$all')"; fi
 fi
 
 # --- pytest ---

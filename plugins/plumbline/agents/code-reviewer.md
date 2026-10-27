@@ -2,7 +2,7 @@
 name: code-reviewer
 description: Read-only fresh-eyes review of a diff against the dev plan, contracts, ux.md and acceptance criteria.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 effort: high
 experimental:
   cacheTtl: 1h
@@ -23,7 +23,7 @@ diff touches.
 
 | Surface | Also check |
 | --- | --- |
-| web-ui | UI states and accessibility against ux.md, keyboard, contrast, XSS |
+| web-ui | UI states and copy against ux.md, XSS |
 | mobile-ui | offline and flaky network, permissions, app lifecycle, battery, store rules |
 | desktop-ui | window states, keyboard, updates |
 | api | validation, idempotency, migrations |

@@ -42,13 +42,5 @@ for s in tests/*-selftest.sh; do
   fi
 done
 
-# visual-selftest.mjs prints "ok <name>" or "FAIL <name>" per check.
-if command -v node >/dev/null 2>&1; then
-  node tests/visual-selftest.mjs >"$LOG" 2>&1; rc=$?
-  report "visual-selftest.mjs" "$rc" "$(grep -c '^ok ' "$LOG")" "$(grep -c '^FAIL ' "$LOG")"
-else
-  echo "skip visual-selftest.mjs (Node isn't installed)"
-fi
-
 echo "Total: $total_pass passed, $total_fail failed, $suites_failed suite(s) failed"
 [[ $suites_failed -eq 0 ]]

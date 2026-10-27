@@ -30,8 +30,9 @@ Arguments, in either form:
    Module form: feature/<nn>-<feature-slug>, with <nn> from the printed folder.
 3. Commit the new files by path (the added docs, the feature folder and
    .claude/current-phase) and report the folder path. Next steps:
-   /plumbline:discover to interview me and draft spec.md (product engineer),
-   then ux.md (UX engineer); module form without UX: discover only.
+   /plumbline:discover to interview me and draft spec.md, then the journeys
+   and screens in ux.md (both by the product engineer); without UX, spec.md
+   only.
 
 **Hand fallback** (no shell, or the command is refused): create exactly the
 files the script would, from the templates/ folder next to this SKILL.md. Never
@@ -62,8 +63,8 @@ spaces with the first letter capitalised (vet-records -> Vet records).
   2. Copy the module docs it lacks from templates/module/: vision.md,
      decisions.md, changes.md, and design-principles.md unless no UX.
   3. Copy every file of templates/phase/ into the folder; for the standard
-     profile, then copy templates/standard/ over them. Without UX, skip ux.md
-     and delete the `- [ ] Design verification` line from signoff.md. In every
+     profile, then copy templates/standard/ over them. Without UX, skip ux.md.
+     In every
      copy replace `Phase <phase>` with `Feature <nn>`, then <phase> with <nn>,
      <Module> with the module's display name and <module> with the module.
   4. Surface overlays, after step 3, one pass per kind in the order given
@@ -75,8 +76,8 @@ spaces with the first letter capitalised (vet-records -> Vet records).
      ux.append.md). Any other file is copied to the same relative path
      (contracts/README.md), never over an existing file. Make the same
      replacements as in step 3 in what you add.
-  5. Create contracts/ and briefs/ (and prototypes/ with UX), each with an
-     empty .gitkeep.
+  5. Create contracts/ and briefs/, each with an empty .gitkeep (no
+     prototypes/).
   6. Write <folder>/.plumbline, one per line: `module=<module>`, `number=<nn>`,
      `slug=<feature-slug>`, `profile=<standard|full>`, `surfaces=<s1,s2>` (only if given),
      `ux=<yes|no>`, `created=<YYYY-MM-DD>`.

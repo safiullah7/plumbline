@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Writes briefs/<teammate>.md for each engineer in the dev plan's Team table: its
 # Ownership row, its surface (the Team table's Surface column, when there is one)
-# with that surface's checks from docs/product/project.md, its tasks, only the AC
-# rows those tasks cite, the screens for those use cases, and the contracts it
-# consumes, ending with links to the full docs. Engineers read their brief first instead of every phase doc, which is
+# with that surface's checks from docs/product/project.md, its tasks (each task's
+# whole block: the files, the failing test, the e2e test, the change, the
+# done-when), only the AC rows those tasks cite, the screens for those use cases
+# with each screen's description from ux.md, and the contracts it consumes,
+# ending with links to the full docs. Engineers read their brief first instead of every phase doc, which is
 # most of a build's reading. The lead runs this when it marks the plan READY and
 # again whenever the plan changes. Prints each brief's path.
 source "$(dirname "${0//\\//}")/lib.sh"
@@ -32,7 +34,7 @@ while IFS=$'\t' read -r name _; do
   tasks=$(awk -v n="$name" '{ sub(/\r$/, "") }
     /^## / { t = ($0 ~ /^## Tasks/); me = 0; next }
     t && /^### / { me = ($0 == "### " n); next }
-    t && me && /^[-*] /' "$plan")
+    t && me && (/^[-*] / || /^[[:space:]]+[^[:space:]]/)' "$plan")
   acs=$(grep -oE 'AC-[0-9]+-[0-9]+' <<<"$tasks" | sort -u)
   ac_rows=""
   if [[ -n "$acs" && -f "$acs_md" ]]; then
@@ -42,6 +44,17 @@ while IFS=$'\t' read -r name _; do
   screens=$(section_table "$ux" "Screen inventory")
   if [[ -n "$ucs" ]] && head -n1 <<<"$screens" | grep -qi 'use cases'; then
     screens=$(filter_rows "$(alt <<<"$ucs")" <<<"$screens")
+  fi
+  # Each listed screen's description (### <name> under ## Screens), or the whole
+  # section when the inventory names no screen.
+  screen_text=""
+  if [[ -f "$ux" ]]; then
+    names=$(awk -F'|' 'NR > 2 { n = $2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", n); if (n != "") print n }' <<<"$screens" | paste -sd'|' -)
+    screen_text=$(awk -v names="$names" '{ sub(/\r$/, "") }
+      BEGIN { n = split(tolower(names), a, "|"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 }
+      /^## / { in_s = ($0 ~ /^## Screens[[:space:]]*$/); show = 0; next }
+      in_s && /^### / { t = $0; sub(/^### +/, "", t); sub(/[[:space:]]+$/, "", t); show = (names == "" || (tolower(t) in want)) }
+      in_s && show' "$ux")
   fi
   contracts=$(section_table "$plan" Contracts)
   if [[ -n "$contracts" ]] && head -n1 <<<"$contracts" | grep -qi 'consumers'; then
@@ -85,10 +98,11 @@ Before you report a task done: bash \"<scripts>/ac-check.sh\" \"$(alt <<<"$acs")
     if [[ -n "$rules" ]]; then echo; echo "## Business rules (spec.md)"; echo "$rules"; fi
     if [[ -n "$perms" ]]; then echo; echo "## Data and permissions (spec.md)"; echo "$perms"; fi
     if [[ -n "$screens" ]]; then echo; echo "## Screens"; echo "$screens"; fi
+    if [[ -n "$screen_text" ]]; then echo; echo "## Screen descriptions (ux.md)"; echo "$screen_text"; fi
     if [[ -n "$contracts" ]]; then echo; echo "## Contracts you use"; echo "$contracts"; fi
     echo
     echo "## Full docs"
-    echo "$rel/spec.md, $rel/acceptance-criteria.md, $rel/ux.md, $rel/dev-plan.md, $rel/contracts/, $rel/prototypes/"
+    echo "$rel/spec.md, $rel/acceptance-criteria.md, $rel/ux.md, $rel/dev-plan.md, $rel/contracts/"
   } > "$out"
   echo "$out"
 done < <(md_table "$plan" Team)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Self-test for the Plumbline phase scripts (ac-json, status, signoff-check,
+# Self-test for the Plumbline phase scripts (status, signoff-check,
 # make-briefs). Run from the repo root:
 #   bash tests/scripts-selftest.sh
 # Builds the eval suite's clinic fixture in a temp repo and checks each script.
@@ -36,16 +36,11 @@ assert "status: says when no ACs are written" has "$out" "ACs: none written yet"
 assert "status: says when there's no QA verdict" has "$out" "QA verdict: none yet"
 mv "$T/ac.md" "$P/acceptance-criteria.md"
 
-# ac-json: one entry per AC row, status from qa-report's Traceability results.
+# A QA report with open bugs, for the status checks below.
 cat > "$P/qa-report.md" <<'EOF'
 # Phase 01 QA report
 
 Verdict: PENDING
-
-## Traceability results
-| AC ID | Result | Evidence |
-| --- | --- | --- |
-| AC-01-001 | Pass | e2e/rooms.spec.ts |
 
 ## Bugs
 | ID | AC ID | Severity | Status | Summary | Evidence |
@@ -53,11 +48,6 @@ Verdict: PENDING
 | BUG-01-001 | AC-01-004 | high | OPEN | Other clinic's rooms listed | shots/leak.png |
 | BUG-01-002 | AC-01-005 | low | FIXED | Empty state typo | shots/empty.png |
 EOF
-json=$(bash "$G/ac-json.sh")
-assert "ac-json: writes acceptance-criteria.json" test -f "$P/acceptance-criteria.json"
-assert "ac-json: one entry per AC" jq -e 'length == 5' "$P/acceptance-criteria.json"
-assert "ac-json: status from QA results" jq -e '.[0] == {id: "AC-01-001", useCase: "UC-01-01", priority: "Must", status: "pass"}' "$P/acceptance-criteria.json"
-assert "ac-json: untested when QA has no result" jq -e '.[1].status == "untested"' "$P/acceptance-criteria.json"
 
 # status: coverage from AC IDs in test files, bugs, questions, dirty files by owner.
 mkdir -p apps/api/rooms/__tests__
@@ -95,57 +85,6 @@ assert "signoff-check: fixed low bug ignored" test -z "$(grep BUG-01-002 <<<"$ou
 assert "signoff-check: open question named" has "$out" "OPEN question #1: Grey out inactive rooms?"
 assert "signoff-check: unticked box named" has "$out" "unticked sign-off box: Product verification"
 assert "signoff-check: PR and merge boxes ignored" test -z "$(grep -iE 'Phase PR|Merged' <<<"$out")"
-assert "signoff-check: missing accessibility results named" has "$out" "no accessibility results for the 2 screen(s)"
-
-# qa-summary: fills the generated Visual comparison and Accessibility sections.
-mkdir -p "$P/qa/a11y"
-printf 'rooms-list	390	3.1%%	20%%	ok	qa/diff/rooms-list-390.png
-' > "$P/qa/visual.tsv"
-echo '{"violations":[{"id":"image-alt","impact":"critical"},{"id":"color-contrast","impact":"serious"},{"id":"region","impact":"moderate"}]}' > "$P/qa/a11y/rooms-list-390.json"
-echo '[{"violations":[{"id":"label","impact":"minor"}]},{"violations":[]}]' > "$P/qa/a11y/add-room-dialog-1280.json"
-bash "$G/qa-summary.sh" >/dev/null
-report=$(cat "$P/qa-report.md")
-assert "qa-summary: visual row written" has "$report" "| rooms-list | 390 | 3.1% | 20% | ok | qa/diff/rooms-list-390.png |"
-assert "qa-summary: counts one axe result by impact" has "$report" "| rooms-list | 390 | 1 | 1 | 1 | 0 | qa/a11y/rooms-list-390.json | axe |"
-assert "qa-summary: counts an array of axe results" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json | axe |"
-assert "qa-summary: keeps the rest of the report" has "$report" "BUG-01-001"
-bash "$G/qa-summary.sh" >/dev/null
-assert "qa-summary: rerunning doesn't duplicate rows" test "$(grep -c '| rooms-list | 390 | 1 |' "$P/qa-report.md")" = 1
-out=$(bash "$G/signoff-check.sh")
-assert "signoff-check: serious accessibility violations named" has "$out" "rooms-list at 390 has 1 critical and 1 serious violation(s)"
-echo '{"violations":[{"id":"region","impact":"moderate"}]}' > "$P/qa/a11y/rooms-list-390.json"
-
-# qa-summary: the manual accessibility checklist adds Method "checklist" rows.
-printf '# screen\twidth\tcheck\tresult\timpact\tevidence\r\nsettings\t390\tfocus-visible\tfail\tcritical\tqa/shots/a.png\r\n\r\nsettings\t390\tlabels\tfail\tminor\tqa/shots/b.png\nsettings\t390\ttargets\tpass\tserious\tqa/shots/c.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
-bash "$G/qa-summary.sh" >/dev/null
-report=$(cat "$P/qa-report.md")
-assert "qa-summary: checklist failures add up by impact" has "$report" "| settings | 390 | 1 | 0 | 0 | 1 | qa/a11y-checklist.tsv | checklist |"
-assert "qa-summary: all-pass checklist screen gets zeros" has "$report" "| home | 390 | 0 | 0 | 0 | 0 | qa/a11y-checklist.tsv | checklist |"
-assert "qa-summary: axe rows keep Method axe beside checklist rows" has "$report" "| add-room-dialog | 1280 | 0 | 0 | 0 | 1 | qa/a11y/add-room-dialog-1280.json | axe |"
-assert "qa-summary: Accessibility header has Method" has "$report" "| Screen | Width | Critical | Serious | Moderate | Minor | Report | Method |"
-assert "qa-summary: axe rows come before checklist rows" test "$(grep -n 'add-room-dialog | 1280' "$P/qa-report.md" | cut -d: -f1)" -lt "$(grep -n '| settings | 390' "$P/qa-report.md" | cut -d: -f1)"
-bash "$G/qa-summary.sh" >/dev/null
-assert "qa-summary: rerunning doesn't duplicate checklist rows" test "$(grep -c '| settings | 390 |' "$P/qa-report.md")" = 1
-printf 'settings\t390\tcontrast\tfail\tserious\tqa/shots/e.png\n' >> "$P/qa/a11y-checklist.tsv"
-bash "$G/qa-summary.sh" >/dev/null
-assert "qa-summary: checklist serious failure is counted" has "$(cat "$P/qa-report.md")" "| settings | 390 | 1 | 1 | 0 | 1 | qa/a11y-checklist.tsv | checklist |"
-assert "signoff-check: serious checklist failure named" has "$(bash "$G/signoff-check.sh")" "settings at 390 has 1 critical and 1 serious violation(s)"
-printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
-bash "$G/qa-summary.sh" >/dev/null
-
-# Checklist rows: result and impact are compared in lower case, an unknown impact on a
-# fail counts as serious, and a header row or an unfilled result is not a row.
-printf 'screen\twidth\tcheck\tresult\timpact\tevidence\nhome\t390\tcontrast\tFail\tCritical\tqa/shots/a.png\nhome\t390\tlabels\tFAIL\tmoderate\tqa/shots/b.png\nhome\t390\ttargets\tfail\thigh\tqa/shots/c.png\nhome\t390\tfocus\tfail\t\tqa/shots/d.png\nhome\t390\tzoom\tPass\tserious\tqa/shots/e.png\nhome\t390\ttodo\t\t\tqa/shots/f.png\nhome\t390\tmaybe\tn/a\tcritical\tqa/shots/g.png\n' > "$P/qa/a11y-checklist.tsv"
-bash "$G/qa-summary.sh" >/dev/null
-report=$(cat "$P/qa-report.md")
-assert "qa-summary: Fail/Critical in any case is counted, unknown impacts are serious" has "$report" "| home | 390 | 1 | 2 | 1 | 0 | qa/a11y-checklist.tsv | checklist |"
-assert "qa-summary: header row is not a screen" test -z "$(grep -i '^| screen |' <<<"$report" | grep -v 'Screen | Width')"
-assert "qa-summary: unfilled and n/a results add nothing" test "$(grep -c '| home | 390 |' "$P/qa-report.md")" = 1
-printf 'screen\twidth\tcheck\tresult\timpact\n' > "$P/qa/a11y-checklist.tsv"
-bash "$G/qa-summary.sh" >/dev/null
-assert "qa-summary: a header-only checklist writes no rows" test -z "$(grep 'checklist |' "$P/qa-report.md")"
-printf 'settings\t390\tlabels\tpass\tminor\tqa/shots/b.png\nhome\t390\tlabels\tpass\tserious\tqa/shots/d.png\n' > "$P/qa/a11y-checklist.tsv"
-bash "$G/qa-summary.sh" >/dev/null
 
 sed -i 's/| Fail |/| Pass |/' "$P/test-plan.md"
 echo "| AC-01-005 | TC-01-005 | e2e | Pass |" >> "$P/test-plan.md"
@@ -156,53 +95,38 @@ out=$(bash "$G/signoff-check.sh"); rc=$?
 assert "signoff-check: clean phase exits 0" test "$rc" = 0
 assert "signoff-check: says no gaps" has "$out" "no gaps"
 
-# A scan that wasn't run blocks signoff unless it's explicitly waived.
-cp "$P/qa-report.md" "$T/qa-report.bak"
-sed -i 's/^| rooms-list | 390 | 0 | 0 |/| rooms-list | 390 | skipped | skipped |/' "$P/qa-report.md"
-assert "signoff-check: non-numeric accessibility counts are a gap" has "$(bash "$G/signoff-check.sh")" "aren't counts"
-rm -f "$P"/qa/a11y/*.json "$P/qa/a11y-checklist.tsv" && bash "$G/qa-summary.sh" >/dev/null
-assert "signoff-check: no accessibility results is a gap" has "$(bash "$G/signoff-check.sh")" "no accessibility results"
 add_after() { # file line-regex text: insert text after the first matching line
   awk -v re="$2" -v text="$3" '{ print } !done && $0 ~ re { print text; done = 1 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
 }
 add_row() { # file section text: add a row right after that section's table separator
   awk -v sec="## $2" -v text="$3" '/^## / { in_sec = ($0 == sec) } { print } in_sec && /^[|] ---/ { print text; in_sec = 0 }' "$1" > "$T/edit" && mv "$T/edit" "$1"
 }
-assert "signoff-check: gap message doesn't hand out a waiver line to paste" test -z "$(bash "$G/signoff-check.sh" | grep 'Accessibility waived:')"
-assert "signoff-check: gap message says to ask the user" has "$(bash "$G/signoff-check.sh")" "ask the user to waive it"
-cp "$P/qa-report.md" "$T/qa-nowaiver.bak"
-for w in "Accessibility waived: <reason> (approved by <who>)" \
-         "Accessibility waived: no browser in CI (approved by <who>)" \
-         "Accessibility waived: <reason> (approved by product)" \
-         "Accessibility waived: no browser in CI" \
-         "Accessibility waived: no browser in CI (approved by )" \
-         "Accessibility waived: no browser in CI (approved by)" \
-         "Accessibility waived: no browser in CI (approved by product) and more"; do
-  cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
-  add_after "$P/qa-report.md" '^Verdict: PASS$' "$w"
-  bash "$G/signoff-check.sh" >/dev/null; rc=$?
-  assert "signoff-check: not a waiver: $w" test "$rc" = 1
-done
-cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
-add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"
-bash "$G/signoff-check.sh" >/dev/null; rc=$?
-assert "signoff-check: an explicit waiver clears it" test "$rc" = 0
-cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
-add_after "$P/qa-report.md" '^Verdict: PASS$' "accessibility waived: no browser in CI (Approved by Dana Smith)  "
-bash "$G/signoff-check.sh" >/dev/null; rc=$?
-assert "signoff-check: waiver is case-insensitive and may carry a full name" test "$rc" = 0
-sed 's/$/\r/' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"
-bash "$G/signoff-check.sh" >/dev/null; rc=$?
-assert "signoff-check: waiver in a CRLF file counts" test "$rc" = 0
-cp "$T/qa-nowaiver.bak" "$P/qa-report.md"
-sed -i 's/^Verdict: PASS/Verdict: pass/' "$P/qa-report.md"
-add_after "$P/qa-report.md" '^Verdict: pass$' "Accessibility waived: no browser in CI (approved by product)"
-bash "$G/signoff-check.sh" >/dev/null; rc=$?
+signoff() { out=$(bash "$G/signoff-check.sh"); rc=$?; }
+
+# No accessibility rule any more: the check never looks at ux.md screens or at an
+# Accessibility table, whatever it holds.
+assert "signoff-check: no accessibility wording in a clean report" test -z "$(grep -i 'accessib' <<<"$out")"
+cp "$P/qa-report.md" "$T/qa-report.bak"
+printf '\n## Accessibility\n| Screen | Width | Critical | Serious | Moderate | Minor | Report | Method |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| rooms-list | 390 | skipped | skipped | 0 | 0 | - | axe |\n| home | 390 | 2 | 3 | 0 | 0 | - | axe |\n' >> "$P/qa-report.md"
+signoff
+assert "signoff-check: an old Accessibility table is ignored" test "$rc" = 0
+cp "$T/qa-report.bak" "$P/qa-report.md"
+sed -i 's/^Verdict: PASS/Verdict: pass/' "$P/qa-report.md"; signoff
 assert "signoff-check: a lower-case verdict still passes" test "$rc" = 0
 cp "$T/qa-report.bak" "$P/qa-report.md"
 
-# signoff-check: the PR boxes stay unticked, whatever the layout calls them.
+# An unticked "Design verification" box (old features) is ignored; other boxes still count.
 cp "$P/signoff.md" "$T/signoff.bak"
+printf '%s\n' '- [ ] Design verification: screens match the prototypes' >> "$P/signoff.md"; signoff
+assert "signoff-check: an unticked Design verification box is ignored" test "$rc" = 0
+assert "signoff-check: ...and not named" test -z "$(grep -i 'design verification' <<<"$out")"
+printf '%s\n' '  - [ ]   Design verification' >> "$P/signoff.md"; signoff
+assert "signoff-check: ...also indented, with extra spaces" test "$rc" = 0
+printf '%s\n' '- [ ] Product design review' >> "$P/signoff.md"; signoff
+assert "signoff-check: a box that merely mentions design is still flagged" has "$out" "unticked sign-off box: Product design review"
+cp "$T/signoff.bak" "$P/signoff.md"
+
+# signoff-check: the PR boxes stay unticked, whatever the layout calls them.
 printf '%s\n' '- [ ] Feature PR opened: #12' '- [ ] Phase PR opened: #13' >> "$P/signoff.md"
 out=$(bash "$G/signoff-check.sh"); rc=$?
 assert "signoff-check: unticked Feature PR and Phase PR boxes ignored" test "$rc" = 0
@@ -213,8 +137,8 @@ assert "signoff-check: names the unticked box" has "$out" "unticked sign-off box
 assert "signoff-check: PR boxes not named beside it" test -z "$(grep -iE 'PR opened' <<<"$out")"
 cp "$T/signoff.bak" "$P/signoff.md"
 
-# signoff-check by surface: .plumbline surfaces= sets the required evidence kinds
-# and the accessibility rule; features without it keep the v0.3 rules above.
+# signoff-check by surface: .plumbline surfaces= sets the one required evidence kind
+# per surface; features without it have no evidence rule.
 cp "$P/qa-report.md" "$T/qa-surface.orig"
 printf '\n## Evidence\n| Kind | Surface | Location | Result |\n| --- | --- | --- | --- |\n' >> "$P/qa-report.md"
 cp "$P/qa-report.md" "$T/qa-surface.bak"
@@ -224,147 +148,145 @@ surface_case() { # surfaces kind:surface...: the clean report, .plumbline and pa
   printf 'module=clinic\nprofile=full\nsurfaces=%s\nux=yes\n' "$1" > "$P/.plumbline"; shift
   for e in "$@"; do printf '| %s | %s | qa/evidence/%s.txt | pass |\n' "${e%%:*}" "${e#*:}" "${e%%:*}" >> "$P/qa-report.md"; done
 }
-no_axe_rows() { grep -v '| axe |$' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"; }
-no_a11y_rows() { grep -vE '\| (axe|checklist) \|$' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"; }
-signoff() { out=$(bash "$G/signoff-check.sh"); rc=$?; }
-api_ev="contract:api authz:api negative:api transcripts:api"
 
-surface_case api $api_ev; no_a11y_rows; signoff
-assert "signoff-check: api feature passes with contract, authz, negative and transcripts" test "$rc" = 0
-surface_case api contract:api negative:api transcripts:api; signoff
-assert "signoff-check: api feature without authz evidence exits 1" test "$rc" = 1
-assert "signoff-check: evidence gap names the kind and the surface" has "$out" "no passing authz evidence for api: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line"
-assert "signoff-check: evidence gap names only the missing kind" test -z "$(grep -E 'contract|negative|transcripts' <<<"$out")"
+# api: transcripts.
+surface_case api transcripts:api; signoff
+assert "signoff-check: api feature passes with a transcripts row" test "$rc" = 0
+surface_case api; signoff
+assert "signoff-check: api feature without transcripts exits 1" test "$rc" = 1
+assert "signoff-check: evidence gap names the kind and the surface" has "$out" "no passing transcripts evidence for api: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line"
+assert "signoff-check: evidence gap is the only gap" test "$(grep -c '^- ' <<<"$out")" = 1
 assert "signoff-check: evidence gap doesn't hand out a waiver line" test -z "$(grep 'Evidence waived:' <<<"$out")"
-printf '| authz | api | qa/evidence/authz.txt | not run |\n' >> "$P/qa-report.md"; signoff
-assert "signoff-check: a not-run evidence row is a gap that shows its result" has "$out" "no passing authz evidence for api (recorded: not run)"
+surface_case api contract:api authz:api negative:api; signoff
+assert "signoff-check: the deeper api kinds don't stand in for transcripts" has "$out" "no passing transcripts evidence for api"
+surface_case api transcripts:api contract:api authz:api negative:api api-diff:api; signoff
+assert "signoff-check: extra evidence kinds are harmless" test "$rc" = 0
+surface_case api; printf '| transcripts | api | qa/evidence/transcripts.txt | not run |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a not-run evidence row is a gap that shows its result" has "$out" "no passing transcripts evidence for api (recorded: not run)"
 # A fail row wins over a pass row for the same kind and surface, in either order.
-surface_case api $api_ev; no_a11y_rows
-printf '| authz | api | qa/evidence/authz-2.txt | fail |\n' >> "$P/qa-report.md"; signoff
+surface_case api transcripts:api
+printf '| transcripts | api | qa/evidence/transcripts-2.txt | fail |\n' >> "$P/qa-report.md"; signoff
 assert "signoff-check: a pass row plus a fail row for the same kind is a gap" test "$rc" = 1
-assert "signoff-check: the fail gap shows what was recorded" has "$out" "no passing authz evidence for api (recorded: fail)"
+assert "signoff-check: the fail gap shows what was recorded" has "$out" "no passing transcripts evidence for api (recorded: fail)"
 assert "signoff-check: the fail gap names only that kind" test "$(grep -c 'no passing' <<<"$out")" = 1
-surface_case api $api_ev; no_a11y_rows
-sed -i 's/^| authz | api |\(.*\)| pass |$/| authz | api |\1| FAIL |/' "$P/qa-report.md"
-printf '| authz | api | qa/evidence/authz-2.txt | pass |\n' >> "$P/qa-report.md"; signoff
-assert "signoff-check: a fail row before the pass row is a gap too" has "$out" "no passing authz evidence for api (recorded: fail)"
-add_after "$P/qa-report.md" '^Verdict: PASS$' "Evidence waived: authz (api) - the gateway enforces it (approved by Dana)"; signoff
+surface_case api transcripts:api
+sed -i 's/^| transcripts | api |\(.*\)| pass |$/| transcripts | api |\1| FAIL |/' "$P/qa-report.md"
+printf '| transcripts | api | qa/evidence/transcripts-2.txt | pass |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a fail row before the pass row is a gap too" has "$out" "no passing transcripts evidence for api (recorded: fail)"
+add_after "$P/qa-report.md" '^Verdict: PASS$' "Evidence waived: transcripts (api) - the gateway is tested elsewhere (approved by Dana)"; signoff
 assert "signoff-check: an approved waiver still clears a failed evidence kind" test "$rc" = 0
-surface_case api $api_ev; no_a11y_rows
-printf '| authz | cli | qa/evidence/authz.txt | fail |\n' >> "$P/qa-report.md"; signoff
+surface_case api transcripts:api
+printf '| transcripts | cli | qa/evidence/transcripts.txt | fail |\n' >> "$P/qa-report.md"; signoff
 assert "signoff-check: a fail row on another surface doesn't count" test "$rc" = 0
 # A pass row with no Location points at nothing, so it doesn't count.
-surface_case api $api_ev; no_a11y_rows
-sed -i 's/^| authz | api | qa\/evidence\/authz.txt | pass |$/| authz | api |  | pass |/' "$P/qa-report.md"; signoff
-assert "signoff-check: a pass row with an empty Location is a gap" has "$out" "no passing authz evidence for api (recorded: pass without a location)"
-printf '| authz | api | qa/evidence/authz-2.txt | pass |\n' >> "$P/qa-report.md"; signoff
+surface_case api
+printf '| transcripts | api |  | pass |\n' >> "$P/qa-report.md"; signoff
+assert "signoff-check: a pass row with an empty Location is a gap" has "$out" "no passing transcripts evidence for api (recorded: pass without a location)"
+printf '| transcripts | api | qa/evidence/transcripts-2.txt | pass |\n' >> "$P/qa-report.md"; signoff
 assert "signoff-check: a second pass row with a Location closes it" test "$rc" = 0
-surface_case api contract:api negative:api transcripts:api
-printf '| authz | api | qa/evidence/authz.txt | not run |\n' >> "$P/qa-report.md"
-cp "$P/qa-report.md" "$T/qa-noauthz.bak"
-for w in "Evidence waived: authz (api) - the gateway enforces it (approved by Dana)" \
-         "Evidence waived: authz (api) — the gateway enforces it (approved by Dana Smith)" \
-         "evidence waived: authz (api): the gateway enforces it (Approved by product)  "; do
-  cp "$T/qa-noauthz.bak" "$P/qa-report.md"
+# Waivers: one per kind and surface, filled in, approved by a name.
+surface_case api
+printf '| transcripts | api | qa/evidence/transcripts.txt | not run |\n' >> "$P/qa-report.md"
+cp "$P/qa-report.md" "$T/qa-notranscripts.bak"
+for w in "Evidence waived: transcripts (api) - no test server in CI (approved by Dana)" \
+         "Evidence waived: transcripts (api) — no test server in CI (approved by Dana Smith)" \
+         "evidence waived: transcripts (api): no test server in CI (Approved by product)  "; do
+  cp "$T/qa-notranscripts.bak" "$P/qa-report.md"
   add_after "$P/qa-report.md" '^Verdict: PASS$' "$w"; signoff
   assert "signoff-check: evidence waiver closes it: $w" test "$rc" = 0
 done
+cp "$T/qa-notranscripts.bak" "$P/qa-report.md"
+add_after "$P/qa-report.md" '^Verdict: PASS$' "Evidence waived: transcripts (api) - no test server in CI (approved by Dana)"
+sed 's/$/\r/' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"; signoff
+assert "signoff-check: a waiver in a CRLF file counts" test "$rc" = 0
 for w in "Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)" \
-         "Evidence waived: authz (api) - <reason> (approved by Dana)" \
-         "Evidence waived: authz (api) - the gateway enforces it (approved by <name>)" \
-         "Evidence waived: authz (api) - the gateway enforces it (approved by )" \
-         "Evidence waived: authz (api) - the gateway enforces it" \
-         "Evidence waived: authz (api) - (approved by Dana)" \
-         "Evidence waived: authz (web-ui) - the gateway enforces it (approved by Dana)" \
-         "Evidence waived: negative (api) - the gateway enforces it (approved by Dana)" \
-         "Accessibility waived: the gateway enforces it (approved by Dana)"; do
-  cp "$T/qa-noauthz.bak" "$P/qa-report.md"
+         "Evidence waived: transcripts (api) - <reason> (approved by Dana)" \
+         "Evidence waived: transcripts (api) - no test server in CI (approved by <name>)" \
+         "Evidence waived: transcripts (api) - no test server in CI (approved by )" \
+         "Evidence waived: transcripts (api) - no test server in CI" \
+         "Evidence waived: transcripts (api) - (approved by Dana)" \
+         "Evidence waived: transcripts (web-ui) - no test server in CI (approved by Dana)" \
+         "Evidence waived: journeys (api) - no test server in CI (approved by Dana)" \
+         "Accessibility waived: no test server in CI (approved by Dana)"; do
+  cp "$T/qa-notranscripts.bak" "$P/qa-report.md"
   add_after "$P/qa-report.md" '^Verdict: PASS$' "$w"; signoff
-  assert "signoff-check: not an authz (api) waiver: $w" test "$rc" = 1
+  assert "signoff-check: not a transcripts (api) waiver: $w" test "$rc" = 1
 done
-surface_case api $api_ev; sed -i 's/^| contract | api |\(.*\)| pass |$/| Contract | api |\1| PASS |/' "$P/qa-report.md"; signoff
+surface_case api transcripts:api; sed -i 's/^| transcripts | api |\(.*\)| pass |$/| Transcripts | api |\1| PASS |/' "$P/qa-report.md"; signoff
 assert "signoff-check: evidence kind and result match in any case" test "$rc" = 0
-surface_case api $api_ev; sed -i 's/^| add-room-dialog | 1280 | 0 | 0 |/| add-room-dialog | 1280 | 0 | 1 |/' "$P/qa-report.md"; signoff
-assert "signoff-check: a serious accessibility count blocks a surface with no UI too" has "$out" "add-room-dialog at 1280 has 0 critical and 1 serious violation(s)"
 
-surface_case mobile-ui screenshots:mobile-ui flow-tests:mobile-ui checklist:mobile-ui; no_axe_rows; signoff
-assert "signoff-check: mobile feature passes with checklist rows and no axe" test "$rc" = 0
+# web-ui and desktop-ui: journeys. No screenshots, axe or checklist evidence, no
+# accessibility rows.
+surface_case web-ui journeys:web-ui; signoff
+assert "signoff-check: web feature passes with a journeys row" test "$rc" = 0
+assert "signoff-check: web feature needs no accessibility rows" test -z "$(grep -i 'accessib' <<<"$out")"
+surface_case web-ui; signoff
+assert "signoff-check: web feature needs journeys" has "$out" "no passing journeys evidence for web-ui"
+assert "signoff-check: web feature doesn't need screenshots or axe" test -z "$(grep -E 'screenshots|axe' <<<"$out")"
+surface_case web-ui screenshots:web-ui axe:web-ui; signoff
+assert "signoff-check: screenshots and axe rows don't stand in for journeys" has "$out" "no passing journeys evidence for web-ui"
+surface_case desktop-ui journeys:desktop-ui; signoff
+assert "signoff-check: desktop feature passes with a journeys row" test "$rc" = 0
+surface_case desktop-ui; signoff
+assert "signoff-check: desktop feature needs journeys" has "$out" "no passing journeys evidence for desktop-ui"
+assert "signoff-check: desktop feature doesn't need screenshots or a checklist" test -z "$(grep -E 'screenshots|checklist' <<<"$out")"
+
+# mobile-ui: flow-tests.
+surface_case mobile-ui flow-tests:mobile-ui; signoff
+assert "signoff-check: mobile feature passes with a flow-tests row" test "$rc" = 0
 surface_case mobile-ui; signoff
-assert "signoff-check: mobile feature needs screenshots" has "$out" "no passing screenshots evidence for mobile-ui"
 assert "signoff-check: mobile feature needs flow-tests" has "$out" "no passing flow-tests evidence for mobile-ui"
-assert "signoff-check: mobile feature needs checklist evidence" has "$out" "no passing checklist evidence for mobile-ui"
-assert "signoff-check: mobile feature doesn't need axe evidence" test -z "$(grep 'axe' <<<"$out")"
-surface_case mobile-ui screenshots:mobile-ui flow-tests:mobile-ui checklist:mobile-ui; no_a11y_rows; signoff
-assert "signoff-check: mobile feature without checklist rows names it" has "$out" "no checklist accessibility results for mobile-ui"
-surface_case mobile-ui screenshots:mobile-ui flow-tests:mobile-ui checklist:mobile-ui
-grep -v '| checklist |$' "$P/qa-report.md" > "$T/edit" && mv "$T/edit" "$P/qa-report.md"; signoff
-assert "signoff-check: axe rows don't stand in for a mobile checklist" has "$out" "no checklist accessibility results for mobile-ui"
-surface_case desktop-ui screenshots:desktop-ui checklist:desktop-ui; no_axe_rows; signoff
-assert "signoff-check: desktop feature passes with screenshots, checklist and checklist rows" test "$rc" = 0
+assert "signoff-check: mobile feature doesn't need screenshots, a checklist or axe" test -z "$(grep -E 'screenshots|checklist|axe' <<<"$out")"
 
-web_ev="screenshots:web-ui axe:web-ui journeys:web-ui"
-surface_case web-ui $web_ev; signoff
-assert "signoff-check: web feature passes with its evidence and axe rows" test "$rc" = 0
-surface_case web-ui $web_ev; no_axe_rows; signoff
-assert "signoff-check: web feature with checklist rows but no axe rows blocks" test "$rc" = 1
-assert "signoff-check: names the missing axe results" has "$out" "no axe accessibility results for web-ui: run the scan, or ask the user to waive it"
-surface_case web-ui $web_ev; no_a11y_rows; signoff
-assert "signoff-check: web feature with neither axe rows nor a waiver blocks" has "$out" "no axe accessibility results for web-ui"
-add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"; signoff
-assert "signoff-check: an accessibility waiver clears a web feature's missing rows" test "$rc" = 0
-surface_case web-ui screenshots:web-ui journeys:web-ui; signoff
-assert "signoff-check: web feature needs axe evidence too" has "$out" "no passing axe evidence for web-ui"
-surface_case web-ui screenshots:web-ui journeys:web-ui; no_a11y_rows
-add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"; signoff
-assert "signoff-check: the accessibility waiver also covers the axe evidence (asked once)" test "$rc" = 0
-surface_case mobile-ui screenshots:mobile-ui flow-tests:mobile-ui; no_a11y_rows
-add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no device in CI (approved by product)"; signoff
-assert "signoff-check: the accessibility waiver also covers the checklist evidence" test "$rc" = 0
-surface_case web-ui journeys:web-ui; no_a11y_rows
-add_after "$P/qa-report.md" '^Verdict: PASS$' "Accessibility waived: no browser in CI (approved by product)"; signoff
-assert "signoff-check: the accessibility waiver doesn't cover screenshots" has "$out" "no passing screenshots evidence for web-ui"
+# The other surface kinds: one kind each, nothing else required.
+kind_case() { # surface kind
+  surface_case "$1"; signoff
+  assert "signoff-check: $1 feature needs $2" has "$out" "no passing $2 evidence for $1"
+  assert "signoff-check: $1 feature has just that one gap" test "$(grep -c '^- ' <<<"$out")" = 1
+  surface_case "$1" "$2:$1"; signoff
+  assert "signoff-check: $1 feature passes with $2" test "$rc" = 0
+}
+kind_case service job-tests
+kind_case cli golden-output
+kind_case library doc-examples
+kind_case data sample-run
+kind_case ai eval-set
+kind_case infra plan-output
 
-surface_case cli; no_a11y_rows; signoff
-assert "signoff-check: cli feature needs golden-output" has "$out" "no passing golden-output evidence for cli"
-assert "signoff-check: cli feature is exempt from accessibility" test -z "$(grep -i 'accessibility' <<<"$out")"
-surface_case cli golden-output:cli; no_a11y_rows; signoff
-assert "signoff-check: cli feature passes with golden-output" test "$rc" = 0
-
-surface_case "api,web-ui" $api_ev; signoff
-assert "signoff-check: two surfaces need the union (web-ui screenshots)" has "$out" "no passing screenshots evidence for web-ui"
+# Several surfaces need the union of their kinds.
+surface_case "api,web-ui" transcripts:api; signoff
 assert "signoff-check: two surfaces need the union (web-ui journeys)" has "$out" "no passing journeys evidence for web-ui"
 assert "signoff-check: two surfaces don't flag the surface that's covered" test -z "$(grep 'for api' <<<"$out")"
-surface_case "web-ui,api" $web_ev; signoff
-assert "signoff-check: two surfaces need the union (api authz)" has "$out" "no passing authz evidence for api"
-surface_case "api,web-ui" $api_ev $web_ev; signoff
-assert "signoff-check: two surfaces pass with both sets" test "$rc" = 0
-surface_case "api,web-ui" $api_ev $web_ev; no_a11y_rows; signoff
-assert "signoff-check: two surfaces with a UI need accessibility rows" has "$out" "no axe accessibility results for web-ui"
-surface_case "ai" eval-set:ai injection:ai; no_a11y_rows; signoff
-assert "signoff-check: ai feature is exempt from accessibility" test "$rc" = 0
-surface_case "ai,web-ui" eval-set:ai injection:ai $web_ev; no_a11y_rows; signoff
-assert "signoff-check: ai feature with a UI surface needs accessibility rows" has "$out" "no axe accessibility results for web-ui"
+surface_case "web-ui,api" journeys:web-ui; signoff
+assert "signoff-check: two surfaces need the union (api transcripts)" has "$out" "no passing transcripts evidence for api"
+surface_case "api,web-ui" transcripts:api journeys:web-ui; signoff
+assert "signoff-check: two surfaces pass with both rows" test "$rc" = 0
+surface_case "api,web-ui,api"; signoff
+assert "signoff-check: a surface listed twice is checked once" test "$(grep -c 'transcripts evidence for api' <<<"$out")" = 1
+surface_case "api, web-ui" transcripts:api journeys:web-ui; signoff
+assert "signoff-check: spaces around a surface name are trimmed" test "$rc" = 0
+# An evidence waiver is per surface: it covers one of the two, not both.
+surface_case "api,web-ui"
+add_after "$P/qa-report.md" '^Verdict: PASS$' "Evidence waived: transcripts (api) - no test server in CI (approved by Dana)"; signoff
+assert "signoff-check: a waiver for one surface leaves the other's gap" has "$out" "no passing journeys evidence for web-ui"
+assert "signoff-check: ...and clears its own" test -z "$(grep 'for api' <<<"$out")"
 
-surface_case web-ui-shop screenshots:web-ui-shop axe:web-ui-shop journeys:web-ui-shop; signoff
+# A <kind>-<name> surface is checked as its kind, and its rows name it as written.
+surface_case web-ui-shop journeys:web-ui-shop; signoff
 assert "signoff-check: web-ui-shop is checked as web-ui" test "$rc" = 0
-surface_case web-ui-shop $web_ev; signoff
-assert "signoff-check: evidence rows name the surface as written" has "$out" "no passing screenshots evidence for web-ui-shop"
-surface_case web-ui-shop screenshots:web-ui-shop axe:web-ui-shop journeys:web-ui-shop; no_axe_rows; signoff
-assert "signoff-check: web-ui-shop needs axe rows" has "$out" "no axe accessibility results for web-ui-shop"
+surface_case web-ui-shop journeys:web-ui; signoff
+assert "signoff-check: evidence rows name the surface as written" has "$out" "no passing journeys evidence for web-ui-shop"
 surface_case foo; signoff
 assert "signoff-check: unknown surface is a gap" test "$rc" = 1
 assert "signoff-check: names the unknown surface" has "$out" 'unknown surface "foo" in .plumbline'
 
-# Without surfaces= (legacy, and v0.4a's .plumbline): no evidence rule, v0.3 accessibility.
+# Without surfaces= (legacy, and v0.4a's .plumbline): no evidence rule, no accessibility rule.
 rm -f "$P/.plumbline"; cp "$T/qa-surface.bak" "$P/qa-report.md"; signoff
 assert "signoff-check: legacy feature needs no Evidence rows" test "$rc" = 0
-no_a11y_rows; signoff
-assert "signoff-check: legacy feature keeps the ux.md screens rule" has "$out" "no accessibility results for the 2 screen(s) in ux.md"
+assert "signoff-check: legacy feature has no accessibility rule (ux.md has screens)" test -z "$(grep -i 'accessib' <<<"$out")"
 printf 'module=clinic\nprofile=standard\nux=yes\n' > "$P/.plumbline"; cp "$T/qa-surface.bak" "$P/qa-report.md"; signoff
 assert "signoff-check: v0.4a feature needs no Evidence rows" test "$rc" = 0
-no_a11y_rows; signoff
-assert "signoff-check: v0.4a feature keeps the ux.md screens rule" has "$out" "no accessibility results for the 2 screen(s) in ux.md"
-assert "signoff-check: v0.4a feature has no evidence gaps" test -z "$(grep 'evidence for' <<<"$out")"
+assert "signoff-check: v0.4a feature has no evidence or accessibility gaps" test -z "$(grep -iE 'evidence for|accessib' <<<"$out")"
 rm -f "$P/.plumbline"; cp "$T/qa-surface.orig" "$P/qa-report.md"
 
 # phase-evidence: what shipped with problems, what was left out, unmet metrics.
@@ -436,14 +358,75 @@ assert "make-briefs: brief links the full docs" grep -q "^$P/spec.md" "$api"
 assert "make-briefs: brief carries the spec's business rules" grep -qF "Room names are unique within a clinic" "$api"
 assert "make-briefs: brief carries data and permissions" grep -qF "Only clinic admins can add" "$api"
 
-# Image comparison and capture (Node). PLUMBLINE_BROWSER_TEST=1 adds a real browser run.
-if command -v node >/dev/null 2>&1; then
-  while IFS= read -r line; do
-    case "$line" in "ok    "*) ok "${line#ok    }" ;; "FAIL  "*) fail "${line#FAIL  }" ;; esac
-  done < <(node "$ROOT/tests/visual-selftest.mjs" 2>&1 || echo "FAIL  visual-selftest.mjs crashed")
-else
-  echo "skip  visual-diff and capture tests (Node isn't installed)"
-fi
+# make-briefs: each engineer's whole task block and its screens' descriptions.
+BT=$(mktemp -d); mkdir -p "$BT/.claude" "$BT/docs/product/shop/01-menu"; BF="$BT/docs/product/shop/01-menu"
+echo "docs/product/shop/01-menu" > "$BT/.claude/current-phase"
+cat > "$BF/dev-plan.md" <<'EOF'
+# Feature 01 dev plan
+
+Status: READY
+
+## Team
+| Teammate | Model | Workstream | Surface | Effort |
+| --- | --- | --- | --- | --- |
+| eng-web | sonnet | Menu page | web-ui | medium |
+| eng-api | sonnet | Menu API | api | high |
+
+## Ownership
+| Teammate | Owned globs |
+| --- | --- |
+| eng-web | storefront/** |
+| eng-api | backend/** |
+
+## Contracts
+| Contract | Path | Consumers |
+| --- | --- | --- |
+
+## Tasks
+### eng-web
+- [AC-01-001] Show the menu (NORMAL)
+  Files: storefront/app/page.tsx
+  Red (unit): AC-01-001 renders every item
+  E2E: AC-01-001 customer sees the menu
+  Done when: unit and e2e tests for AC-01-001 pass
+### eng-api
+- [AC-01-002] Menu endpoint (HIGH)
+  Files: backend/src/menu.js
+  Done when: AC-01-002 tests pass
+EOF
+cat > "$BF/acceptance-criteria.md" <<'EOF'
+# ACs
+| ID | Use case | Given | When | Then | Priority |
+| --- | --- | --- | --- | --- | --- |
+| AC-01-001 | UC-01-01 | a customer | opens the menu | sees items | P0 |
+| AC-01-002 | UC-01-02 | a client | GETs /menu | gets items | P0 |
+EOF
+cat > "$BF/ux.md" <<'EOF'
+# Feature 01 UX
+## Screen inventory
+| Screen | Use cases | Purpose | Entered from | Leads to |
+| --- | --- | --- | --- | --- |
+| Menu | UC-01-01 | Browse | Home | Cart |
+| Admin | UC-01-02 | Manage | Login | - |
+## Screens
+### Menu
+Layout: a grid of cards. Copy: "Order now".
+### Admin
+Layout: a plain table.
+EOF
+echo "# spec" > "$BF/spec.md"
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+bw="$BF/briefs/eng-web.md" ba="$BF/briefs/eng-api.md"
+assert "make-briefs: a task keeps its indented detail lines (Files)" grep -qF 'Files: storefront/app/page.tsx' "$bw"
+assert "make-briefs: ...the failing unit test" grep -qF 'Red (unit): AC-01-001 renders every item' "$bw"
+assert "make-briefs: ...the e2e test and the done-when" grep -qF 'E2E: AC-01-001 customer sees the menu' "$bw"
+assert "make-briefs: ...and done-when" grep -qF 'Done when: unit and e2e tests for AC-01-001 pass' "$bw"
+assert "make-briefs: another engineer's task detail stays out" test -z "$(grep -F 'backend/src/menu.js' "$bw")"
+assert "make-briefs: the brief carries its screen's description" grep -qF 'a grid of cards' "$bw"
+assert "make-briefs: ...and not another screen's" test -z "$(grep -F 'a plain table' "$bw")"
+assert "make-briefs: the api brief gets the other screen's text" grep -qF 'a plain table' "$ba"
+assert "make-briefs: no prototypes link any more" test -z "$(grep -F 'prototypes' "$bw")"
+rm -rf "$BT"
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

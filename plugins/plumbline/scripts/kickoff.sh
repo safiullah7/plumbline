@@ -11,8 +11,8 @@
 # area, one with a phases/ folder: phases/phase-<nn>/), the templates/standard/
 # overlay for the standard profile, and .plumbline (with the slug, so a legacy
 # area can refuse the same feature twice). The copied docs say "Feature <nn>"
-# where the templates say "Phase <nn>". Without UX there's no ux.md,
-# no prototypes/ and no Design verification box.
+# where the templates say "Phase <nn>". Without UX there's no ux.md. There's no
+# prototypes/ folder: product writes the screens as text in ux.md.
 # --surfaces names the feature's surfaces (a name is one of the ten kinds, or a
 # kind plus "-<name>": web-ui-shop); an unknown name is a usage error. It's kept
 # as given in .plumbline's surfaces=. Each kind with a templates/surface/ overlay
@@ -22,9 +22,9 @@
 # UX yes only when a surface is a web-ui, mobile-ui or desktop-ui; without
 # --surfaces, UX stays yes.
 # Legacy form, as v0.3's kickoff: the area docs that are missing, then
-# docs/product/<area>/phases/phase-NN/, no .plumbline. It takes any area name and
-# phase id v0.3's hand kickoff took (Vet_Records phase-1, phase-03-auth); the
-# module form needs lowercase slugs.
+# docs/product/<area>/phases/phase-NN/ (the v0.3 file set, with prototypes/), no
+# .plumbline. It takes any area name and phase id v0.3's hand kickoff took
+# (Vet_Records phase-1, phase-03-auth); the module form needs lowercase slugs.
 # Both write .claude/current-phase, print "added <path>" for each module or area
 # doc they add, and print the feature folder (repo-relative) as the last line.
 # Exit 0 = created, 1 = usage or the feature already exists, 2 = --new-module on
@@ -163,11 +163,7 @@ tpls=("$TPL"/phase/*)
 for t in "${tpls[@]}"; do
   name="${t##*/}"
   [[ "$ux" == no && "$name" == ux.md ]] && continue
-  if [[ "$ux" == no && "$name" == signoff.md ]]; then
-    fill "$t" "$feature/$name" "${subst[@]}" -e '/^- \[ \] Design verification/d'
-  else
-    fill "$t" "$feature/$name" "${subst[@]}"
-  fi
+  fill "$t" "$feature/$name" "${subst[@]}"
 done
 for ov in $overlays; do   # the surface overlays, after the profile overlay
   [[ -d "$TPL/surface/$ov" ]] || continue
@@ -184,7 +180,7 @@ for ov in $overlays; do   # the surface overlays, after the profile overlay
     fi
   done < <(find "$TPL/surface/$ov" -type f | LC_ALL=C sort)
 done
-if [[ "$ux" == yes ]]; then gitkeep "$feature" contracts prototypes briefs; else gitkeep "$feature" contracts briefs; fi
+gitkeep "$feature" contracts briefs
 {
   echo "module=$module"
   echo "number=$nn"

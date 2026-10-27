@@ -409,6 +409,20 @@ eq "ac-check: ...while another surface still passes" "$rc" 0
 out=$(PLUMBLINE_TEST_AC='f(){ echo "env-tests $1" >> $TRACE; }; f' acs AC-07-001 --surface worker); rc=$?
 eq "ac-check: the env var fills in a surface's empty AC tests cell" "$rc/$(trace)" "0/worker-typecheck;worker-lint;env-tests AC-07-001"
 
+# A Team table with the lead's Effort column last (| Teammate | Model | Workstream |
+# Surface | Effort |): both scripts read columns 1 and 4 only.
+plan '| Teammate | Model | Workstream | Surface | Effort |' '| --- | --- | --- | --- | --- |' \
+  '| eng-api | sonnet | API | api | medium |' '| eng-web | sonnet | UI | `web-ui` | high |' \
+  '| eng-none | sonnet | Misc |  | low |'
+gate_as eng-api "[AC-07-001] x"
+eq "gate: a 5-column Team table (Effort last) picks the surface" "$GATE_RC/$(trace)" \
+  "0/api-typecheck;api-lint;api-tests AC-07-001"
+gate_as eng-web "[AC-07-001][AC-07-002] x"
+eq "gate: ...for each teammate, backticks and all" "$GATE_RC/$(trace)" \
+  "0/web-typecheck;web-lint;web-tests AC-07-001|AC-07-002"
+gate_as eng-none "[AC-07-001] x"
+eq "gate: ...and an empty Surface with the Effort filled is still refused" "$GATE_RC/$GATE_ERR" "2/Task gate: eng-none $several"
+
 # make-briefs.sh
 printf '%s\n' '| ID | Use case | Criterion |' '| --- | --- | --- |' '| AC-07-001 | UC-07-001 | one |' \
   '| AC-07-002 | UC-07-001 | two |' > "$P/acceptance-criteria.md"
@@ -444,6 +458,14 @@ assert "make-briefs: ...and its tasks" has "$b" "- [AC-07-002] two (NORMAL)"
 out=$(mkbriefs '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' '| eng-api | sonnet | API |  |'); rc=$?
 assert "make-briefs: an empty Surface cell gives no surface section" \
   test "$rc" = 0 -a -z "$(grep 'Your surface' "$P/briefs/eng-api.md")"
+out=$(mkbriefs '| Teammate | Model | Workstream | Surface | Effort |' '| --- | --- | --- | --- | --- |' \
+  '| eng-api | sonnet | API | api | medium |' '| eng-web | sonnet | UI | `web-ui` | high |'); rc=$?
+b=$(cat "$P/briefs/eng-api.md")
+eq "make-briefs: a 5-column plan (Effort last) writes a brief per teammate" "$rc/$(grep -c 'briefs/' <<<"$out")" "0/2"
+assert "make-briefs: ...with the surface from column 4" has "$b" "Surface: api"
+assert "make-briefs: ...its AC tests cell" has "$b" "AC tests: bash $T/stubs/api.sh"
+assert "make-briefs: ...and the Effort value isn't taken for the surface" test -z "$(grep -E 'Surface: medium' <<<"$b")"
+assert "make-briefs: ...the second brief has its own surface" has "$(cat "$P/briefs/eng-web.md")" "--surface web-ui"
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

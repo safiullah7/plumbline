@@ -141,6 +141,8 @@ node_group() { # group
   s=$(first_listed "$scripts" "typecheck type-check") && tc=$(node_script "$g" "$pm" "$name" "$s" 1)
   listed "$scripts" lint && lint=$(node_script "$g" "$pm" "$name" lint 1)
   ac="node --dir $(qdir "$g")"
+  # Engineers write e2e tests named after the criteria too: run them as well.
+  listed "$all" "@playwright/test" && ac="$ac + playwright --dir $(qdir "$g")"
   dev_run() { # stack
     local s url
     s=$(first_listed "$scripts" "dev start") || return 0

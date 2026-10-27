@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # The /plumbline:signoff gap check as a script, so a phase can't be talked past a
 # gap: every AC has a passing test in test-plan.md, the QA verdict is PASS with no
-# open high or critical bug, accessibility results (or a waiver) where there's a
-# UI, every evidence kind the feature's surfaces require (or a waiver), no open
-# product finding or high design finding, no OPEN or ESCALATED question, and every
-# sign-off box is ticked except the PR and merge lines. Exits 1 and lists each
-# gap, or exits 0 when there are none.
+# open high or critical bug, the one evidence kind each of the feature's surfaces
+# requires (or a waiver), no open product finding or high design finding, no OPEN
+# or ESCALATED question, and every sign-off box is ticked except the PR and merge
+# lines (and the "Design verification" box of old features). Required evidence per
+# surface: web-ui and desktop-ui journeys, mobile-ui flow-tests, api transcripts,
+# service job-tests, cli golden-output, library doc-examples, data sample-run, ai
+# eval-set, infra plan-output. Features without surfaces= have no evidence rule.
+# Exits 1 and lists each gap, or exits 0 when there are none.
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "Signoff check: no active phase (.claude/current-phase is missing)."; exit 1; }
 rel=$(phase_rel)
@@ -29,27 +32,11 @@ while IFS= read -r b; do [[ -n "$b" ]] && gaps+=("open bug $b (qa-report.md)"); 
   md_table "$dir/qa-report.md" Bugs 2>/dev/null | awk -F'\t' '
     $1 != "" && toupper($4) !~ /^(FIXED|VERIFIED|WONTFIX|CLOSED)$/ && tolower($3) ~ /^(high|critical)$/ { print $1 " (" tolower($3) "): " $5 }')
 
-# Accessibility: serious or critical violations block, and so do missing
-# results, unless the scan was explicitly waived (the tools are optional).
-a11y=$(md_table "$dir/qa-report.md" Accessibility 2>/dev/null)
-while IFS=$'\t' read -r screen width crit ser _; do
-  [[ -n "$screen" ]] || continue
-  if ! [[ "$crit" =~ ^[0-9]+$ && "$ser" =~ ^[0-9]+$ ]]; then
-    gaps+=("accessibility results for $screen at $width aren't counts (scan not run?) (qa-report.md)")
-  elif (( crit + ser > 0 )); then
-    gaps+=("accessibility: $screen at $width has $crit critical and $ser serious violation(s) (qa-report.md)")
-  fi
-done <<<"$a11y"
-# A waiver line counts only when it's filled in: no <placeholder> left and an
-# "(approved by <name>)" ending, so the template's example line waives nothing.
-accessibility_waived() {
-  { tr -d '\r' < "$dir/qa-report.md"; } 2>/dev/null | grep -iE '^Accessibility waived:' \
-    | grep -v '<[^>]*>' | grep -qiE '\(approved by [^)]*[^) ][^)]*\)[[:space:]]*$'
-}
 # Text as an ERE that matches only itself, for names put into a pattern.
 ere_quote() { sed 's/[][\.*^$+?(){}|]/\\&/g' <<<"$1"; }
 # "Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)", the dash
-# also "—" or ":", filled in the same way as the accessibility waiver.
+# also "—" or ":". A waiver line counts only when it's filled in: no <placeholder>
+# left and an "(approved by <name>)" ending, so the template's example waives nothing.
 evidence_waived() { # kind surface
   local k s
   k=$(ere_quote "$1"); s=$(ere_quote "$2")
@@ -58,14 +45,9 @@ evidence_waived() { # kind surface
 }
 
 # Features with surfaces= in .plumbline (v0.4b) are checked by surface; legacy
-# and v0.4a features keep the v0.3 rule, which keys accessibility off ux.md.
+# and v0.4a features have no evidence rule (v0.3).
 surfaces=$(feature_meta surfaces)
-if [[ -z "$surfaces" ]]; then
-  screens=$(md_table "$dir/ux.md" "Screen inventory" 2>/dev/null | awk -F'\t' '$1 != ""' | grep -c .)
-  if [[ -z "$a11y" && "$screens" -gt 0 ]] && ! accessibility_waived; then
-    gaps+=("no accessibility results for the $screens screen(s) in ux.md: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
-  fi
-else
+if [[ -n "$surfaces" ]]; then
   # Evidence rows with Result pass and a Location, as "kind<TAB>surface"; kind and
   # result in any case. A row with no Location points at nothing, so it doesn't
   # count. A fail row beats a pass row for the same kind and surface.
@@ -76,7 +58,7 @@ else
   recorded=$(md_table "$dir/qa-report.md" Evidence 2>/dev/null | awk -F'\t' '
     { r = tolower($4); if (r == "pass" && $3 == "") r = "pass without a location"
       print tolower($1) "\t" $2 "\t" r }')
-  seen="," axe_for="" checklist_for=""
+  seen=","
   IFS=, read -r -a snames <<<"$surfaces"
   for s in "${snames[@]}"; do
     s=$(sed -E 's/^[[:space:]]+|[[:space:]]+$//g' <<<"$s")
@@ -86,17 +68,17 @@ else
       gaps+=("unknown surface \"$s\" in .plumbline surfaces=: a surface is web-ui, mobile-ui, desktop-ui, api, service, cli, library, data, ai or infra, or <kind>-<name>; ask the user to correct it")
       continue
     fi
-    # Required evidence kinds by surface kind (dev plan §6.4, the table rules).
+    # The one evidence kind each surface kind needs: QA checks that the feature
+    # works, so each surface has the record of that check.
     case "$kind" in
-      web-ui)     need="screenshots axe journeys"; axe_for="$axe_for${axe_for:+, }$s" ;;
-      mobile-ui)  need="screenshots flow-tests checklist"; checklist_for="$checklist_for${checklist_for:+, }$s" ;;
-      desktop-ui) need="screenshots checklist"; checklist_for="$checklist_for${checklist_for:+, }$s" ;;
-      api)        need="contract authz negative transcripts" ;;
-      service)    need="job-tests failure-cases" ;;
+      web-ui|desktop-ui) need="journeys" ;;
+      mobile-ui)  need="flow-tests" ;;
+      api)        need="transcripts" ;;
+      service)    need="job-tests" ;;
       cli)        need="golden-output" ;;
-      library)    need="doc-examples api-diff" ;;
-      data)       need="sample-run idempotency" ;;
-      ai)         need="eval-set injection" ;;
+      library)    need="doc-examples" ;;
+      data)       need="sample-run" ;;
+      ai)         need="eval-set" ;;
       infra)      need="plan-output" ;;
     esac
     for k in $need; do
@@ -104,23 +86,11 @@ else
       grep -qxF "$key" <<<"$failed" && is_failed=1 || is_failed=0
       (( is_failed )) || { grep -qxF "$key" <<<"$passed" && continue; }
       evidence_waived "$k" "$s" && continue
-      # The scan the user waived is this evidence too: don't ask twice.
-      [[ "$k" == axe || "$k" == checklist ]] && accessibility_waived && continue
       got=$(awk -F'\t' -v k="$k" -v s="$s" '$1 == k && $2 == s && $3 != "" { print $3 }' <<<"$recorded" | sort -u | paste -sd, -)
       (( is_failed )) && got=fail
       gaps+=("no passing $k evidence for $s${got:+ (recorded: $got)}: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line (qa-report.md)")
     done
   done
-  # Accessibility by surface: web-ui needs axe rows, mobile-ui and desktop-ui
-  # checklist rows; surfaces with no UI are exempt. A row without a Method is a
-  # v0.3 row, which was always axe. One Accessibility waiver covers both.
-  methods=$(awk -F'\t' '$1 != "" { m = tolower($8); print (m == "" ? "axe" : m) }' <<<"$a11y")
-  if [[ -n "$axe_for" ]] && ! grep -qx axe <<<"$methods" && ! accessibility_waived; then
-    gaps+=("no axe accessibility results for $axe_for: run the scan, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
-  fi
-  if [[ -n "$checklist_for" ]] && ! grep -qx checklist <<<"$methods" && ! accessibility_waived; then
-    gaps+=("no checklist accessibility results for $checklist_for: fill in qa/a11y-checklist.tsv and run qa-summary.sh, or ask the user to waive it (the build skill writes the line) (qa-report.md)")
-  fi
 fi
 
 closed='^(FIXED|RESOLVED|CLOSED|WONTFIX|VERIFIED|DONE)$'
@@ -134,7 +104,7 @@ while IFS= read -r f; do [[ -n "$f" ]] && gaps+=("$f (questions.md)"); done < <(
 
 while IFS= read -r line; do
   [[ -n "$line" ]] && gaps+=("unticked sign-off box: $(sed -E 's/^[[:space:]]*- \[ \][[:space:]]*//' <<<"$line") (signoff.md)")
-done < <({ tr -d '\r' < "$dir/signoff.md"; } 2>/dev/null | grep -E '^[[:space:]]*- \[ \]' | grep -viE '(phase|feature) pr|merged')
+done < <({ tr -d '\r' < "$dir/signoff.md"; } 2>/dev/null | grep -E '^[[:space:]]*- \[ \]' | grep -viE '(phase|feature) pr|merged|^[[:space:]]*- \[ \][[:space:]]*Design verification')
 
 if (( ${#gaps[@]} == 0 )); then
   echo "Signoff check: no gaps in $rel."

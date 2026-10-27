@@ -16,9 +16,9 @@ data, ai or infra. Paths are space-separated globs, relative to the repo root.
 The commands run in bash from the repo root, so write paths with forward
 slashes (apps/web, not apps\web). An empty Typecheck or Lint cell skips that
 check; `none` skips any check. AC tests is an adapter, written as just its name
-(node, pytest or go, plus `--dir <path>` for a package in a subfolder), `generic`
+(node, pytest, go or playwright, plus `--dir <path>` for a package in a subfolder), `generic`
 with its command below, or any other command, which gets the AC IDs as its last
-argument. An empty AC tests cell fails the task gate until you write one of
+argument. Join two parts with `+` to run both (`node --dir storefront + playwright --dir storefront` runs unit and e2e tests); each part is an adapter. An empty AC tests cell fails the task gate until you write one of
 those, or `none`. No cell may contain a `|`. Rows marked "(check)" are guesses
 the gates ignore: keep them without the mark, or delete them.
 

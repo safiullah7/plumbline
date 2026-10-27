@@ -143,10 +143,9 @@ section_body() { # file heading
 }
 
 # Files anyone may write and nobody owns committing (repo-relative path): the
-# phase Q&A log, progress notes, generated briefs and AC lists, QA screenshots,
-# diffs, accessibility reports and evidence, and agent memory. The ownership
-# guard lets everyone edit them, and the idle gate doesn't count them as anyone's
-# uncommitted work.
+# phase Q&A log, progress notes, generated briefs and AC lists, QA evidence, and
+# agent memory. The ownership guard lets everyone edit them, and the idle gate
+# doesn't count them as anyone's uncommitted work.
 shared_path() {
   case "$1" in
     */questions.md|*/progress.md|*/briefs/*|*/acceptance-criteria.json) return 0 ;;
@@ -259,21 +258,108 @@ surface_kind() { # surface
   return 1
 }
 
+# A string as one single-quoted shell word.
+sq() { # string
+  local q="'" r="'\\''"
+  printf "'%s'" "${1//$q/$r}"
+}
+
+# An AC tests cell cut into its parts at each standalone + (a word that is just
+# +, outside quotes), one per line, blank parts kept. A cell with no such + is
+# one part, unchanged. Prints "blank" instead when a part is empty.
+ac_cell_parts() { # cell
+  local s="$1" i c qt="" cur="" word="" n=${#1} cut=0 parts="" blank=0 p
+  for ((i = 0; i <= n; i++)); do
+    c="${s:i:1}"
+    if [[ -n "$qt" ]]; then
+      cur="$cur$c"; word="$word$c"; [[ "$c" == "$qt" ]] && qt=""
+    elif [[ "$c" == '\' ]]; then
+      cur="$cur$c${s:i+1:1}"; word="$word$c${s:i+1:1}"; i=$((i + 1))
+    elif [[ "$c" == "'" || "$c" == '"' ]]; then
+      qt="$c"; cur="$cur$c"; word="$word$c"
+    elif [[ -z "$c" || "$c" == [[:space:]] ]]; then
+      if [[ "$word" == + ]]; then
+        cur="${cur%+}"; cut=1; parts="$parts$cur"$'\n'; cur=""
+      else
+        cur="$cur$c"
+      fi
+      word=""
+    else
+      cur="$cur$c"; word="$word$c"
+    fi
+  done
+  if (( ! cut )); then printf '%s\n' "$s"; return 0; fi
+  parts="$parts$cur"$'\n'
+  while IFS= read -r p; do
+    [[ -n "${p//[[:space:]]/}" ]] || blank=1
+  done <<<"${parts%$'\n'}"
+  (( blank )) && { echo blank; return 0; }
+  printf '%s' "$parts"
+}
+
+# One AC tests part as a command: a bare adapter name (node, pytest, go,
+# playwright, generic) with only --dir (or --surface for generic) options becomes
+# that adapter in ac-tests/, anything else is a raw command, returned as written.
+ac_part_command() { # part, surface
+  local cell="$1" name rest dir q opt val re
+  cell="${cell#"${cell%%[![:space:]]*}"}"; cell="${cell%"${cell##*[![:space:]]}"}"
+  name="${cell%%[[:space:]]*}"; rest="${cell#"$name"}"
+  # The options an adapter takes from the cell, each followed by one shell word
+  # (plain, quoted, or both, as detect-project writes an odd folder name).
+  opt=--dir; [[ "$name" == generic ]] && opt='--(dir|surface)'
+  val="(\\\\.|'[^']*'|\"[^\"]*\"|[^[:space:]'\"\\\\])+"
+  re="^([[:space:]]+$opt(=|[[:space:]]+)$val)*[[:space:]]*\$"
+  case "$name" in
+    node|pytest|go|playwright|generic)
+      [[ "$rest" =~ $re ]] || { printf '%s\n' "$cell"; return 0; }   # a real command
+      # Double-quoted for eval, so a scripts folder with spaces still works.
+      dir="${PLUMBLINE_SCRIPTS//\\/\\\\}"; dir="${dir//\"/\\\"}"
+      dir="${dir//\$/\\\$}"; dir="${dir//\`/\\\`}"
+      printf -v q %q "$2"
+      [[ "$name" == generic && ! "$rest" =~ [[:space:]]--surface ]] && rest=" --surface $q$rest"
+      cell="bash \"$dir/ac-tests/$name.sh\"$rest" ;;
+  esac
+  printf '%s\n' "$cell"
+}
+
+# The command for a whole AC tests cell: its one part, or combine.sh over the
+# parts of an "A + B" cell. A blank part gives a command that fails with a message.
+ac_cell_command() { # cell, surface
+  local parts p out="" dir
+  parts=$(ac_cell_parts "$1")
+  if [[ "$parts" == blank ]]; then
+    printf '%s\n' "echo $(sq "AC tests: the cell \"$1\" for surface ${2:-?} in docs/product/project.md has a blank part (a leading, doubled or trailing +); write adapters or commands joined by \" + \"") >&2; false"
+    return 0
+  fi
+  if [[ "$parts" != *$'\n'* ]]; then ac_part_command "$1" "$2"; return 0; fi
+  while IFS= read -r p; do
+    [[ -n "$p" ]] && out="$out --cmd $(sq "$(ac_part_command "$p" "$2")")"
+  done <<<"$parts"
+  dir="${PLUMBLINE_SCRIPTS//\\/\\\\}"; dir="${dir//\"/\\\"}"
+  dir="${dir//\$/\\\$}"; dir="${dir//\`/\\\`}"
+  printf 'bash "%s/ac-tests/combine.sh"%s\n' "$dir" "$out"
+}
+
 # The command for one check, by precedence (dev plan §6.8):
 # 1. its env var when set (set to "" skips the check);
 # 2. the profile's row for the surface, as profile_surface picks it: the
 #    Typecheck, Lint or AC tests cell. "none" skips the check, and so does an
 #    empty Typecheck or Lint cell; an empty AC tests cell returns 3, since a pass
-#    must mean tests ran. An AC tests cell that is just node, pytest, go or
-#    generic, optionally followed by --dir <path> (or --surface <s> for generic),
-#    becomes that adapter in ac-tests/ (generic also gets --surface); anything
-#    else (node --test, go test ./...) is a raw command;
+#    must mean tests ran. An AC tests cell that is just node, pytest, go,
+#    playwright or generic, optionally followed by --dir <path> (or --surface <s>
+#    for generic), becomes that adapter in ac-tests/ (generic also gets
+#    --surface); anything else (node --test, go test ./...) is a raw command.
+#    A cell may join several of these with a standalone + outside quotes (node
+#    --dir web + playwright --dir web): each part is mapped that way and the whole
+#    becomes combine.sh --cmd '<part>' --cmd '<part>', which merges their per-ID
+#    reports. A blank part (a leading, doubled or trailing +) is a mistake in the
+#    profile: the command printed is one that fails and says so;
 # 3. the legacy npm default, when there's no profile.
 # Returns 1 or 2 as profile_surface does, printing nothing. run_checks appends
 # the IDs as one quoted argument, so a command must take them last.
 check_command() { # env var name, surface, legacy default
   if [[ -n "${!1+set}" ]]; then printf '%s\n' "${!1}"; return 0; fi
-  local surface col row cell name rest dir q opt val re
+  local surface col row cell
   case "$1" in
     PLUMBLINE_TYPECHECK) col=5 ;;
     PLUMBLINE_LINT)      col=6 ;;
@@ -287,22 +373,7 @@ check_command() { # env var name, surface, legacy default
   case "$cell" in [Nn][Oo][Nn][Ee]) printf '\n'; return 0 ;; esac
   if [[ "$col" == 7 ]]; then
     [[ -n "$cell" ]] || return 3
-    name="${cell%%[[:space:]]*}"; rest="${cell#"$name"}"
-    # The options an adapter takes from the cell, each followed by one shell word
-    # (plain, quoted, or both, as detect-project writes an odd folder name).
-    opt=--dir; [[ "$name" == generic ]] && opt='--(dir|surface)'
-    val="(\\\\.|'[^']*'|\"[^\"]*\"|[^[:space:]'\"\\\\])+"
-    re="^([[:space:]]+$opt(=|[[:space:]]+)$val)*[[:space:]]*\$"
-    case "$name" in
-      node|pytest|go|generic)
-        [[ "$rest" =~ $re ]] || { printf '%s\n' "$cell"; return 0; }   # a real command
-        # Double-quoted for eval, so a scripts folder with spaces still works.
-        dir="${PLUMBLINE_SCRIPTS//\\/\\\\}"; dir="${dir//\"/\\\"}"
-        dir="${dir//\$/\\\$}"; dir="${dir//\`/\\\`}"
-        printf -v q %q "$surface"
-        [[ "$name" == generic && ! "$rest" =~ [[:space:]]--surface ]] && rest=" --surface $q$rest"
-        cell="bash \"$dir/ac-tests/$name.sh\"$rest" ;;
-    esac
+    cell=$(ac_cell_command "$cell" "$surface")
   fi
   printf '%s\n' "$cell"
 }

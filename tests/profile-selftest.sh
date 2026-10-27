@@ -53,6 +53,26 @@ assert "node web: proposal keeps the profile header" has "$out" "Confirm: auto"
 assert "node web: and the Generic commands section" has "$out" "## Generic commands"
 assert "node web: no placeholder rows left" test -z "$(grep -F '| <' <<<"$out")"
 
+# --- detection: @playwright/test adds the e2e adapter to the AC tests cell ---
+R="$T/node-pw"
+mk "$R/package.json" '{"name":"shop","private":true,"dependencies":{"next":"14.2.0","react":"18.3.1"},' \
+  '"devDependencies":{"@playwright/test":"1.64.0"},"scripts":{"dev":"next dev"}}'
+out=$(detect "$R")
+eq "playwright: a devDependency on @playwright/test adds + playwright" "$(row_of "$out" web-ui)" \
+  "| web-ui | Next.js | ** | npm run dev (http://localhost:3000) | | | node --dir . + playwright --dir . |"
+R="$T/node-pw-mono"
+mk "$R/package.json" '{"name":"mono","private":true,"workspaces":["apps/*"]}'
+mk "$R/apps/web/package.json" '{"name":"web","dependencies":{"react":"18","@playwright/test":"1.64.0"}}'
+mk "$R/apps/my web/package.json" '{"name":"web2","dependencies":{"react":"18","@playwright/test":"1.64.0"}}'
+mk "$R/apps/api/package.json" '{"name":"api","dependencies":{"express":"4"}}'
+out=$(detect "$R")
+eq "playwright: only the package that depends on it, with its own folder" "$(row_of "$out" web-ui-web)" \
+  "| web-ui-web | React | apps/web/** | | | | node --dir apps/web + playwright --dir apps/web |"
+eq "playwright: ...a folder with a space is quoted in both parts" "$(grep -F 'apps/my web/**' <<<"$out")" \
+  "| web-ui | React | apps/my web/** | | | | node --dir 'apps/my web' + playwright --dir 'apps/my web' |"
+eq "playwright: ...a package without it keeps the plain cell" "$(row_of "$out" api)" \
+  "| api | Express | apps/api/** | | | | node --dir apps/api |"
+
 # --- detection: Node API + web monorepo, npm workspaces ---
 R="$T/mono-npm"
 mk "$R/package.json" '{"name":"mono","private":true,"workspaces":["apps/*"],"devDependencies":{"typescript":"5"}}'
@@ -343,6 +363,48 @@ for i in "${!cells[@]}"; do
   eq "check_command: AC tests cell '${cells[$i]}'" "$(lib "$P2" check_command PLUMBLINE_TEST_AC "s$((i + 1))" x)" "${want[$i]}"
 done
 
+# A cell may join several parts with a standalone + outside quotes; the whole goes
+# through combine.sh, each part mapped as above and single-quoted.
+P3="$T/plus-cells"
+cells=('playwright' 'playwright --dir apps/web' 'node --dir web + playwright --dir web' 'node + playwright'
+       'pytest --dir a +generic' "node --dir 'a + b'" "node --dir 'a + b' + go --dir \"c d\""
+       'generic + make ac' 'node --dir web  +  playwright --dir web' "node --dir 'it'\''s' + playwright --dir 'it'\''s'"
+       'playwright --surface x' 'playwright --dir')
+n="bash \"$S/ac-tests"
+want=("$n/playwright.sh\"" "$n/playwright.sh\" --dir apps/web"
+      "bash \"$S/ac-tests/combine.sh\" --cmd '$n/node.sh\" --dir web' --cmd '$n/playwright.sh\" --dir web'"
+      "bash \"$S/ac-tests/combine.sh\" --cmd '$n/node.sh\"' --cmd '$n/playwright.sh\"'"
+      'pytest --dir a +generic'
+      "$n/node.sh\" --dir 'a + b'"
+      "bash \"$S/ac-tests/combine.sh\" --cmd '$n/node.sh\" --dir '\\''a + b'\\''' --cmd '$n/go.sh\" --dir \"c d\"'"
+      "bash \"$S/ac-tests/combine.sh\" --cmd '$n/generic.sh\" --surface s8' --cmd 'make ac'"
+      "bash \"$S/ac-tests/combine.sh\" --cmd '$n/node.sh\" --dir web' --cmd '$n/playwright.sh\" --dir web'"
+      "(checked below by evaluating it)"
+      'playwright --surface x' 'playwright --dir')
+{ echo '## Surfaces'; echo '| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |'; echo '| --- | --- | --- | --- | --- | --- | --- |'
+  for i in "${!cells[@]}"; do echo "| s$((i + 1)) | x | ** | | | | ${cells[$i]} |"; done
+} > "$T/cells.md"
+mkdir -p "$P3/docs/product" && mv "$T/cells.md" "$P3/docs/product/project.md"
+for i in "${!cells[@]}"; do
+  [[ $i == 9 ]] && continue
+  eq "check_command: AC tests cell '${cells[$i]}'" "$(lib "$P3" check_command PLUMBLINE_TEST_AC "s$((i + 1))" x)" "${want[$i]}"
+done
+# Evaluated as run_check does, the command hands combine.sh each part's own words.
+eval "args=($(lib "$P3" check_command PLUMBLINE_TEST_AC s10 x))"
+eq "check_command: a quoted part with ' in the folder survives the eval" "${args[3]#bash }" \
+  "\"$S/ac-tests/node.sh\" --dir 'it'\''s'"
+# A blank part is a profile mistake: the command prints why and fails.
+cells=('node +' '+ node' 'node + + playwright' 'node +  ')
+{ echo '## Surfaces'; echo '| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |'; echo '| --- | --- | --- | --- | --- | --- | --- |'
+  for i in "${!cells[@]}"; do echo "| b$((i + 1)) | x | ** | | | | ${cells[$i]} |"; done
+} > "$P3/docs/product/project.md"
+for i in "${!cells[@]}"; do
+  cmd=$(lib "$P3" check_command PLUMBLINE_TEST_AC "b$((i + 1))" x); rc=$?
+  msg=$(eval "$cmd \"AC-01-001\"" 2>&1); mrc=$?
+  eq "check_command: blank part '${cells[$i]}' returns 0, the command fails saying so" "$rc/$mrc" "0/1"
+  assert "check_command: ...naming the surface and the blank part" has "$msg" "for surface b$((i + 1)) in docs/product/project.md has a blank part"
+done
+
 # --- run_checks through the adapters, from a scripts folder with a space and a quote ---
 D="$T/plug in's \$HOME/scripts"
 mkdir -p "$D/ac-tests"
@@ -354,7 +416,15 @@ mk "$P/docs/product/project.md" '## Surfaces' '| Surface | Stack | Paths | Run |
   '| --- | --- | --- | --- | --- | --- | --- |' \
   '| web-ui | Next.js | apps/web/** | | true | | node --dir apps/web |' \
   '| api | Go | services/api/** | | | false | go --dir services/api |' \
-  '| cli | Rust | ** | | | | generic |'
+  '| cli | Rust | ** | | | | generic |' \
+  '| full | x | ** | | | | pytest --dir a + playwright --dir b |'
+# Stand-ins for the two runners behind "full": per-ID lines, the arguments they got
+# recorded in the repo root; playwright misses AC-01-002 (or fails it, with PW_RESULT=fail).
+mk "$D/ac-tests/pytest.sh" '#!/usr/bin/env bash' 'echo "pytest.sh $*" >> "$PWD/combine-args.log"' \
+  'echo "AC-01-001: pass (1)"; echo "AC-01-002: pass (1)"'
+mk "$D/ac-tests/playwright.sh" '#!/usr/bin/env bash' 'echo "playwright.sh $*" >> "$PWD/combine-args.log"' \
+  'echo "AC-01-001: pass (2)"; echo "AC-01-002: ${PW_RESULT:-missing}"; exit 1'
+cp "$G/ac-tests/combine.sh" "$D/ac-tests/"
 rc_of() { # surface: run_checks with the copied lib.sh, then the AC test's output
   (cd "$T" && export CLAUDE_PROJECT_DIR="$P" && source "$D/lib.sh" && run_checks "AC-01-001|AC-01-002" "$1"
    echo "rc=$?/$RUN_CHECKS_FAILED"; cat "$RUN_CHECKS_LOG"; rm -f "$RUN_CHECKS_LOG")
@@ -372,6 +442,15 @@ eq "run_checks: generic gets --surface and the IDs" "$(tail -n1 <<<"$out")" \
   "generic.sh [--surface cli AC-01-001|AC-01-002] in profiled"
 out=$(PLUMBLINE_TEST_AC="echo raw" rc_of web-ui)
 eq "run_checks: PLUMBLINE_TEST_AC still wins" "$(tail -n1 <<<"$out")" "raw AC-01-001|AC-01-002"
+rm -f "$P/combine-args.log"
+out=$(rc_of full)
+eq "run_checks: a + cell runs both adapters through combine.sh and merges their lines" "$out" \
+  "rc=0/"$'\n'"AC-01-001: pass (3)"$'\n'"AC-01-002: pass (1)"
+eq "run_checks: ...each got its own --dir and the IDs last, in the repo root" "$(paste -sd';' - < "$P/combine-args.log")" \
+  "pytest.sh --dir a AC-01-001|AC-01-002;playwright.sh --dir b AC-01-001|AC-01-002"
+out=$(PW_RESULT=fail rc_of full)
+eq "run_checks: ...a fail in either adapter fails the tests check" "$(head -n3 <<<"$out")" \
+  "rc=1/tests"$'\n'"AC-01-001: pass (3)"$'\n'"AC-01-002: fail"
 
 for s in web-ui:web-ui web-ui-shop:web-ui api:api api-billing:api ai:ai ai-chat:ai mobile-ui:mobile-ui data:data; do
   eq "surface_kind: ${s%%:*} is ${s#*:}" "$(lib "$P" surface_kind "${s%%:*}")" "${s#*:}"

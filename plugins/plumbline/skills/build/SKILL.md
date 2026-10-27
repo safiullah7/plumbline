@@ -38,8 +38,10 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
      "(check)" rows the user didn't keep and the mark on those kept, and set
      `Confirmed by: <name> on <YYYY-MM-DD>` (<name> as in step 8). Point out
      any surface whose AC tests cell is blank: its checks fail until it names
-     a command (or `none`). If the user said not to ask anything, skip and say
-     so.
+     a command (or `none`). A cell may join adapters with `+`: a web surface
+     whose package has `@playwright/test` gets `node --dir <pkg> + playwright
+     --dir <pkg>` (detect-project proposes it). If the user said not to ask
+     anything, skip and say so.
    - Confirm mode: the `Confirm:` line of docs/product/project.md if that file
      exists (`auto` or `always`); else, if you have a shell, the
      PLUMBLINE_CONFIRM environment variable; else `auto`.
@@ -58,15 +60,18 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    Module: <name> (existing | new) | none
    Folder: none | docs/product/<module>/<nn>-<feature-slug>/
    Surfaces: <comma-separated>
-   Roles: <e.g. product, lead, 2 engineers, reviewer, UX, QA, QA runner>
-   Evidence: <kinds per surface, e.g. api: contract, authz, negative, transcripts>
+   Roles: <e.g. product, lead, 2 engineers, reviewer, QA>
+   Evidence: <one kind per surface, e.g. web-ui: journeys; api: transcripts>
    UX: yes | no
    Engineers: <n>
    Docs: none | slim | full
    Team: no | yes
-   Models: lead opus, <each other role in Roles> <opus | sonnet>
    Why: <one line>
    ```
+
+   The evidence kinds: web-ui and desktop-ui journeys, mobile-ui flow-tests,
+   api transcripts, service job-tests, cli golden-output, library
+   doc-examples, data sample-run, ai eval-set, infra plan-output.
 
    Then list the Quick criteria, if any. Ask only when one of these holds:
    - the request is too vague for observable criteria (ask what's missing);
@@ -76,10 +81,10 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    - Confirm is `always` (confirm the block as a whole).
    Otherwise go straight on. If an answer changes the module, size, surfaces
    or criteria, re-run step 2 with the answers added and print the new block.
-   From here on, dispatch only the roles the Roles line lists, and
-   plumbline:ux-engineer only when the block says `UX: yes`. Dispatch each
-   role with its model from the Models line; never give the lead a model: it
-   always runs on opus.
+   From here on, dispatch only the roles the Roles line lists. `UX: yes`
+   means the feature has UI: product writes ux.md. Give no model to the lead,
+   or to product after triage: both run on opus. Engineers run on sonnet with
+   the effort the lead sets; the reviewer's model is the lead's call.
    Never start Full work without the user's yes. If the size is Full and teams
    aren't available, stop: say Full needs an agent team and print the launch
    command `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude`.
@@ -108,8 +113,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       Module: <module>. Surface: <the block's one surface, or none without a
       profile>. Criteria: <IDs and
       text>. Branch: <branch> (created; you're on it). Scripts: <plugin>/scripts.
-      Models: engineer <model>, reviewer <model>." (from the Models line).
-      The lead dispatches one senior engineer, runs
+      Pick the engineer's effort by the work's complexity."
+      The lead dispatches one senior engineer on sonnet, runs
       `ac-check.sh "<IDs>" --surface <surface>`, gets a review, pushes and
       opens the PR; it never creates a folder or merges. If it reports the
       work outgrew Quick, go back to step 2 with its reasons.
@@ -125,34 +130,33 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       with <nn> from the printed folder, and commit the new docs (and a
       project.md you wrote in step 1) by path.
    2. Dispatch plumbline:product-engineer: write the slim spec.md and
-      acceptance-criteria.md for the request in the folder. Then dispatch,
-      together: plumbline:qa-engineer to write test-plan.md
-      (one Traceability row per AC with Status `planned`, and an Evidence line
-      per kind and surface, from the block's Evidence line, which you quote),
-      and, if `UX: yes`, plumbline:ux-engineer for ux.md and one mockup
-      per key screen.
+      acceptance-criteria.md for the request in the folder and, if `UX: yes`,
+      ux.md: the journeys, the screen inventory and each screen in words
+      (layout, components, every state, exact copy).
    3. Dispatch plumbline:lead-engineer to write dev-plan.md (Status: DRAFT,
-      1-2 engineers), quoting the block's Models line for the Team table.
-      Show its summary and ask one question: approve the plan, or change it
-      (say what). Relay changes to the lead until approved.
+      1-2 engineers): per engineer, ordered tasks with the failing unit test
+      first, the e2e test and a done-when, and the Team table with each
+      engineer's Effort. Show its summary and ask one question: approve the
+      plan, or change it (say what). Relay changes to the lead until approved.
    4. Tell the lead the plan is approved: it sets READY, runs make-briefs.sh and
-      builds, dispatching the engineers and a reviewer per workstream as
-      subagents, and checks each workstream with
+      builds, dispatching each engineer as a subagent on sonnet with that
+      engineer's Effort, reviewing each workstream against the plan,
+      dispatching a reviewer per workstream and checking each with
       `ac-check.sh "<its IDs>" --surface <its surface>`. With 2 engineers and
       teams on, spawn the team yourself instead: the lead and each engineer (pointed at its brief) as teammates,
       each with the Agent tool, its agent type and its name from the plan's Team
-      table (call TeamCreate first if your Claude Code has it). Teammates can't
+      table, each engineer with model sonnet and the effort in its Effort
+      column (call TeamCreate first if your Claude Code has it). Teammates can't
       spawn teammates, so you spawn them all. When every workstream is reviewed and the full
       suite passes, the lead ticks "Integration review" in signoff.md.
-   5. Verify. Dispatch plumbline:qa-runner with: "Standard: run test-plan.md,
-      record results in qa-report.md, set each Traceability Status in
-      test-plan.md to pass or fail, run qa-summary.sh, set the Verdict and tick
-      the QA verdict box. Required evidence: <the block's Evidence line>; fill
-      qa-report.md's Evidence table, one row per kind and surface." Dispatch
+   5. Verify. Dispatch plumbline:qa-engineer to test the flows (functional
+      only) with: "Standard: check each journey and criterion works, fill
+      test-plan.md Traceability, log bugs in qa-report.md, record the Evidence
+      row for each surface's required kind, set the Verdict and tick the QA
+      verdict box. Required evidence: <the block's Evidence line>." Dispatch
       plumbline:product-engineer to walk the finished journeys against the criteria (Journey results, Product
       findings, Success metrics results in signoff.md) and tick Product
-      verification; with `UX: yes`, plumbline:ux-engineer checks each screen
-      against ux.md and ticks Design verification. Then follow
+      verification. Then follow
       /plumbline:signoff (<plugin>/skills/signoff/SKILL.md): gap check, full
       suite, push, PR. If the gap check lists gaps, send each to its owner and
       run it again.
@@ -162,23 +166,21 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    then create the branch from the printed folder as in 6.1. For a new module,
    product writes vision.md first. Then the full flow:
    discovery (follow <plugin>/skills/discover/SKILL.md yourself, since it asks
-   the user) → spec, ux.md and prototypes (UX), test plan with the Evidence
-   lines (QA engineer, as in 6.2) → lead's plan → the user approves → READY and
-   make-briefs.sh → team build (teammates from the plan's Team table, spawned
-   as in 6.4) → QA runner and signoff as in 6.5.
+   the user; product writes the journeys into ux.md) → spec, criteria and
+   ux.md (product, as in 6.2) → lead's plan (as in 6.3) → the user approves →
+   READY and make-briefs.sh → team build (teammates from the plan's Team
+   table, spawned as in 6.4) → QA, product verification and signoff as in 6.5.
 8. **Questions, waivers and cleanup** (any size).
    - When an agent returns a question only the user can answer, ask it, then
      pass the answer back to that agent.
-   - Agents can't write `Evidence waived:` or `Accessibility waived:` lines;
-     the ownership guard blocks them. When an agent or the gap check reports
-     evidence or accessibility results that can't be produced, ask the user,
-     once per evidence kind and surface (several questions in one call is
-     fine): waive it (with the reason) or get it done. Only after an explicit
+   - Agents can't write `Evidence waived:` lines; the ownership guard blocks
+     them. When an agent or the gap check reports evidence that can't be
+     produced, ask the user, once per evidence kind and surface (several
+     questions in one call is fine): waive it (with the reason) or get it done. Only after an explicit
      yes for it, add the line yourself to the feature's qa-report.md, on its
      own line:
-     `Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)` or
-     `Accessibility waived: <reason> (approved by <name>)`, where <name> is
-     the user's name (`git config user.name`, else ask).
+     `Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)`,
+     where <name> is the user's name (`git config user.name`, else ask).
    - Cleanup on stop: delete `.claude/plumbline-quick` if you wrote it.
 9. **No shell** (e.g. eval runs). Do steps 1-3 as usual. Then:
    - Quick: skip step 4, the branch and the marker. Dispatch the lead as in 5.2, adding
