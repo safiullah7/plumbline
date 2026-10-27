@@ -45,15 +45,17 @@ while IFS=$'\t' read -r name _; do
   if [[ -n "$ucs" ]] && head -n1 <<<"$screens" | grep -qi 'use cases'; then
     screens=$(filter_rows "$(alt <<<"$ucs")" <<<"$screens")
   fi
-  # Each listed screen's description (### <name> under ## Screens), or the whole
-  # section when the inventory names no screen.
-  screen_text=""
+  # Each listed screen's description (### <name> under ## Screens); the whole
+  # section only when ux.md has no inventory table at all. An engineer whose use
+  # cases have no screen (an API workstream) gets none.
+  screen_text="" whole=0
+  [[ -z "$screens" ]] && whole=1
   if [[ -f "$ux" ]]; then
     names=$(awk -F'|' 'NR > 2 { n = $2; gsub(/^[[:space:]]+|[[:space:]]+$/, "", n); if (n != "") print n }' <<<"$screens" | paste -sd'|' -)
-    screen_text=$(awk -v names="$names" '{ sub(/\r$/, "") }
+    screen_text=$(awk -v names="$names" -v whole="$whole" '{ sub(/\r$/, "") }
       BEGIN { n = split(tolower(names), a, "|"); for (i = 1; i <= n; i++) if (a[i] != "") want[a[i]] = 1 }
       /^## / { in_s = ($0 ~ /^## Screens[[:space:]]*$/); show = 0; next }
-      in_s && /^### / { t = $0; sub(/^### +/, "", t); sub(/[[:space:]]+$/, "", t); show = (names == "" || (tolower(t) in want)) }
+      in_s && /^### / { t = $0; sub(/^### +/, "", t); sub(/[[:space:]]+$/, "", t); show = (whole == 1 || (tolower(t) in want)) }
       in_s && show' "$ux")
   fi
   contracts=$(section_table "$plan" Contracts)

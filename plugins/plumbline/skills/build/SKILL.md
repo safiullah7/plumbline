@@ -99,7 +99,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       PLUMBLINE_TEST_AC if set; else that surface's Typecheck, Lint and AC
       tests cells in project.md (an adapter name runs
       `<plugin>/scripts/ac-tests/<name>.sh`); else `npm run -s typecheck`,
-      `npm run -s lint`, `npm run -s test:ac`. Say that
+      `npm run -s lint`, `npm run -s test:ac`; plus each surface's Run command
+      (the dev server QA and the e2e tests use) and the browser tool QA drives.
+      Say that
       Claude Code will ask them to approve any it doesn't already allow, and
       that a denied command stops the change. This is information, not a
       question: go on. Never edit permission settings yourself.
@@ -169,7 +171,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    the user; product writes the journeys into ux.md) → spec, criteria and
    ux.md (product, as in 6.2) → lead's plan (as in 6.3) → the user approves →
    READY and make-briefs.sh → team build (teammates from the plan's Team
-   table, spawned as in 6.4) → QA, product verification and signoff as in 6.5.
+   table, spawned as in 6.4) → QA, product verification and signoff as in 6.5
+   (give QA the same brief, with "Full:" in place of "Standard:").
 8. **Questions, waivers and cleanup** (any size).
    - When an agent returns a question only the user can answer, ask it, then
      pass the answer back to that agent.

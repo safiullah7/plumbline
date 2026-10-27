@@ -94,6 +94,12 @@ During build:
 - Before accepting a workstream, run
   `bash <scripts>/ac-check.sh "<its IDs>" --surface <its surface>`; with no
   project.md, drop `--surface`.
+- Before you ask the user to approve the plan, check each workstream's
+  surface in docs/product/project.md: its AC tests cell must have a runner for
+  every kind of test the plan names (a web-ui plan with E2E lines needs
+  `... + playwright --dir <pkg>`); if one is missing, say so in the plan summary
+  so the user fixes the profile. A criterion passes `ac-check` when any listed
+  runner passes it, so a missing e2e runner would let a unit-only task through.
 - Review each workstream against its plan, at summary level: its unit and e2e
   tests pass, the files it changed are its plan's Files inside its globs,
   contracts are untouched, and `git log` shows each task's tests committed

@@ -33,7 +33,10 @@ Before coding:
 Every task, test-first (TDD), in the plan's order:
 1. Red: write the task's failing unit test, and its e2e test (the criterion's
    journey through the real UI, API or CLI). Run them and keep the first
-   failing output. Commit the tests by path.
+   failing output. Commit the tests by path. Put e2e files in the package's
+   `e2e/` folder (the Playwright config's `testDir`), keep that folder out of
+   the unit runner's config, and never put an AC ID in a file name: the ID goes
+   in the test title.
 2. Green: write the smallest code that makes them pass, and commit it.
 3. Refactor with the tests still green.
 4. Done when the plan says: run

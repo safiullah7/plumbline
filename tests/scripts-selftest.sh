@@ -58,7 +58,7 @@ out=$(bash "$G/status.sh")
 assert "status: phase and plan status" has "$out" "Phase $P · dev plan: READY"
 assert "status: AC coverage from test files" has "$out" "ACs: 5 · with a test: 3 · without: AC-01-004 AC-01-005"
 assert "status: open bugs by severity" has "$out" "Open bugs: critical 0 · high 1 · medium 0 · low 0"
-assert "status: dirty files by owner" has "$out" "(by owner: eng-api 3 · product 2 · design 2 · qa 2)"
+assert "status: dirty files by owner" has "$out" "(by owner: eng-api 3 · product 2 · qa 2)"
 assert "status: at most 40 lines" test "$(wc -l <<<"$out")" -le 40
 
 # signoff-check: every gap named, exit 1; then a clean phase passes.
@@ -358,6 +358,11 @@ assert "make-briefs: brief links the full docs" grep -q "^$P/spec.md" "$api"
 assert "make-briefs: brief carries the spec's business rules" grep -qF "Room names are unique within a clinic" "$api"
 assert "make-briefs: brief carries data and permissions" grep -qF "Only clinic admins can add" "$api"
 
+# A Status that only mentions "pass" doesn't count (a failed row noting a retry).
+sed -i.bak -E '0,/\| Pass \|/s//| fail (pass on retry) |/' "$P/test-plan.md" 2>/dev/null; rm -f "$P/test-plan.md.bak"
+signoff
+assert "signoff-check: a Status like 'fail (pass on retry)' isn't a pass" has "$out" "has no passing test in test-plan.md"
+
 # make-briefs: each engineer's whole task block and its screens' descriptions.
 BT=$(mktemp -d); mkdir -p "$BT/.claude" "$BT/docs/product/shop/01-menu"; BF="$BT/docs/product/shop/01-menu"
 echo "docs/product/shop/01-menu" > "$BT/.claude/current-phase"
@@ -371,12 +376,14 @@ Status: READY
 | --- | --- | --- | --- | --- |
 | eng-web | sonnet | Menu page | web-ui | medium |
 | eng-api | sonnet | Menu API | api | high |
+| eng-batch | sonnet | Nightly job | service | low |
 
 ## Ownership
 | Teammate | Owned globs |
 | --- | --- |
 | eng-web | storefront/** |
 | eng-api | backend/** |
+| eng-batch | jobs/** |
 
 ## Contracts
 | Contract | Path | Consumers |
@@ -393,6 +400,10 @@ Status: READY
 - [AC-01-002] Menu endpoint (HIGH)
   Files: backend/src/menu.js
   Done when: AC-01-002 tests pass
+### eng-batch
+- [AC-01-003] Nightly cleanup (LOW)
+  Files: jobs/cleanup.js
+  Done when: AC-01-003 tests pass
 EOF
 cat > "$BF/acceptance-criteria.md" <<'EOF'
 # ACs
@@ -400,6 +411,7 @@ cat > "$BF/acceptance-criteria.md" <<'EOF'
 | --- | --- | --- | --- | --- | --- |
 | AC-01-001 | UC-01-01 | a customer | opens the menu | sees items | P0 |
 | AC-01-002 | UC-01-02 | a client | GETs /menu | gets items | P0 |
+| AC-01-003 | UC-01-03 | the system | runs nightly | removes old carts | P1 |
 EOF
 cat > "$BF/ux.md" <<'EOF'
 # Feature 01 UX
@@ -426,6 +438,8 @@ assert "make-briefs: the brief carries its screen's description" grep -qF 'a gri
 assert "make-briefs: ...and not another screen's" test -z "$(grep -F 'a plain table' "$bw")"
 assert "make-briefs: the api brief gets the other screen's text" grep -qF 'a plain table' "$ba"
 assert "make-briefs: no prototypes link any more" test -z "$(grep -F 'prototypes' "$bw")"
+bb="$BF/briefs/eng-batch.md"
+assert "make-briefs: an engineer whose use case has no screen gets no screen text" test -z "$(grep -E 'a grid of cards|a plain table|Screen descriptions' "$bb")"
 rm -rf "$BT"
 
 echo "$pass passed, $failed failed"

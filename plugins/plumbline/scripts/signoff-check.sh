@@ -21,7 +21,7 @@ for f in acceptance-criteria.md test-plan.md qa-report.md signoff.md; do
 done
 
 passing=$(md_table "$dir/test-plan.md" Traceability 2>/dev/null \
-  | awk -F'\t' 'tolower($4) ~ /pass/ { print $1 }' | grep -oE 'AC-[0-9]+-[0-9]+')
+  | awk -F'\t' 'tolower($4) ~ /^[[:space:]]*pass/ { print $1 }' | grep -oE 'AC-[0-9]+-[0-9]+')
 for id in $(md_table "$dir/acceptance-criteria.md" 2>/dev/null | awk -F'\t' '$1 ~ /^AC-[0-9]+-[0-9]+$/ { print $1 }' | sort -u); do
   grep -qx "$id" <<<"$passing" || gaps+=("$id has no passing test in test-plan.md")
 done

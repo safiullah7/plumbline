@@ -100,8 +100,8 @@ By surface (the evidence kind is a fixed token; QA and the gates check it):
 | infra | the planned change | plan-output |
 - A multi-surface feature takes every row it touches.
 - A cli feature still needs help text, flags and exit codes in the spec.
-- Verify from the evidence the QA engineer recorded for those kinds. Only for
-  web-ui, also walk the journeys in the running app with the browser tools.
+- Verify from QA's functional test record (test-plan.md) and qa-report.md
+  Evidence. Re-check a journey yourself only where a row is fail or not run.
 
 Triage mode (the dispatch says "triage"): decide and report; write no files.
 - From docs/product/project.md, docs/product/*/ and the code layout decide, in

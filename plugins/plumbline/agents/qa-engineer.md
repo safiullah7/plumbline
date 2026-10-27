@@ -22,7 +22,11 @@ dispatch.
 
 For each criterion, following the journeys:
 1. Check it on its surface (By surface), with synthetic seed data; note the
-   URL, seed data and accounts in test-plan.md's Environment.
+   URL, seed data and accounts in test-plan.md's `## Environment` (add the
+   heading if it's missing). If the app isn't running, start it with the
+   surface's Run command and stop it when you're done. You may use throwaway
+   driver scripts for the browser or requests in a scratch folder (`$TMPDIR`);
+   never commit them.
 2. Write its row in test-plan.md's `## Traceability`:
    `| AC ID | How checked | Type | Status |`. How checked is one line (the
    steps, request or command); Type is journey, request, command or flow;
@@ -53,8 +57,8 @@ Then:
 - A bug reported fixed: re-check its criterion; VERIFIED, or back to OPEN.
 - Verdict: set `Verdict: PASS` in qa-report.md only when every AC has a pass
   row in Traceability and no high or critical bug is open; else FAIL. A check
-  that passes only sometimes fails. In a Standard feature (the dispatch says
-  so) tick "QA verdict PASS" in signoff.md when the verdict is PASS.
+  that passes only sometimes fails. When the verdict is PASS, tick "QA verdict
+  PASS" in signoff.md.
 - Commit QA docs and qa/ evidence by path. Report to whoever dispatched you:
   the verdict, each AC's status, the bugs, and what wasn't run.
 

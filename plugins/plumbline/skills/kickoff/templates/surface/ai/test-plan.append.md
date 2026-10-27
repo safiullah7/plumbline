@@ -1,8 +1,2 @@
 ## Eval set
-- Location: qa/evals/
-- Size: number of cases, and how they were chosen
-- Pass threshold: the score each metric must reach
-- Golden set: cases with known good answers, kept fixed between runs
-- Injection cases: inputs that try to override instructions or leak data
-- Cost budget: maximum spend per full eval run
-- Latency budget: p50 and p95 per call
+QA runs the eval set and records one `eval-set` row in qa-report.md's Evidence table. Where it lives (qa/evals/), how many cases, and the pass threshold per metric are written in spec.md's "Model, prompts and limits".

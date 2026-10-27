@@ -13,7 +13,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
   <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e9c46a?style=flat-square">
   <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="1005 self-tests passing" src="https://img.shields.io/badge/self--tests-1005%20passing-2a9d8f?style=flat-square">
+  <img alt="1007 self-tests passing" src="https://img.shields.io/badge/self--tests-1007%20passing-2a9d8f?style=flat-square">
   <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
 </p>
@@ -90,7 +90,7 @@ the AC ID. The lead's plan lists, per engineer, the first failing test, the e2e 
 | | **Quick** | **Standard** | **Full** |
 | --- | --- | --- | --- |
 | Fits | One module, up to 3 criteria, no new screen or flow, no schema or shared-contract change | Anything between | A module built from scratch, 3+ screens, a data migration, an auth, permissions or billing change, cross-module work, or about 10+ criteria |
-| Produces | A `quick/<yymmdd>-<slug>` branch, tests named after 1-3 criteria (`AC-<yymmdd>-<nn>`), the check, a review, a PR. **No folder.** | A slim feature folder (spec, criteria, test plan, dev plan, plus `ux.md` when a screen changes) | The whole process below, with an agent team |
+| Produces | A `quick/<yymmdd>-<slug>` branch, tests named after 1-3 criteria (`AC-<yymmdd>-<nn>`), the check, a review, a PR. **No folder.** | A slim feature folder (spec, criteria, functional test record, dev plan, plus `ux.md` when there is UI) | The whole process below, with an agent team |
 | People | One engineer and a reviewer | 1-2 engineers, a QA check, one plan approval from you | Product, lead, engineers, QA and a reviewer |
 | Agent team | No | Only with 2 engineers and teams enabled | Yes (needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) |
 
@@ -415,9 +415,9 @@ Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
 
 Every release is also checked by:
 
-- **1005 self-tests** (`bash tests/run-all.sh`, each suite counted once): 282 for the hooks
+- **1007 self-tests** (`bash tests/run-all.sh`, each suite counted once): 282 for the hooks
   (run in two Windows path modes); 132 for the shared helpers and gates; 176 for kickoff and
-  the layouts; 144 for the scripts; 145 for project detection and the profile; 126 for the
+  the layouts; 146 for the scripts; 145 for project detection and the profile; 126 for the
   test adapters, run against the real node:test, jest, vitest, pytest and Go runners and
   recorded Playwright output.
 - **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
