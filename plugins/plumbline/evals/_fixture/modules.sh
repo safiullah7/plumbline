@@ -22,7 +22,7 @@ git config core.autocrlf false
 
 M=docs/product/rooms
 F=$M/01-room-management
-mkdir -p "$F/contracts" "$F/briefs" "$F/prototypes" apps/api/rooms apps/web/rooms
+mkdir -p "$F/contracts" "$F/briefs" apps/api/rooms apps/web/rooms
 
 # The project profile (v0.4b): an api and a web-ui surface. Clinics are tenants.
 # Run, Typecheck and Lint stay empty because the demo app has no such scripts;
@@ -66,7 +66,7 @@ EOF
 for t in "$FIXTURE_TEMPLATES"/phase/* "$FIXTURE_TEMPLATES"/standard/*; do
   sed -e 's/<phase>/01/g' -e 's/<Module>/Rooms/g' -e 's/<module>/rooms/g' "$t" > "$F/${t##*/}"
 done
-: > "$F/contracts/.gitkeep"; : > "$F/briefs/.gitkeep"; : > "$F/prototypes/.gitkeep"
+: > "$F/contracts/.gitkeep"; : > "$F/briefs/.gitkeep"
 cat > "$F/.plumbline" <<'EOF'
 module=rooms
 number=01
@@ -127,22 +127,43 @@ EOF
 cat > "$F/ux.md" <<'EOF'
 # Feature 01 UX
 
-Owner: UX engineer. Decisions between design directions: product engineer.
+Owner: product engineer. Engineers build the UI from this text: no prototypes,
+mockups, wireframes or palette files.
+
+## People and context
+Admins set rooms up on a desktop. Receptionists glance at the list on a desktop
+or tablet while talking to patients.
+
+## Journeys
+### UC-01-01 Add a room
+Trigger: an admin opens Settings > Rooms and chooses Add room. They type a name
+(and optionally a description) and save. The dialog closes and the new room is
+in the list as Active. Unhappy paths: a receptionist never sees the Add room
+button; a name over 60 characters keeps Save disabled.
+### UC-01-02 List rooms
+Trigger: any user opens Settings > Rooms. They see their clinic's rooms. An
+empty clinic shows "No rooms yet" (admins also get an Add room button).
 
 ## Screen inventory
-| Screen | Purpose | Entered from | Leads to |
-| --- | --- | --- | --- |
-| Rooms list | See and manage rooms | Settings > Rooms | Add room dialog |
-| Add room dialog | Add a room | Rooms list | Rooms list |
+| Screen | Use cases | Purpose | Entered from | Leads to |
+| --- | --- | --- | --- | --- |
+| Rooms list | UC-01-01, UC-01-02 | See and manage rooms | Settings > Rooms | Add room dialog |
+| Add room dialog | UC-01-01 | Add a room | Rooms list | Rooms list |
 
 ## Screens
 ### Rooms list
-- Primary action: Add room (admins only)
+- Purpose: see which rooms the clinic has.
+- Layout and hierarchy: page title "Rooms", the Add room button at the top right
+  (admins only), then one row per room.
+- Components: rows with name and description.
 - States: empty ("No rooms yet"), loading (skeleton rows), error ("Couldn't load rooms. Retry"), success
-- Each row: name, description
+- Responsive behaviour: rows stack on a tablet.
+- Microcopy: heading "Rooms"; button "Add room".
 ### Add room dialog
-- Fields: Name (required), Description (optional). Save is disabled until Name is valid.
-- Errors appear under the field; typed values are never cleared on error.
+- Purpose: add one room.
+- Layout and hierarchy: modal with Name, Description, then Cancel and Save.
+- States: Save is disabled until Name is valid; errors under the field; typed values are never cleared on error.
+- Microcopy: title "Add room".
 EOF
 
 # App code.

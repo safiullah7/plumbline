@@ -13,7 +13,7 @@
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
   <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e9c46a?style=flat-square">
   <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="958 self-tests passing" src="https://img.shields.io/badge/self--tests-958%20passing-2a9d8f?style=flat-square">
+  <img alt="1005 self-tests passing" src="https://img.shields.io/badge/self--tests-1005%20passing-2a9d8f?style=flat-square">
   <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
 </p>
@@ -24,7 +24,6 @@
   <a href="#how-it-works-full">How it works</a> ·
   <a href="#the-team">The team</a> ·
   <a href="#quality-gates">Quality gates</a> ·
-  <a href="#visual-and-accessibility-checks">Visual checks</a> ·
   <a href="#proof-not-promises">Proof</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#roadmap">Roadmap</a>
@@ -34,7 +33,7 @@
 
 > A plumb line is the builder's oldest instrument: a weight on a string that shows true
 > vertical, so nothing gets built crooked. **Plumbline does that for software built by AI
-> agents.** Each feature is specified, designed, planned, built and verified by a small team
+> agents.** Each feature is specified, planned, built and verified by a small team
 > of specialised Claude agents. Every step is checked against the product docs by scripts,
 > not by the model's say-so.
 
@@ -51,7 +50,7 @@ with structure.
 | Parallel agents overwrite each other | An **Ownership table**: a teammate can only edit the files it owns |
 | A failing test gets skipped under pressure | Engineers are told never to delete, skip or weaken a test, and an eval checks they don't |
 | Unanswered questions become guesses | The product engineer escalates; signoff refuses to pass with an open escalation |
-| The UI drifts from the design | Screenshots of the built app are compared with the prototype, and every screen gets an accessibility scan |
+| The UI drifts from the spec | Product describes every screen in `ux.md`, engineers build from that text, and QA checks each journey works in the built app |
 
 ## Size the work
 
@@ -67,28 +66,32 @@ Module: rooms (existing)
 Folder: none
 Surfaces: api
 Roles: product, lead, 1 engineer, reviewer
-Evidence: api: contract, authz, negative, transcripts
+Evidence: api: transcripts
 UX: no
 Engineers: 1
 Docs: none
 Team: no
-Models: lead opus, product sonnet, engineers sonnet, reviewer sonnet
 Why: one rule changes in one module; no new screen, schema or shared contract
 ```
 
-**Models by complexity.** The lead always runs on Opus and never writes the code: it
-reads it, writes each engineer a step-by-step plan, and reviews. Every other role gets
-Opus only where the judgement carries risk: product for Full work, new modules or rules
-about permissions, money, personal data or migrations; UX for a new screen or flow; QA
-for auth, data separation, billing, migrations, concurrency or AI evals; engineers and
-reviewers for HIGH-risk workstreams. Everything else runs on Sonnet. The triage block's
-`Models:` line shows the choice before any work starts.
+**Fixed roles, effort by complexity.** The lead runs on Opus (high effort) and never writes
+code: it writes each engineer a step-by-step plan with the tests, rates every task LOW,
+NORMAL or HIGH, and reviews against the plan. Product runs on Opus (high effort); the triage
+step runs on Sonnet. Engineers, the QA engineer and the reviewer run on Sonnet; the
+reviewer moves to Opus only for HIGH work. The lead picks each engineer's effort from the
+hardest task in the workstream (LOW is low, NORMAL is medium, HIGH is high) and writes it in
+the `Effort` column of the plan's Team table.
+
+**TDD with unit and e2e tests.** Engineers work test-first: a failing unit test, then the
+change, then refactor. They also write an e2e test for each journey. Test names start with
+the AC ID. The lead's plan lists, per engineer, the first failing test, the e2e test and a
+**done when**: those tests pass under `ac-check`.
 
 | | **Quick** | **Standard** | **Full** |
 | --- | --- | --- | --- |
 | Fits | One module, up to 3 criteria, no new screen or flow, no schema or shared-contract change | Anything between | A module built from scratch, 3+ screens, a data migration, an auth, permissions or billing change, cross-module work, or about 10+ criteria |
-| Produces | A `quick/<yymmdd>-<slug>` branch, tests named after 1-3 criteria (`AC-<yymmdd>-<nn>`), the check, a review, a PR. **No folder.** | A slim feature folder (spec, criteria, test plan, dev plan, plus `ux.md` and mockups when a screen changes) | The whole process below, with an agent team |
-| People | One engineer and a reviewer | 1-2 engineers, one plan approval from you | Product, UX, QA, lead and engineers |
+| Produces | A `quick/<yymmdd>-<slug>` branch, tests named after 1-3 criteria (`AC-<yymmdd>-<nn>`), the check, a review, a PR. **No folder.** | A slim feature folder (spec, criteria, test plan, dev plan, plus `ux.md` when a screen changes) | The whole process below, with an agent team |
+| People | One engineer and a reviewer | 1-2 engineers, a QA check, one plan approval from you | Product, lead, engineers, QA and a reviewer |
 | Agent team | No | Only with 2 engineers and teams enabled | Yes (needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) |
 
 **When Plumbline asks you something:** when the request is too vague for observable
@@ -103,9 +106,9 @@ them, a script check, a review, and a PR you merge. Quick runs its check
 with `ac-check.sh` (typecheck, lint and the AC-named tests), because subagents aren't covered
 by the task hooks.
 
-**Only you can waive.** An agent can't write an `Evidence waived:` or
-`Accessibility waived:` line: the ownership guard blocks it, for every agent and at every
-size. When evidence or an accessibility scan can't be produced, the main session asks
+**Only you can waive.** An agent can't write an `Evidence waived:` line:
+the ownership guard blocks it, for every agent and at every size. When evidence can't be
+produced, the main session asks
 you, and writes the line only after your explicit yes.
 
 ## Works with
@@ -115,23 +118,29 @@ Plumbline reads what kind of software you are building and adapts. The kinds are
 `data`, `ai` and `infra`. One product can have several; a feature takes the union of what
 its surfaces need.
 
-| Surface | UX engineer | QA produces (evidence) | The reviewer adds | Accessibility at signoff |
-| --- | --- | --- | --- | --- |
-| `web-ui` | Yes | `screenshots`, `axe`, `journeys` | UI states, keyboard, contrast, XSS | axe rows, or a waiver |
-| `mobile-ui` | Yes: device-size mockups, platform conventions | `screenshots`, `flow-tests`, `checklist` | Offline and flaky network, permissions, lifecycle, battery, store rules | checklist rows, or a waiver |
-| `desktop-ui` | Yes | `screenshots`, `checklist` | Window states, keyboard, updates | checklist rows, or a waiver |
-| `api` | No (the lead reviews API design) | `contract`, `authz`, `negative`, `transcripts` | Authorization on every endpoint, validation, idempotency, migrations; tenant scoping when `Multi-tenant: yes` | exempt |
-| `service` | No | `job-tests`, `failure-cases` | Idempotency, retries, dead letters, observability | exempt |
-| `cli` | Light: product specifies help, flags and exit codes | `golden-output` | Exit codes, stdout and stderr, `--help`, no prompts in non-interactive paths | exempt |
-| `library` | No | `doc-examples`, `api-diff` | Breaking changes, naming, error types | exempt |
-| `data` | No | `sample-run`, `idempotency` | PII, backfills, partial failure | exempt |
-| `ai` | Only with a conversational UI | `eval-set`, `injection` | Prompt injection, data leakage, eval coverage, fallbacks, cost | exempt (UI rules apply to its UI) |
-| `infra` | No | `plan-output` | Blast radius, secrets, rollback | exempt |
+| Surface | QA checks (one required evidence kind) | The reviewer adds |
+| --- | --- | --- |
+| `web-ui` | `journeys` | UI states against `ux.md`, keyboard, XSS |
+| `mobile-ui` | `flow-tests` | Offline and flaky network, permissions, lifecycle, battery, store rules |
+| `desktop-ui` | `journeys` | Window states, keyboard, updates |
+| `api` | `transcripts` | Authorization on every endpoint, validation, idempotency, migrations; tenant scoping when `Multi-tenant: yes` |
+| `service` | `job-tests` | Idempotency, retries, dead letters, observability |
+| `cli` | `golden-output` | Exit codes, stdout and stderr, `--help`, no prompts in non-interactive paths |
+| `library` | `doc-examples` | Breaking changes, naming, error types |
+| `data` | `sample-run` | PII, backfills, partial failure |
+| `ai` | `eval-set` | Prompt injection, data leakage, eval coverage, fallbacks, cost |
+| `infra` | `plan-output` | Blast radius, secrets, rollback |
 
-The QA runner records each piece of evidence as a row in `qa-report.md`'s `## Evidence`
-table (kind, surface, location, result). Signoff blocks on a required kind with no `pass`
+There is no UX engineer. For a surface with a UI, the product engineer writes `ux.md`:
+the journeys and a text description of each screen. The senior engineers build the UI
+from that text.
+
+The QA engineer records the evidence as a row in `qa-report.md`'s `## Evidence` table
+(kind, surface, location, result). Signoff blocks on a required kind with no `pass`
 row, unless you waive it: `Evidence waived: <kind> (<surface>) - <reason> (approved by
-<who>)`. Only you can waive; an agent can't write that line.
+<who>)`. Only you can waive; an agent can't write that line. Deeper kinds such as
+`contract`, `authz` and `negative` are no longer required; the engineers' tests and the
+reviewer cover them.
 
 ### The project profile: `docs/product/project.md`
 
@@ -173,10 +182,21 @@ passes on an empty match can't fake it.
 | `node` | node:test, jest or vitest (vitest, then jest, else node:test) |
 | `pytest` | pytest, selected by `-k` on the lowercase ID (`ac_01_001`) |
 | `go` | `go test` with `-run`, on test names such as `TestAC_01_001` |
+| `playwright` | Playwright e2e tests, selected by `--grep` on the ID, retries off |
 | `generic` | Any command you write in project.md; see below |
 
 Add `--dir <path>` for a package in a subfolder. Any other command in the cell gets the AC
 IDs as its last argument.
+
+**Unit and e2e together.** Join two adapters with `+` and the cell runs both. An ID passes
+when a runner passes it and none fails it; it fails when any runner fails it; otherwise it
+is `missing`. Example:
+
+```text
+| web-ui | Next.js | storefront/** | npm run dev -w storefront (http://localhost:3000) | npm run -s typecheck -w storefront | npm run -s lint -w storefront | node --dir storefront + playwright --dir storefront |
+```
+
+Project detection proposes `+ playwright` when `@playwright/test` is a dependency.
 
 **Generic recipes.** For other stacks, set the cell to `generic` and put the command in a
 `### <surface>` block under `## Generic commands`. `{ids_regex}` becomes
@@ -246,12 +266,10 @@ This is the whole process, used for Full work or when you start it by hand with
 ```mermaid
 flowchart LR
     K(["/plumbline:kickoff"]) --> D["Discover<br/>interview → spec"]
-    D --> UX["Design<br/>journeys, brief, prototypes"]
-    D --> QA1["Test plan<br/>written before any code"]
-    UX --> P["Dev plan<br/>ownership, contracts, AC-tagged tasks"]
-    QA1 --> P
-    P -->|"you approve → READY"| B["Build<br/>agent team, gates enforced"]
-    B --> V["Verify<br/>QA run, screenshots, accessibility"]
+    D --> UX["UI text<br/>product: journeys, screens"]
+    UX --> P["Dev plan<br/>per engineer: tests, done-when, effort"]
+    P -->|"you approve → READY"| B["Build<br/>agent team, TDD, gates enforced"]
+    B --> V["Test<br/>QA engineer checks each journey"]
     V --> S(["/plumbline:signoff<br/>gap check → PR"])
     S --> N(["/plumbline:phase-next<br/>what to build next"])
 
@@ -264,31 +282,30 @@ flowchart LR
 1. **`/plumbline:kickoff <module> <feature-slug>`** (or `/plumbline:build`, for Full work) creates
    the feature's docs from templates and a branch.
 2. **`/plumbline:discover`** interviews you, then drafts `spec.md` from your answers.
-3. The **UX engineer** writes a design brief, journeys and screen states, and builds
-   self-contained HTML prototypes. The **QA engineer** writes the test plan from the docs,
-   before code exists.
+3. The **product engineer** writes the criteria and `ux.md`: the user journeys and a text
+   description of each screen. There are no prototypes or mockups.
 4. The **lead** splits the work along file-ownership seams, lands shared contracts first,
-   and writes AC-tagged tasks. **You approve the plan**, and it flips to `Status: READY`.
-5. The **build** runs as an agent team. From READY on, hooks enforce ownership, task
-   tagging, test gates and clean hand-offs.
-6. **QA** runs the plan, compares screenshots with the prototypes and scans for
-   accessibility. Product and design verify.
+   and writes a plan per engineer: AC-tagged tasks, the failing unit test, the e2e test,
+   a done-when and an effort. **You approve the plan**, and it flips to `Status: READY`.
+5. The **build** runs as an agent team. Engineers work TDD. From READY on, hooks enforce
+   ownership, task tagging, test gates and clean hand-offs. The lead reviews against the
+   plan; a reviewer reads the diff.
+6. The **QA engineer** tests the built feature: does each journey and criterion work. It
+   fills the functional test record (`test-plan.md`) and the evidence row. Product verifies.
 7. **`/plumbline:signoff`** runs a deterministic gap check and opens the PR. **You merge.**
 
 ## The team
 
 | Role | Agent | Model | Owns |
 | --- | --- | --- | --- |
-| 🧭 Product engineer | `plumbline:product-engineer` | opus | *What* is built: research, spec, use cases, acceptance criteria, decisions |
-| 🎨 UI/UX engineer | `plumbline:ux-engineer` | opus | *How it feels*: journeys, design brief, screens, prototypes, tokens, design principles |
-| 🏗️ Lead engineer | `plumbline:lead-engineer` | opus · xhigh effort | *How* it's built: dev plan, team size, contracts, task order, review |
-| 🛠️ Senior engineers | `plumbline:senior-engineer` | sonnet (opus for high-risk work) | One workstream each, test-first |
-| 🔎 QA engineer | `plumbline:qa-engineer` | opus | Test plan and the verdict, independent of the code |
-| ▶️ QA runner | `plumbline:qa-runner` | sonnet | Runs the plan: suites, browser journeys, screenshots, accessibility |
-| 🧪 Code reviewer | `plumbline:code-reviewer` | sonnet, or opus for high-risk work | Read-only, fresh-eyes review of every workstream |
+| 🧭 Product engineer | `plumbline:product-engineer` | opus · high effort | *What* is built: research, spec, use cases, acceptance criteria, decisions, and the UI text (`ux.md`) |
+| 🏗️ Lead engineer | `plumbline:lead-engineer` | opus · high effort | *How* it's built: dev plan per engineer, contracts, task order, review against the plan. Never writes code |
+| 🛠️ Senior engineers | `plumbline:senior-engineer` | sonnet · effort set by the lead | One workstream each: TDD, unit and e2e tests, the UI built from `ux.md` |
+| 🔎 QA engineer | `plumbline:qa-engineer` | sonnet · medium effort | Tests the built feature after the build: each journey and criterion works. Functional only |
+| 🧪 Code reviewer | `plumbline:code-reviewer` | sonnet, or opus for HIGH work | Read-only, fresh-eyes review of every workstream |
 
-Judgement-heavy work runs on opus. Procedural work (implementing a planned task, running a
-test plan) runs on sonnet.
+Five role definitions. The lead and product use Opus because their judgement carries the
+risk. Implementing a planned task and testing a built feature run on Sonnet.
 
 ## Quality gates
 
@@ -346,15 +363,14 @@ real output on a feature that isn't ready:
 
 ```text
 $ bash scripts/signoff-check.sh
-Signoff check: 10 gap(s) in docs/product/clinic/phases/phase-01:
+Signoff check: 9 gap(s) in docs/product/clinic/phases/phase-01:
 - AC-01-004 has no passing test in test-plan.md
 - AC-01-005 has no passing test in test-plan.md
 - QA verdict is PENDING, not PASS (qa-report.md)
 - open bug BUG-01-001 (high): Clinic B's rooms appear in clinic A's list (qa-report.md)
-- no accessibility results for the 2 screen(s) in ux.md: run the scan, or add "Accessibility waived: <reason> (approved by <who>)" (qa-report.md)
+- no passing journeys evidence for web-ui: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line (qa-report.md)
 - OPEN question #1: Grey out inactive rooms, or hide them? (questions.md)
 - unticked sign-off box: Product verification: every journey walked (product engineer) (signoff.md)
-- unticked sign-off box: Design verification: every screen checked against ux.md (UX engineer) (signoff.md)
 - unticked sign-off box: Integration review complete (lead engineer) (signoff.md)
 - unticked sign-off box: QA verdict PASS (QA engineer) (signoff.md)
 ```
@@ -370,47 +386,6 @@ Questions: 1 open · 0 escalated
 Uncommitted files: 1 total (by owner: eng-api 1)
 ```
 
-## Visual and accessibility checks
-
-QA screenshots every key screen of the built app and compares it with the UX engineer's
-prototype. Below, the plugin's own tools on a real example: the build drifted (sidebar
-theme, button position, badge colour), and `visual-diff.mjs` flagged the screen for design
-review at **41.8%** different, tinting every changed region.
-
-<table>
-  <tr>
-    <th>Prototype (UX engineer)</th>
-    <th>Built app (QA runner)</th>
-    <th>Diff (<code>visual-diff.mjs</code>)</th>
-  </tr>
-  <tr>
-    <td><img src="docs/assets/readme-prototype.png" alt="Prototype of the Rooms screen: dark sidebar, Add room button top right, green Active badges"></td>
-    <td><img src="docs/assets/readme-built.png" alt="Built Rooms screen: light sidebar, Add room button moved under the title, blue Active badges"></td>
-    <td><img src="docs/assets/readme-diff.png" alt="Diff image: the built screen faded, with the sidebar, both button positions and the badges tinted red"></td>
-  </tr>
-</table>
-
-```text
-| Screen     | Width | Different | Threshold | Result |
-| rooms-list | 1280  | 41.8%     | 20%       | review |
-| rooms-list | 390   | 63.8%     | 20%       | review |
-```
-
-- **`capture.mjs`** takes prototype and app screenshots the same way: 390×844 and
-  1280×800, scale 1, animations off, fonts loaded. With `--a11y` it runs an
-  **axe-core** scan against the WCAG 2.0–2.2 A and AA rules.
-- **`visual-diff.mjs`** compares **8×8 block averages** over content, using Node
-  built-ins only, with its own PNG decoder tested against real browser screenshots.
-  Layout, colour and missing elements count; different text and data don't. So it
-  catches structural drift, not wording; the UX engineer's walk-through covers content.
-- **Accessibility gate:** signoff blocks on any serious or critical violation, and on a
-  scan that never ran unless the waiver is explicit (`Accessibility waived: <reason>
-  (approved by <who>)`).
-- **Optional by design:** the comparison needs only Node. Screenshots and scans need
-  `playwright-core` and `axe-core` in your project, and use the Chrome or Edge you
-  already have, so no browser download. Without them the scripts print `SKIPPED` with
-  the install command.
-
 ## Proof, not promises
 
 Plumbline is measured with **Claude Code's plugin eval suite**: 14 realistic cases, one or
@@ -421,7 +396,7 @@ recorded **before** any change, and a release ships only if no case drops below 
 | --- | :---: | :---: | :---: |
 | Senior engineer refuses to skip a failing test under deadline pressure | 0.22 | **1.00** | 1.00 |
 | Product spec has Non-Goals, P0/P1/P2 priorities and success metrics | 0.25 | **1.00** | 1.00 |
-| UX: design directions and a self-contained prototype | 0.92 | **1.00** | 1.00 |
+| UX: design directions and a self-contained prototype (removed in v0.4b) | 0.92 | **1.00** | 1.00 |
 | Product escalates an undecided rule instead of guessing | 1.00 | 1.00 | 1.00 |
 | Lead writes a dev plan with clean ownership and AC-tagged tasks | 1.00 | 1.00 | 1.00 |
 | QA test plan traces every AC, plus negative, tenant and UI-state cases | 1.00 | 1.00 | 1.00 |
@@ -432,17 +407,19 @@ recorded **before** any change, and a release ships only if no case drops below 
 | **Overall (the 10 original cases)** | **0.84** | **1.00** | **1.00** |
 | Product memory: a recorded decision survives a teammate's suggestion | — | 0.89 | **1.00** |
 | `phase-next` proposes from evidence and asks before editing the roadmap | — | — | 1.00 |
-| QA runner records scans as not run instead of inventing results | — | — | 1.00 |
+| QA runner records scans as not run instead of inventing results (removed in v0.4b) | — | — | 1.00 |
 
+The table is the history through v0.3. The visual comparison and accessibility scan it
+mentions were removed in v0.4b ("lean roles"), and some of these cases went with them.
 Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
 
 Every release is also checked by:
 
-- **958 self-tests** (`bash tests/run-all.sh`, each suite counted once): 282 for the hooks
-  (run in two Windows path modes); 124 for the shared helpers and gates; 182 for kickoff and
-  the layouts; 178 for the scripts, including the PNG decoder against a real browser
-  screenshot and the visual checks; 118 for project detection and the profile; 74 for the
-  test adapters, run against the real node:test, jest, vitest, pytest and Go runners.
+- **1005 self-tests** (`bash tests/run-all.sh`, each suite counted once): 282 for the hooks
+  (run in two Windows path modes); 132 for the shared helpers and gates; 176 for kickoff and
+  the layouts; 144 for the scripts; 145 for project detection and the profile; 126 for the
+  test adapters, run against the real node:test, jest, vitest, pytest and Go runners and
+  recorded Playwright output.
 - **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
   creation gate, `[chore]` tasks, idle escalation, injected context, status and signoff.
 
@@ -469,7 +446,7 @@ Full feature yourself:
 ```text
 /plumbline:kickoff clinic scheduling    # module form: docs from templates, a branch, the current feature
 /plumbline:discover                     # interview → spec.md
-…                                       # product, design, QA and the lead fill in the docs
+…                                       # product, the lead and QA fill in the docs
 /plumbline:status                       # where things stand
 /plumbline:signoff                      # gap check → PR (you merge)
 /plumbline:phase-next                   # what to build next, from evidence
@@ -508,7 +485,6 @@ Full feature yourself:
 | `PLUMBLINE_TYPECHECK` | `npm run -s typecheck` | Typecheck command for the task gate (`""` skips it) |
 | `PLUMBLINE_LINT` | `npm run -s lint` | Lint command for the task gate |
 | `PLUMBLINE_TEST_AC` | `npm run -s test:ac --` | Runs the tests for the given AC IDs |
-| `PLUMBLINE_VISUAL_THRESHOLD` | `20` | Percent of content blocks that may differ before a screen is flagged for review |
 | `PLUMBLINE_TEST_GLOBS` | `*.test.* *.spec.* …` | Which files count as tests for `/plumbline:status` coverage |
 | `PLUMBLINE_CONFIRM` | `auto` | `always` makes `/plumbline:build` confirm its triage block even when it is clear |
 | `PLUMBLINE_HOOK_TIMING` | off | Print how long each gate check took |
@@ -528,25 +504,25 @@ collide between modules.
 ```text
 docs/product/clinic/
 ├── vision.md               who it's for, problem, principles, and the Features table (the roadmap)
-├── design-principles.md    principles, tokens, accessibility baseline, patterns to avoid
+├── design-principles.md    short UI guide written by product: component library, spacing, type, tone
 ├── decisions.md            decisions later features must respect
 ├── changes.md              one row per Quick change: date, request, ACs, PR
 └── 01-scheduling/          <nn>-<feature-slug>/
     ├── .plumbline          metadata written by kickoff.sh: module, number, profile, ux
     ├── spec.md             goal, research, P0/P1/P2, rules, permissions, Non-Goals, metrics
     ├── acceptance-criteria.md   AC-01-001 … observable, exact, prioritised
-    ├── ux.md               brief, journeys (Mermaid), screen inventory, states, critique
-    ├── test-plan.md        written before the build; every case traced to an AC
+    ├── ux.md               journeys, screen inventory, a text description of each screen (product)
+    ├── test-plan.md        functional test record: QA fills it while testing; every AC traced
     ├── dev-plan.md         team, ownership, contracts, AC-tagged tasks, Status: READY
     ├── questions.md        every question and answer; ESCALATED blocks signoff
     ├── progress.md         hand-off notes, newest first
-    ├── qa-report.md        verdict, bugs, visual comparison, accessibility
+    ├── qa-report.md        verdict, bugs, evidence
     ├── signoff.md          verification, findings, success metrics results
-    ├── contracts/  prototypes/  briefs/  qa/
+    ├── contracts/  briefs/  qa/
 ```
 
 A Standard feature gets the same folder with a slimmer `spec.md` and `test-plan.md`, and
-no `ux.md` or `prototypes/` when no screen changes. Quick changes get no folder.
+no `ux.md` when no screen changes. Quick changes get no folder.
 
 Repos from v0.3 keep working: the older `docs/product/<area>/phases/phase-NN/` layout is
 still read by every script, nothing is moved, and new features in such an area go into its
@@ -562,7 +538,7 @@ still read by every script, nothing is moved, and new features in such an area g
 | **v0.2** | ✅ shipped | A method for every role, the creation gate, injected context, briefs, the eval suite (0.84 → 1.00) |
 | **v0.3** | ✅ shipped | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
 | **v0.4a** | ✅ shipped | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
-| **v0.4b** | 🔍 in review | **Project awareness:** a confirmed project profile, ten surfaces, test adapters (node, pytest, go, generic), QA evidence per surface checked at signoff, and agents that adapt to each surface. live smoke test pending |
+| **v0.4b** | 🔍 in review | **Project awareness:** a confirmed project profile, ten surfaces, test adapters (node, pytest, go, Playwright, generic), one QA evidence kind per surface checked at signoff, and agents that adapt to each surface. **Lean roles:** no UX engineer (product writes the UI text), one QA agent that checks the feature works, TDD with unit and e2e tests, effort set by the lead; the visual comparison and accessibility scan are removed. Live smoke test pending |
 
 The full plan, with every task and its acceptance check, is in [`docs/dev-plan.md`](docs/dev-plan.md).
 
@@ -571,10 +547,10 @@ The full plan, with every task and its acceptance check, is in [`docs/dev-plan.m
 ```text
 .claude-plugin/marketplace.json      marketplace entry
 plugins/plumbline/
-├── agents/                          seven role definitions
+├── agents/                          five role definitions
 ├── skills/                          build, kickoff, discover, status, handoff, signoff, phase-next (+ templates, surface overlays)
 ├── hooks/hooks.json                 gates and context injection
-├── scripts/                         the gates and tools (bash + jq; Node for screenshots and diffs)
+├── scripts/                         the gates and tools (bash + jq)
 └── evals/                           plugin eval cases and their shared fixture
 tests/                               hook and script self-tests, the live smoke test, the end-to-end benchmark
 docs/                                the roadmap and eval results
@@ -585,11 +561,11 @@ docs/                                the roadmap and eval results
 ```bash
 bash tests/run-all.sh                 # every self-test suite, one summary line each
 bash tests/hooks-selftest.sh          # hook gates
-bash tests/scripts-selftest.sh        # status, signoff, briefs, evidence, image diff
+bash tests/scripts-selftest.sh        # status, signoff, briefs, evidence
 bash tests/kickoff-selftest.sh        # kickoff.sh in both layouts
 bash tests/lib-selftest.sh            # shared helpers, ac-check
 bash tests/profile-selftest.sh        # project detection and the profile
-bash tests/adapters-selftest.sh       # node, pytest, go and generic test adapters
+bash tests/adapters-selftest.sh       # node, pytest, go, playwright, combined and generic test adapters
 claude plugin validate ./plugins/plumbline --strict
 claude plugin eval ./plugins/plumbline --scaffold --allow-tools Write Edit --ablation none --no-publish
 ```

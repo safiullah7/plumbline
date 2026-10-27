@@ -1,4 +1,4 @@
 ---
 type: regex
-pattern: '(?:^|\n)[ \t>*`-]*Evidence:(?=[^\n]*\bapi:[^\n]*(?:contract|authz|negative|transcripts))(?=[^\n]*\bweb-ui:[^\n]*(?:screenshots|axe|journeys))'
+pattern: '(?:^|\n)[ \t>*`-]*Evidence:(?=[^\n]*\bapi:[^\n]*transcripts)(?=[^\n]*\bweb-ui:[^\n]*journeys)'
 ---

@@ -1,5 +1,5 @@
 ---
-description: 'Triage of a pipeline-only change names the data surface, no UX, and sample-run and idempotency evidence.'
+description: 'Triage of a pipeline-only change names the data surface, no UX, and sample-run evidence.'
 tags: [skill, build, triage, surfaces, data]
 model: sonnet
 max_turns: 15

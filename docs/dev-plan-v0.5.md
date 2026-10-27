@@ -1,5 +1,12 @@
 # Plumbline v0.5 dev plan: security review by complexity
 
+Note (2026-10-27): v0.5 follows "lean roles" (`docs/dev-plan-v0.4.md` §16). There is no
+UX engineer and no `qa-runner`; one `qa-engineer` tests the built feature after the build,
+functional only, and writes no code or tests. Engineers write the unit and e2e tests, so
+the attack tests are the security engineer's and the engineers'. Signoff requires one
+evidence kind per surface and has no accessibility rules. The triage block has no
+`Models:` line. Where the text below names those, read it with this note.
+
 Status: DRAFT (revision 5), awaiting Safi's approval
 Owner: Safi
 Written: 2026-10-26, from the v0.4b code on branch `v0.4b`, the v0.4 plan
@@ -148,7 +155,7 @@ joins the guard's matcher).
     verdict refreshes add no rows and don't count;
   - **D3** a Quick change in security-sensitive code gets a diff break test;
     a signal that needs a plan review is never Quick;
-  - **D4** the break test runs after the build and before the QA runner; a
+  - **D4** the break test runs after the build and before the QA engineer; a
     later code change makes a `PASS` stale until re-tested; at most three
     re-tests before the user is asked per row;
   - **D5** a Full-size feature gets at least a plan review;
@@ -187,7 +194,7 @@ valid user waiver removes, §6.6). Every check says which one it reads.
 ### 6.2 Deciding the level
 
 **Triage (product engineer, triage mode) proposes it** and prints it in the
-block after `Models:`:
+block after the `Roles:` and `Evidence:` lines:
 
 ```
 Security: none | break | plan | plan,break
@@ -315,7 +322,7 @@ here are prose on purpose.
   writes `VERIFIED`, after re-testing; only the main session writes
   `ACCEPTED` (a new `ACCEPTED` cell from any agent is refused, §6.4).
 - **Owner:** a Team table teammate name, an Ownership table name (`product`,
-  `design`, `qa`, `qa-runner`), `lead` or `all`; anything else is a gap.
+  `qa`), `lead` or `all`; anything else is a gap.
 - **Plan verdict:** `PENDING`, `APPROVED`, `CHANGES REQUIRED`. **Approved**
   (the condition the gates use) = exactly one line, value `APPROVED`, no
   Threat model row open at critical or high, and `Plan reviewed:` equal to
@@ -422,9 +429,8 @@ exempt, as today. "In play" = the active feature has a `security-review.md`.
    `.claude/agent-memory/**` and `questions.md` is refused (the guard checks
    READY first, so an approved or READY feature costs nothing):
    `Plumbline: the dev plan isn't approved by the security review yet (<state>); no code until it is. Tell the lead.`
-   `<state>` names the verdict and the hash state. Product, UX, QA (docs and
-   Traceability rows), the lead (the plan, `contracts/` under docs) and the
-   security engineer (its report) keep working; QA's e2e tests and the
+   `<state>` names the verdict and the hash state. Product, QA (docs only), the lead (the plan, `contracts/` under docs) and the
+   security engineer (its report) keep working; The engineers' tests and the
    lead's code-side contracts wait for READY, as §6.6 orders them.
 2. **READY lock.** An agent edit to the active `dev-plan.md` whose current
    text doesn't match `build_active`'s READY regex and whose **resulting**
@@ -620,7 +626,7 @@ its allowed paths). At most ~110 lines, with a By-surface table of at most
 line, no review file, no box. Otherwise: the level, the review file, the box.
 **Roles:** when the level isn't none, `security engineer` is on the `Roles:`
 line; a later raise adds it to the roles the skill dispatches. It is **not**
-on the `Models:` line (always Opus, like the lead); the skill's "dispatch
+always on Opus, like the lead; the skill's "dispatch
 each role with its model" rule exempts both. **Preflight** lists
 `bash <plugin>/scripts/security-check.sh`, `git rev-parse`, `git diff`,
 `git status` and `ac-check.sh` with SEC IDs among the commands. When the
@@ -645,8 +651,6 @@ action; the README says so.
    path.
 3. `CHANGES REQUIRED`: the fix loop, in this order:
    - product adds the criteria the rows require to `acceptance-criteria.md`;
-   - the QA engineer adds their Traceability rows (its tests come after
-     READY, when code may be written);
    - the lead revises the plan from the rows (tasks citing the new AC IDs,
      contract rules in `contracts/` under docs, checks);
    - the security engineer re-reviews.
@@ -692,8 +696,8 @@ action; the README says so.
    a **break-row acceptance** the main session writes the line, sets
    `ACCEPTED`, commits, and dispatches a re-test, which skips that test with
    `ACCEPTED <ID>` and re-issues the verdict; then commit and re-stamp.
-9. QA runner, verification, signoff as in v0.4b. QA's regression pass runs
-   the attack tests with the suite. **Any code change after `Tested at:`**
+9. QA, verification, signoff as in lean roles. `ac-check` runs the attack
+   tests with the suite. **Any code change after `Tested at:`**
    makes a `PASS` stale; the build skill re-dispatches a re-test (attack tests
    only), commits and re-stamps before signoff.
 10. The main session ticks the "Security review" box once both verdicts the
@@ -760,12 +764,12 @@ is **unchanged**.
 | File | Change |
 | --- | --- |
 | `agents/security-engineer.md` | new (§6.5) |
-| `agents/product-engineer.md` | triage: the `Security:` line and the §6.2 rubric (≤ 12 lines); `security engineer` in Roles when not none and **never on Models**; criteria for required controls on request |
+| `agents/product-engineer.md` | triage: the `Security:` line and the §6.2 rubric (≤ 12 lines); `security engineer` in Roles when not none and **always Opus (the `Models:` line is gone)**; criteria for required controls on request |
 | `agents/lead-engineer.md` | every `contracts/` file written before the plan review; the raise rule (signals, not HIGH; reason on the next line); revising the plan from rows (tasks citing the new ACs, contract rules, checks; medium/low rows carried as tasks); batching plan edits after READY and reporting them; fix tasks tagged `[SEC-…]`; the Quick diff break test, committing attack tests by path, the quoted verdict; READY only by a one-line Edit after `security-check.sh --approved`; it never writes `security-review.md`, attack tests or the pointer files, and never runs `kickoff.sh` or `--stamp-tested` |
 | `agents/senior-engineer.md` | reads `## Security requirements`; fixes assigned findings in the code until the attack test passes; never edits attack tests, helpers, test configuration or `security-review.md`; reports when a fix changes an interface an attack test uses |
 | `agents/code-reviewer.md` | one line: when `security-review.md` exists, read the threat model and check the required changes landed |
-| `agents/qa-engineer.md`, `qa-runner.md` | one line each: attack tests run with the regression pass; QA never changes them; QA's own tests are written after READY |
-| `skills/build/SKILL.md` | the `Security:` line in the block; Roles/Models exemption; preflight commands; `--security` and `--set-security`; acting on `security-check.sh`'s levels; the review loop (order, three reviews, refreshes, then the user per row; "don't ask" stops); plan changes after READY; the user's lines (write, set ACCEPTED, commit, refresh; the raise count); the break test (clean tree, commit, stamp, commit, fix loop with cap, staleness re-test); the box; Quick marker `security=`, the wrap-up checks; no-shell behaviour. Growth ≤ 55 lines |
+| `agents/qa-engineer.md` | one line: QA never changes the attack tests; the attack tests run through `ac-check` |
+| `skills/build/SKILL.md` | the `Security:` line in the block; Roles exemption; preflight commands; `--security` and `--set-security`; acting on `security-check.sh`'s levels; the review loop (order, three reviews, refreshes, then the user per row; "don't ask" stops); plan changes after READY; the user's lines (write, set ACCEPTED, commit, refresh; the raise count); the break test (clean tree, commit, stamp, commit, fix loop with cap, staleness re-test); the box; Quick marker `security=`, the wrap-up checks; no-shell behaviour. Growth ≤ 55 lines |
 | `skills/kickoff/SKILL.md` | the flags and the hand fallback (file, box, dev-plan line, raise count, `--set-security` by hand); proposes a level from the rubric when run by hand |
 | `skills/signoff/SKILL.md` | the seven rules in the by-hand list |
 | `skills/status`, `phase-next` | the status line; phase-next lists ACCEPTED rows and open medium/low rows as evidence for the next feature |
@@ -826,7 +830,7 @@ the dependency graph; agents own disjoint files; `lib.sh` freezes after S1.
 | S2 | Locks and context: `ownership-guard.sh` (locks 1–8, `..` collapsing), `context.sh`, `status.sh`, `teammate-idle-gate.sh`; the `agent_type` values are already captured (§4); the remaining §4 checks run first | those scripts, `tests/hooks-selftest.sh`, `tests/scripts-selftest.sh` | Every lock positive and negative for teammate, plain subagent, security engineer (exact type), empty type, Windows-shaped and `..` paths, Bash, no-jq; the code lock off at READY, under a valid Quick marker and with a plan waiver; the READY lock on the transition only; new `ACCEPTED`, user lines and `Tested at:` refused for the security engineer; the gate-state scripts refused on Bash; main session allowed everywhere; idle gate skips security files; nothing changes at level none |
 | S3 | Gates: `signoff-check.sh` rules 1–7, the task gates' approval rule, `make-briefs.sh`, `security-check.sh` | those scripts, `skills/signoff/SKILL.md`, `tests/scripts-selftest.sh`, `tests/lib-selftest.sh` | Each rule positive and negative on both layouts; staleness in a temp repo (commit-then-stamp passes; a code change, an untracked non-docs file and a config change stale it; docs and `.claude` changes don't); `--stamp-tested` refuses a dirty tree; uncommitted security files; waivers per part and voided by a raise; post-READY plan change reported; v0.4b fixtures (no level) unchanged |
 | S4 | `agents/security-engineer.md` | that file | Read-through against §6.5; ≤ 110 lines; By surface ≤ 25 |
-| S5 | Agents and skills (§6.8) | the listed files | Read-through against §6.2, §6.6; the build skill grows ≤ 55 lines; the v0.4b triage `Models:` graders still hold |
+| S5 | Agents and skills (§6.8) | the listed files | Read-through against §6.2, §6.6; the build skill grows ≤ 55 lines; the lean-roles triage graders still hold |
 | S6 | Evals (§8.2) and fixtures | `evals/**` | New cases ≥ 2/3 on trial runs; every grader proven to fail on the untouched fixture |
 | S7 | README ("Security review" section), `plugin.json` 0.5.0, `docs/dev-plan.md` progress, smoke parts | docs, `tests/smoke/**` | Validation clean |
 | S8 | Independent read-only review of `main..v0.5` against this plan; fixes | — | Findings fixed or recorded in §13 |
@@ -912,7 +916,7 @@ isn't tenant-scoped), and a built diff with a **planted IDOR**
 | Case | Graders |
 | --- | --- |
 | triage-security-none | Go fixture, a routine request (a sort option on an existing list): `Security: none` (anchored line regex) |
-| triage-security-plan-break | modules fixture, refunds with role permissions: `Security: plan,break`; `Roles:` names the security engineer; `Models:` has no `security` entry |
+| triage-security-plan-break | modules fixture, refunds with role permissions: `Security: plan,break`; `Roles:` names the security engineer |
 | triage-security-break-quick | a Quick fix inside auth code: `Size: Quick`, `Security: break` |
 | triage-security-full-plan | Go fixture, a Full feature with no sensitive signal (a new module that exports the caller's own monthly totals as CSV): `Security: plan` (D5) |
 | build-quick-dispatches (v0.4b, pinned) | gains `Security: none` (a 409 on duplicates is routine) |

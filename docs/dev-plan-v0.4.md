@@ -249,6 +249,8 @@ Sensitive data: none
 
 ### 6.4 Roles and evidence by surface (v0.4b)
 
+Superseded in part by §16: no UX engineer, one required evidence kind per surface, no accessibility column.
+
 **Evidence kinds** are fixed tokens, so scripts can check them: `screenshots`,
 `axe`, `journeys`, `checklist`, `flow-tests`, `contract`, `authz`, `negative`,
 `transcripts`, `job-tests`, `failure-cases`, `golden-output`, `doc-examples`,
@@ -528,6 +530,8 @@ Commands are verified against current docs before shipping:
 
 ### 6.12 Agents
 
+Superseded in part by §16: the UX engineer and the QA runner are gone; there are five agents.
+
 | Agent | v0.4a | v0.4b |
 | --- | --- | --- |
 | product-engineer | Triage mode (§6.5) with the block, the ask rules, the "can't write observable criteria → say what's missing" rule; module language; Success metrics results | Reads `project.md`; surfaces and roles in triage; verification by the surface's evidence; generic examples |
@@ -806,3 +810,27 @@ code and the sections above:
 | 14 | Engineers were shown raw adapter cells as commands | Context and agents show the `ac-check.sh … --surface` command |
 | 15 | Two generic recipes passed on no matching tests | Rust and .NET recipes require a passed count |
 | — | Agent text bloat, weak eval graders, no first-run eval | Trimmed; graders fixed; `build-first-run-profile` added |
+
+## 16. Revision 6: lean roles
+
+On 2026-10-27 Safi asked to make Plumbline cheaper and simpler without losing the
+gates. Wave 1 changed the agents, skills, templates and scripts; this section
+records what changed and why. It supersedes the parts of §6.4, §6.10 and §6.12 that
+name the UX engineer, the QA runner, the accessibility rules, the visual comparison
+and the `Models:` line. The earlier sections are kept as history.
+
+| # | Change | Why |
+| --- | --- | --- |
+| 1 | No UX engineer. Product writes `ux.md` (journeys, plus a text description of each screen) and a short module UI guide (`design-principles.md`). Engineers build the UI from that text. No prototypes, mockups or palette files | A separate design role cost a model run and a document set that engineers then had to match by eye; text is enough to build from |
+| 2 | One QA agent, `qa-engineer` (Sonnet, medium). It tests after the build that each journey and criterion works, fills `test-plan.md` as the functional test record, and records the evidence row. The `qa-runner` is deleted | QA planning before code had nothing left to run in parallel; one role is cheaper than two |
+| 3 | No UI scan and no hard testing by QA: no accessibility scan, screenshot comparison, visual diff or regression runs. `qa-summary.sh`, `capture.mjs`, `visual-diff.mjs`, `ac-json.sh` and their tests are deleted | The scan needed optional tooling and rarely ran; `ac-check` and the lead already cover the suites |
+| 4 | One required evidence kind per surface: `journeys` (web-ui, desktop-ui), `flow-tests` (mobile-ui), `transcripts` (api), `job-tests` (service), `golden-output` (cli), `doc-examples` (library), `sample-run` (data), `eval-set` (ai), `plan-output` (infra). The accessibility rules are gone | The deeper kinds (`contract`, `authz`, `negative`, `failure-cases`, `api-diff`, `idempotency`, `injection`) are covered by the engineers' tests and the reviewer |
+| 5 | TDD with unit and e2e tests. The lead (Opus, high) writes a plan per engineer: the failing unit test first, the e2e test, a done-when. Tests start with the AC ID | The plan, the engineer's reported red run and the lead's commit-order check enforce it; no script can prove ordering |
+| 6 | Effort by complexity. The lead rates each task LOW, NORMAL or HIGH and sets each engineer's effort from the hardest task, in a last `Effort` column of the Team table. Engineers, QA and the reviewer are Sonnet (reviewer Opus for HIGH work); product and the lead are Opus high; triage is Sonnet | Spend effort where the risk is; the roles themselves are fixed |
+| 7 | New `playwright` adapter and `+` cells: `node --dir storefront + playwright --dir storefront` runs unit and e2e tests together through `combine.sh`. Detection proposes `+ playwright` when `@playwright/test` is a dependency | An AC-tests cell held one adapter, so engineers' e2e tests would never have been run by the gate |
+| 8 | Briefs carry each engineer's whole task block and its screens' descriptions | The engineer works from the brief alone |
+| 9 | The triage block loses its `Models:` line | Roles are fixed, so the line was boilerplate |
+
+Checks: self-tests pass (1005 de-duplicated checks in the README count). The evals
+for the changed roles and the live smoke test are still to run; results go in
+`docs/evals/eval-v0.4b.md` when they exist.

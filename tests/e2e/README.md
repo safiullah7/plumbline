@@ -1,7 +1,7 @@
 # Mini-phase end-to-end benchmark
 
-Runs one whole Plumbline phase on a tiny app with a real team: kickoff, spec, UX,
-test plan, dev plan, build by two engineers, review, QA, signoff. It's the
+Runs one whole Plumbline phase on a tiny app with a real team: kickoff, spec, UI
+text, dev plan, TDD build by two engineers, review, QA, signoff. It's the
 quality and token benchmark between plugin versions. It takes about an hour and
 uses a large share of a usage window, so run it before a release, not routinely.
 

@@ -1,5 +1,11 @@
 # Eval results: v0.4b
 
+> **Superseded (2026-10-27).** The "lean roles" change removed some of the cases and scripts
+> listed here (the UX engineer and QA runner cases, the QA planning cases, the visual and
+> accessibility checks, the `Models:` triage cases) and changed the agents behind the rest.
+> New results will be recorded here later. Until then, treat the numbers below as the
+> pre-change run.
+
 Recorded 2026-10-26 on Windows (Git Bash), Claude Code 2.1.310, with the same
 settings as v0.4a: 3 runs per case, Sonnet judge, no baseline arm.
 

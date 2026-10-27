@@ -86,7 +86,7 @@ ls -a .claude
 ls docs/product
 grep -rn "AC-[0-9]*-[0-9]*" test/
 Also list every agent dispatched during this part (name and type), say whether any
-screenshot, browser, accessibility or Playwright step was run or asked about, and
+browser step was run or asked about, and
 quote the triage block and the ac-check line as printed.
 
 PART B - Report. Show one table: check, expected, actual, PASS or FAIL.
@@ -103,10 +103,10 @@ PART B - Report. Show one table: check, expected, actual, PASS or FAIL.
   folder's own docs/product), has one api row with no "(check)", and a line
   "Confirmed by: <name> on <today's date>"
 - triage: the block shows "Size: Quick", "Folder: none", "Surfaces: api",
-  "UX: no", "Docs: none", "Team: no"; its Roles line has no UX engineer; its Evidence
-  line names api kinds (contract, authz, negative, transcripts)
-- no UI work: no UX engineer or QA runner was dispatched, and no screenshot,
-  browser, Playwright or accessibility step was run or asked about
+  "UX: no", "Docs: none", "Team: no"; its Roles line has no UX or QA role; its Evidence
+  line is "api: transcripts"
+- no UI work: no QA engineer was dispatched, and no browser step was run or
+  asked about
 - criteria: 1-3 criteria with IDs AC-<yymmdd>-<nn> (today's date), each
   observable through HTTP (a status code, a response body), with none about screens,
   layout or copy
