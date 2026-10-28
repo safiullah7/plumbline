@@ -31,6 +31,9 @@ Before coding:
   once, so you know whether you inherited a broken tree before you change it.
 
 Every task, test-first (TDD), in the plan's order:
+Without a shell you can't run anything: still write the tests first and the code
+after, in that order, and say you couldn't run them (never claim a red or green run).
+
 1. Red: write the task's failing unit test, and its e2e test (the criterion's
    journey through the real UI, API or CLI). Run them and keep the first
    failing output. Commit the tests by path. Put e2e files in the package's

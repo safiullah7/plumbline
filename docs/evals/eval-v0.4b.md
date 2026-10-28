@@ -110,3 +110,59 @@ No case scores below its v0.4a result. `discover-asks-first` rose from 0.89 to
   Opus agents (e.g. lead-writes-plan $5.31 → $6.77). No case lost quality.
 - **Self-tests at the time of the recorded runs:** 1261 checks, 0 failed
   (`bash tests/run-all.sh`).
+
+## Lean roles (2026-10-28)
+
+The lean-roles change (no UX engineer, one QA agent that checks function only,
+TDD with unit and e2e tests, engineer effort chosen by the lead, a Playwright
+adapter) rewrote the agents, so the cases it touched were run again, 3 runs
+each, with the same settings. The previous table above is history: it lists
+cases that no longer exist.
+
+**Removed with their roles or planning:** ux-designs-screen, ux-mobile-mockups,
+qa-writes-test-plan, qa-plan-mobile, qa-plan-api, qa-plan-ai,
+qa-runner-no-browser, runner-mobile-no-device, triage-models-routine,
+triage-models-high-risk. They cost $28.45 of the $60.28 full run above, so a
+full run is now about 47% cheaper.
+
+| Case | Before | Now | Cost (3 runs) |
+| --- | :---: | :---: | --- |
+| build-first-run-profile | 1.00 | 1.00 | $0.19 |
+| build-quick-dispatches | 1.00 | 1.00 | $2.38 |
+| discover-asks-first | 1.00 | 1.00 | $0.22 |
+| kickoff-creates-phase | 1.00 | 1.00 | $0.50 |
+| kickoff-module-feature | 1.00 | 1.00 | $0.51 |
+| lead-plans-tdd-unit-e2e (new) | — | 1.00 | $3.10 |
+| lead-writes-plan | 1.00 | 1.00 | $3.49 |
+| product-escalates | 1.00 | 1.00 | $1.90 |
+| product-respects-decisions | 1.00 | 1.00 | $2.40 |
+| product-writes-spec | 1.00 | 1.00 | $2.29 |
+| product-writes-ui-text (new) | — | 0.97 (the "enough to build from" judge failed in one of three runs) | $2.73 |
+| qa-checks-functionality (new) | — | 1.00 | $0.46 |
+| quick-review-loop | 1.00 | 1.00 | $2.26 |
+| reviewer-api-authz | 1.00 | 1.00 | $0.37 |
+| reviewer-cli-interactive | 1.00 | 1.00 | $0.29 |
+| reviewer-finds-tenant-leak | 1.00 | 1.00 | $0.33 |
+| reviewer-single-tenant | 1.00 | 1.00 | $0.39 |
+| senior-keeps-tests | 1.00 | 1.00 | $0.40 |
+| senior-respects-contracts | 1.00 | 1.00 | $0.45 |
+| senior-writes-unit-and-e2e (new) | — | 1.00 (0.93 on the first runs: an LLM judge read only the report; replaced by a trace-order check) | $0.49 |
+| signoff-stops-on-gaps | 1.00 | 1.00 | $0.19 |
+| triage-asks-when-vague | 1.00 | 1.00 | $0.54 |
+| triage-data | 1.00 | 1.00 | $0.55 |
+| triage-full-new-module | 1.00 | 1.00 | $0.46 |
+| triage-mobile | 1.00 | 1.00 | $0.58 |
+| triage-new-module-standard | 1.00 | 1.00 | $0.50 |
+| triage-quick-backend-bug | 1.00 | 1.00 | $0.51 |
+| triage-standard-screen | 1.00 | 1.00 | $0.52 |
+| triage-surfaces-api-only | 1.00 | 1.00 | $0.49 |
+| triage-surfaces-api-web | 1.00 | 1.00 | $0.52 |
+
+Cost of these runs: about $30 at list price. `phase-next-proposes` was
+not rerun (its agent and skill are unchanged) and keeps 1.00.
+
+No case is below its earlier score. Three of the four new cases are at 1.00
+(the senior case after the fix noted); `product-writes-ui-text` is at 0.97, above
+the 2-of-3 bar. One review-driven change is worth recording: the senior
+engineer's instructions now say that without a shell it must still write the
+tests first and the code second and never claim a red or green run.
