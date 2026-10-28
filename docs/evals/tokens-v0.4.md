@@ -44,10 +44,23 @@ costs more, at list price per eval run (`docs/evals/eval-v0.4a.md`):
 The full process also adds the team build, QA and signoff. A small fix no
 longer pays for any of them.
 
-## Where the cost goes, and a candidate saving
+## Where the cost goes, and what v0.4b tried
 
 The Opus lead is half of the Quick cost, while it mostly dispatches the
-engineer and the reviewer, runs the check and opens the PR. Running the lead on
-Sonnet in Quick mode would roughly halve the lead's share. That is a candidate
-for v0.4b. It is not adopted here: it changes who reviews the engineer's work,
-so it needs its own eval comparison first.
+engineer and the reviewer, runs the check and opens the PR. v0.4b tried
+running the Quick-mode lead on Sonnet: the Quick case cost about $0.68 per
+run instead of $1.02 on Opus, but the Sonnet lead skipped the code review in
+two runs (`quick-review-loop`, 0.90). The trial was dropped: the lead is
+always Opus, writes a step-by-step plan per engineer and never codes, and the
+Sonnet senior engineers do the implementation (`docs/evals/eval-v0.4b.md`).
+What v0.4b kept instead is model allocation by complexity for every other
+role (product, UX, QA, engineers, reviewer), decided in the triage block's
+`Models:` line, so routine Standard features no longer pay for Opus where
+judgement carries no risk.
+
+## v0.4b cost of a Quick change
+
+From the v0.4b eval reruns with the Opus lead (`build-quick-dispatches`,
+3 runs): about **$1.02 per run** at list price, against $0.62 in v0.4a; the
+difference is the lead reading project.md and running the surface-aware
+checks, plus the by-surface text in every agent.

@@ -2,9 +2,10 @@
 # SessionStart (the lead) and SubagentStart (teammates and Plumbline agents):
 # hand over the context each would otherwise go looking for: the active phase
 # and plan status, its own Ownership row and brief, escalations, and the answered
-# questions that involve it. Claude Code de-duplicates it and re-adds it after
-# compaction. While a Quick change runs (.claude/plumbline-quick) it says so
-# instead. Never blocks: on any problem it prints nothing and exits 0.
+# questions that involve it; for a feature with surfaces=, those surfaces and
+# the ac-check.sh command that checks each (not the raw profile cells). Claude
+# Code de-duplicates it and re-adds it after compaction. While a Quick change
+# runs (.claude/plumbline-quick) it says so instead. Never blocks: on any problem it prints nothing and exits 0.
 source "$(dirname "${0//\\//}")/lib.sh"
 input=$(cat); debug_log "$input"
 command -v jq >/dev/null 2>&1 || exit 0
@@ -47,6 +48,20 @@ q="$dir/questions.md"
 ctx="Plumbline phase: $rel (dev plan: ${status:-not written yet})."
 module=$(feature_meta module)
 [[ -n "$module" ]] && ctx+=$'\n'"Module: $module"
+# The feature's surfaces, each with its profile commands (a row in
+# docs/product/project.md; an empty cell is left out).
+surfaces=$(feature_meta surfaces)
+if [[ -n "$surfaces" ]]; then
+  ctx+=$'\n'"Surfaces: $surfaces"
+  IFS=, read -r -a snames <<<"$surfaces"
+  for s in "${snames[@]}"; do
+    row=$(surface_row "$s") || continue
+    # Raw cells are not commands to paste (they need the adapter and the
+    # right folder), so point at ac-check.sh, which runs them the right way.
+    cmds=$(awk -F'\t' '{ for (i = 5; i <= 7; i++) if ($i ~ /[^ \t]/) { print "x"; exit } }' <<<"$row")
+    [[ -n "$cmds" ]] && ctx+=$'\n'"Surface $s: check with bash \"$PLUMBLINE_SCRIPTS/ac-check.sh\" \"<IDs>\" --surface $s"
+  done
+fi
 ctx+=$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
 if [[ -n "$who" ]]; then
   ctx+=$'\n'"You are $who. You own: $globs"

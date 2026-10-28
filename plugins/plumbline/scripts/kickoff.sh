@@ -11,12 +11,20 @@
 # area, one with a phases/ folder: phases/phase-<nn>/), the templates/standard/
 # overlay for the standard profile, and .plumbline (with the slug, so a legacy
 # area can refuse the same feature twice). The copied docs say "Feature <nn>"
-# where the templates say "Phase <nn>". Without UX there's no ux.md,
-# no prototypes/ and no Design verification box.
+# where the templates say "Phase <nn>". Without UX there's no ux.md. There's no
+# prototypes/ folder: product writes the screens as text in ux.md.
+# --surfaces names the feature's surfaces (a name is one of the ten kinds, or a
+# kind plus "-<name>": web-ui-shop); an unknown name is a usage error. It's kept
+# as given in .plumbline's surfaces=. Each kind with a templates/surface/ overlay
+# (mobile-ui, api, ai, cli) applies it once, after the profile overlay: <doc>.append.md
+# is appended to the feature's <doc>.md if that doc exists, any other file is
+# copied, never over an existing one. Without --ux or --no-ux, --surfaces makes
+# UX yes only when a surface is a web-ui, mobile-ui or desktop-ui; without
+# --surfaces, UX stays yes.
 # Legacy form, as v0.3's kickoff: the area docs that are missing, then
-# docs/product/<area>/phases/phase-NN/, no .plumbline. It takes any area name and
-# phase id v0.3's hand kickoff took (Vet_Records phase-1, phase-03-auth); the
-# module form needs lowercase slugs.
+# docs/product/<area>/phases/phase-NN/ (the v0.3 file set, with prototypes/), no
+# .plumbline. It takes any area name and phase id v0.3's hand kickoff took
+# (Vet_Records phase-1, phase-03-auth); the module form needs lowercase slugs.
 # Both write .claude/current-phase, print "added <path>" for each module or area
 # doc they add, and print the feature folder (repo-relative) as the last line.
 # Exit 0 = created, 1 = usage or the feature already exists, 2 = --new-module on
@@ -35,13 +43,13 @@ TPL="$PLUMBLINE_SCRIPTS/../skills/kickoff/templates"
 [[ -d "$TPL/phase" ]] || { echo "kickoff: templates not found at $TPL" >&2; exit 1; }
 cd "$PROJECT_DIR" || exit 1
 
-profile=full ux=yes new_module="" surfaces="" has_surfaces="" opts="" pos=()
+profile=full ux=yes ux_set="" new_module="" surfaces="" has_surfaces="" opts="" pos=()
 while (( $# )); do
   case "$1" in
     --profile)    (( $# >= 2 )) || usage; profile="$2"; opts=1; shift 2 ;;
     --profile=*)  profile="${1#*=}"; opts=1; shift ;;
-    --ux)         ux=yes; opts=1; shift ;;
-    --no-ux)      ux=no; opts=1; shift ;;
+    --ux)         ux=yes; ux_set=1; opts=1; shift ;;
+    --no-ux)      ux=no; ux_set=1; opts=1; shift ;;
     --new-module) new_module=1; opts=1; shift ;;
     --surfaces)   (( $# >= 2 )) || usage; surfaces="$2"; has_surfaces=1; opts=1; shift 2 ;;
     --surfaces=*) surfaces="${1#*=}"; has_surfaces=1; opts=1; shift ;;
@@ -106,6 +114,22 @@ module="${pos[0]}" slug="${pos[1]}" mdir="docs/product/${pos[0]}"
 if [[ -n "$has_surfaces" ]]; then
   [[ "$surfaces" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] \
     || usage "--surfaces is a comma-separated list, e.g. api,web-ui"
+  has_ui="" overlays=""
+  IFS=, read -r -a snames <<<"$surfaces"
+  for s in "${snames[@]}"; do
+    kind=$(surface_kind "$s") \
+      || usage "'$s' isn't a surface (web-ui, mobile-ui, desktop-ui, api, service, cli, library, data, ai or infra, optionally followed by -<name>)"
+    case "$kind" in
+      web-ui|mobile-ui|desktop-ui) has_ui=1 ;;
+    esac
+    case "$kind" in
+      mobile-ui) ov=mobile ;;
+      api|ai|cli) ov="$kind" ;;
+      *) continue ;;
+    esac
+    [[ " $overlays " == *" $ov "* ]] || overlays+="${overlays:+ }$ov"   # once per kind
+  done
+  if [[ -z "$ux_set" ]]; then if [[ -n "$has_ui" ]]; then ux=yes; else ux=no; fi; fi
 fi
 if [[ -n "$new_module" && -e "$mdir" ]]; then
   echo "kickoff: $mdir already exists, so it isn't a new module; nothing changed." >&2
@@ -139,13 +163,24 @@ tpls=("$TPL"/phase/*)
 for t in "${tpls[@]}"; do
   name="${t##*/}"
   [[ "$ux" == no && "$name" == ux.md ]] && continue
-  if [[ "$ux" == no && "$name" == signoff.md ]]; then
-    fill "$t" "$feature/$name" "${subst[@]}" -e '/^- \[ \] Design verification/d'
-  else
-    fill "$t" "$feature/$name" "${subst[@]}"
-  fi
+  fill "$t" "$feature/$name" "${subst[@]}"
 done
-if [[ "$ux" == yes ]]; then gitkeep "$feature" contracts prototypes briefs; else gitkeep "$feature" contracts briefs; fi
+for ov in $overlays; do   # the surface overlays, after the profile overlay
+  [[ -d "$TPL/surface/$ov" ]] || continue
+  while IFS= read -r t; do
+    rel="${t#"$TPL/surface/$ov/"}"
+    if [[ "$rel" == *.append.md ]]; then
+      doc="$feature/${rel%.append.md}.md"
+      [[ -f "$doc" ]] || continue
+      { echo; sed "${subst[@]}" "$t"; } >> "$doc"
+    else
+      [[ -e "$feature/$rel" ]] && continue
+      [[ "$rel" == */* ]] && mkdir -p "$feature/${rel%/*}"
+      fill "$t" "$feature/$rel" "${subst[@]}"
+    fi
+  done < <(find "$TPL/surface/$ov" -type f | LC_ALL=C sort)
+done
+gitkeep "$feature" contracts briefs
 {
   echo "module=$module"
   echo "number=$nn"

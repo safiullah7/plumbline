@@ -11,8 +11,11 @@ Progress:
 - v0.4a built on branch `v0.4a` (steps A1-A11 done: helpers, ac-check, templates,
   agents, build skill, kickoff.sh, layout, locks, docs), plus the fixes from an
   independent review. Evals: every case at or above v0.3, the seven new cases at
-  1.00 (docs/evals/eval-v0.4a.md). PR open; live smoke test pending. v0.4b not
-  started.
+  1.00 (docs/evals/eval-v0.4a.md). Merged (PR #5).
+- v0.4b built on branch `v0.4b` (steps B1-B8 done: project profile, test adapters,
+  surface templates, agents by surface, signoff evidence, README and version 0.4.0).
+  Evals, live smoke test and PR pending.
+- 2026-10-27: v0.4b is now the "lean roles" release: no UX engineer, one QA agent, TDD with unit and e2e tests (`docs/dev-plan-v0.4.md` §16).
 - Team token benchmark still pending.
 Owner: Safi. Written 2026-10-23 from the plugin review and the live smoke test;
 v0.4 added 2026-10-24.

@@ -143,10 +143,9 @@ section_body() { # file heading
 }
 
 # Files anyone may write and nobody owns committing (repo-relative path): the
-# phase Q&A log, progress notes, generated briefs and AC lists, QA screenshots,
-# diffs, accessibility reports and evidence, and agent memory. The ownership
-# guard lets everyone edit them, and the idle gate doesn't count them as anyone's
-# uncommitted work.
+# phase Q&A log, progress notes, generated briefs and AC lists, QA evidence, and
+# agent memory. The ownership guard lets everyone edit them, and the idle gate
+# doesn't count them as anyone's uncommitted work.
 shared_path() {
   case "$1" in
     */questions.md|*/progress.md|*/briefs/*|*/acceptance-criteria.json) return 0 ;;
@@ -201,13 +200,182 @@ teammate_name_for() {
   [[ -n "$name" ]] && printf '%s\n' "$name"
 }
 
-# The command for one check: its env var when set (set to "" skips the check),
-# else the legacy npm default.
+# The project profile, docs/product/project.md (dev plan §6.3).
+project_file() { printf '%s\n' "$PROJECT_DIR/docs/product/project.md"; }
+
+# Surface names from the profile's Surfaces table, one per line, in table order;
+# nothing when there's no profile. A row whose Surface ends in " (check)" is a
+# detection hint the user hasn't confirmed, so it's skipped here and in surface_row.
+project_surfaces() {
+  md_table "$(project_file)" Surfaces 2>/dev/null | awk -F'\t' '$1 != "" && $1 !~ / \(check\)$/ { print $1 }'
+}
+
+# The same names on one line, for messages: "api, web-ui".
+surface_list() { project_surfaces | paste -sd, - | sed 's/,/, /g'; }
+
+# One surface's row from the profile, cells tab-separated in the table's order:
+# Surface, Stack, Paths, Run, Typecheck, Lint, AC tests. Returns 1 when there's no
+# profile or no row for that surface.
+surface_row() { # surface
+  [[ -n "${1:-}" ]] || return 1
+  md_table "$(project_file)" Surfaces 2>/dev/null | awk -F'\t' -v s="$1" '
+    $1 == s && $1 !~ / \(check\)$/ { print; found = 1; exit }
+    END { exit !found }'
+}
+
+# The surface whose profile row check_command reads (dev plan §6.8). Prints it, or
+# nothing for the legacy defaults: no profile, or no surface and a profile that
+# lists none. With no surface, a profile with one row means that row. Returns 1
+# for a surface the profile doesn't list (names are exact: API isn't api), 2 for
+# no surface when the profile lists several, so the wrong tests never run.
+profile_surface() { # surface
+  local list
+  [[ -f "$(project_file)" ]] || return 0
+  list=$(project_surfaces)
+  if [[ -z "${1:-}" ]]; then
+    [[ "$list" == *$'\n'* ]] && return 2
+    [[ -n "$list" ]] && printf '%s\n' "$list"
+    return 0
+  fi
+  grep -qxF -- "$1" <<<"$list" || return 1
+  printf '%s\n' "$1"
+}
+
+# The message for a profile row whose AC tests cell is empty (check_command's 3).
+ac_command_missing() { # surface as given
+  printf 'AC tests: no command for surface %s in docs/product/project.md; write one (an adapter, generic, or a command), or none to skip\n' \
+    "$(profile_surface "${1:-}")"
+}
+
+# The kind of a surface name: one of the ten kinds (dev plan §6.3). A repo with
+# two of a kind names the second "<kind>-<name>" (web-ui-shop), so a name may
+# extend its kind with "-<name>". Returns 1 for a name that isn't one.
+surface_kind() { # surface
+  local k
+  for k in web-ui mobile-ui desktop-ui api service cli library data ai infra; do
+    [[ "${1:-}" == "$k" || "${1:-}" == "$k"-* ]] && { printf '%s\n' "$k"; return 0; }
+  done
+  return 1
+}
+
+# A string as one single-quoted shell word.
+sq() { # string
+  local q="'" r="'\\''"
+  printf "'%s'" "${1//$q/$r}"
+}
+
+# An AC tests cell cut into its parts at each standalone + (a word that is just
+# +, outside quotes), one per line, blank parts kept. A cell with no such + is
+# one part, unchanged. Prints "blank" instead when a part is empty.
+ac_cell_parts() { # cell
+  local s="$1" i c qt="" cur="" word="" n=${#1} cut=0 parts="" blank=0 p
+  for ((i = 0; i <= n; i++)); do
+    c="${s:i:1}"
+    if [[ -n "$qt" ]]; then
+      cur="$cur$c"; word="$word$c"; [[ "$c" == "$qt" ]] && qt=""
+    elif [[ "$c" == '\' ]]; then
+      cur="$cur$c${s:i+1:1}"; word="$word$c${s:i+1:1}"; i=$((i + 1))
+    elif [[ "$c" == "'" || "$c" == '"' ]]; then
+      qt="$c"; cur="$cur$c"; word="$word$c"
+    elif [[ -z "$c" || "$c" == [[:space:]] ]]; then
+      if [[ "$word" == + ]]; then
+        cur="${cur%+}"; cut=1; parts="$parts$cur"$'\n'; cur=""
+      else
+        cur="$cur$c"
+      fi
+      word=""
+    else
+      cur="$cur$c"; word="$word$c"
+    fi
+  done
+  if (( ! cut )); then printf '%s\n' "$s"; return 0; fi
+  parts="$parts$cur"$'\n'
+  while IFS= read -r p; do
+    [[ -n "${p//[[:space:]]/}" ]] || blank=1
+  done <<<"${parts%$'\n'}"
+  (( blank )) && { echo blank; return 0; }
+  printf '%s' "$parts"
+}
+
+# One AC tests part as a command: a bare adapter name (node, pytest, go,
+# playwright, generic) with only --dir (or --surface for generic) options becomes
+# that adapter in ac-tests/, anything else is a raw command, returned as written.
+ac_part_command() { # part, surface
+  local cell="$1" name rest dir q opt val re
+  cell="${cell#"${cell%%[![:space:]]*}"}"; cell="${cell%"${cell##*[![:space:]]}"}"
+  name="${cell%%[[:space:]]*}"; rest="${cell#"$name"}"
+  # The options an adapter takes from the cell, each followed by one shell word
+  # (plain, quoted, or both, as detect-project writes an odd folder name).
+  opt=--dir; [[ "$name" == generic ]] && opt='--(dir|surface)'
+  val="(\\\\.|'[^']*'|\"[^\"]*\"|[^[:space:]'\"\\\\])+"
+  re="^([[:space:]]+$opt(=|[[:space:]]+)$val)*[[:space:]]*\$"
+  case "$name" in
+    node|pytest|go|playwright|generic)
+      [[ "$rest" =~ $re ]] || { printf '%s\n' "$cell"; return 0; }   # a real command
+      # Double-quoted for eval, so a scripts folder with spaces still works.
+      dir="${PLUMBLINE_SCRIPTS//\\/\\\\}"; dir="${dir//\"/\\\"}"
+      dir="${dir//\$/\\\$}"; dir="${dir//\`/\\\`}"
+      printf -v q %q "$2"
+      [[ "$name" == generic && ! "$rest" =~ [[:space:]]--surface ]] && rest=" --surface $q$rest"
+      cell="bash \"$dir/ac-tests/$name.sh\"$rest" ;;
+  esac
+  printf '%s\n' "$cell"
+}
+
+# The command for a whole AC tests cell: its one part, or combine.sh over the
+# parts of an "A + B" cell. A blank part gives a command that fails with a message.
+ac_cell_command() { # cell, surface
+  local parts p out="" dir
+  parts=$(ac_cell_parts "$1")
+  if [[ "$parts" == blank ]]; then
+    printf '%s\n' "echo $(sq "AC tests: the cell \"$1\" for surface ${2:-?} in docs/product/project.md has a blank part (a leading, doubled or trailing +); write adapters or commands joined by \" + \"") >&2; false"
+    return 0
+  fi
+  if [[ "$parts" != *$'\n'* ]]; then ac_part_command "$1" "$2"; return 0; fi
+  while IFS= read -r p; do
+    [[ -n "$p" ]] && out="$out --cmd $(sq "$(ac_part_command "$p" "$2")")"
+  done <<<"$parts"
+  dir="${PLUMBLINE_SCRIPTS//\\/\\\\}"; dir="${dir//\"/\\\"}"
+  dir="${dir//\$/\\\$}"; dir="${dir//\`/\\\`}"
+  printf 'bash "%s/ac-tests/combine.sh"%s\n' "$dir" "$out"
+}
+
+# The command for one check, by precedence (dev plan §6.8):
+# 1. its env var when set (set to "" skips the check);
+# 2. the profile's row for the surface, as profile_surface picks it: the
+#    Typecheck, Lint or AC tests cell. "none" skips the check, and so does an
+#    empty Typecheck or Lint cell; an empty AC tests cell returns 3, since a pass
+#    must mean tests ran. An AC tests cell that is just node, pytest, go,
+#    playwright or generic, optionally followed by --dir <path> (or --surface <s>
+#    for generic), becomes that adapter in ac-tests/ (generic also gets
+#    --surface); anything else (node --test, go test ./...) is a raw command.
+#    A cell may join several of these with a standalone + outside quotes (node
+#    --dir web + playwright --dir web): each part is mapped that way and the whole
+#    becomes combine.sh --cmd '<part>' --cmd '<part>', which merges their per-ID
+#    reports. A blank part (a leading, doubled or trailing +) is a mistake in the
+#    profile: the command printed is one that fails and says so;
+# 3. the legacy npm default, when there's no profile.
+# Returns 1 or 2 as profile_surface does, printing nothing. run_checks appends
+# the IDs as one quoted argument, so a command must take them last.
 check_command() { # env var name, surface, legacy default
   if [[ -n "${!1+set}" ]]; then printf '%s\n' "${!1}"; return 0; fi
-  # v0.4b: the surface's commands (and AC-test adapter) from docs/product/project.md
-  # go here, between the env vars and the legacy defaults (dev plan §6.8).
-  printf '%s\n' "$3"
+  local surface col row cell
+  case "$1" in
+    PLUMBLINE_TYPECHECK) col=5 ;;
+    PLUMBLINE_LINT)      col=6 ;;
+    PLUMBLINE_TEST_AC)   col=7 ;;
+    *) printf '%s\n' "$3"; return 0 ;;
+  esac
+  surface=$(profile_surface "${2:-}") || return $?
+  if [[ -z "$surface" ]] || ! row=$(surface_row "$surface"); then printf '%s\n' "$3"; return 0; fi
+  cell=$(awk -F'\t' -v c="$col" '{ print $c }' <<<"$row")
+  [[ "$cell" == \`*\` ]] && cell="${cell:1:${#cell}-2}"   # a cell written as `code`
+  case "$cell" in [Nn][Oo][Nn][Ee]) printf '\n'; return 0 ;; esac
+  if [[ "$col" == 7 ]]; then
+    [[ -n "$cell" ]] || return 3
+    cell=$(ac_cell_command "$cell" "$surface")
+  fi
+  printf '%s\n' "$cell"
 }
 
 # One check for run_checks, in the repo root; an empty command is skipped. The
@@ -223,24 +391,36 @@ run_check() { # label, command
 }
 
 # Typecheck, lint, then the tests named after the given AC IDs, stopping at the
-# first failure. Shared by the task gate and ac-check.sh. Each command is
-# PLUMBLINE_TYPECHECK, PLUMBLINE_LINT or PLUMBLINE_TEST_AC when set (to "" to skip
-# that check), else `npm run -s typecheck`, `npm run -s lint` and
-# `npm run -s test:ac --`. The test command gets the IDs as one quoted argument;
-# empty IDs skip the tests (a [chore] task). The surface is accepted for v0.4b and
-# not used yet. Returns 0 or 1 and leaves, for the caller:
-#   RUN_CHECKS_FAILED  the check that failed: typecheck, lint or tests ("" on a pass)
+# first failure. Shared by the task gate and ac-check.sh. Each command comes from
+# check_command: PLUMBLINE_TYPECHECK, PLUMBLINE_LINT or PLUMBLINE_TEST_AC when set
+# (to "" to skip that check), else the surface's row in docs/product/project.md,
+# else `npm run -s typecheck`, `npm run -s lint` and `npm run -s test:ac --`, so a
+# repo without a profile behaves as in v0.3. The test command gets the IDs as one
+# quoted argument; empty IDs skip the tests (a [chore] task). Nothing runs when a
+# command can't be chosen. Returns 0 or 1 and leaves, for the caller:
+#   RUN_CHECKS_FAILED  the check that failed: typecheck, lint or tests, or surface
+#                      when profile_surface refused the surface ("" on a pass)
+#   RUN_CHECKS_ERROR   why, when tests failed before any check ran: the
+#                      surface's AC tests cell is empty (ac_command_missing)
 #   RUN_CHECKS_LOG     temp file with the last check's output; the caller removes it
 #   RUN_CHECKS_TIMING  the checks that passed, e.g. "typecheck 12s · lint 4s · tests 9s"
 run_checks() { # "<IDs separated by |>" [surface]
-  local ids="$1" surface="${2:-}" typecheck lint test_ac
-  typecheck=$(check_command PLUMBLINE_TYPECHECK "$surface" "npm run -s typecheck")
-  lint=$(check_command PLUMBLINE_LINT "$surface" "npm run -s lint")
-  test_ac=$(check_command PLUMBLINE_TEST_AC "$surface" "npm run -s test:ac --")
-  RUN_CHECKS_FAILED="" RUN_CHECKS_TIMING="" RUN_CHECKS_LOG=$(mktemp)
+  local ids="$1" surface="${2:-}" typecheck lint test_ac="" rc=0
+  RUN_CHECKS_FAILED="" RUN_CHECKS_ERROR="" RUN_CHECKS_TIMING="" RUN_CHECKS_LOG=$(mktemp)
+  typecheck=$(check_command PLUMBLINE_TYPECHECK "$surface" "npm run -s typecheck") \
+    && lint=$(check_command PLUMBLINE_LINT "$surface" "npm run -s lint") \
+    || { RUN_CHECKS_FAILED=surface; return 1; }
+  if [[ -n "$ids" ]]; then
+    test_ac=$(check_command PLUMBLINE_TEST_AC "$surface" "npm run -s test:ac --") || rc=$?
+    case "$rc" in
+      0) ;;
+      3) RUN_CHECKS_FAILED=tests RUN_CHECKS_ERROR=$(ac_command_missing "$surface"); return 1 ;;
+      *) RUN_CHECKS_FAILED=surface; return 1 ;;
+    esac
+  fi
   run_check typecheck "$typecheck" || return 1
   run_check lint "$lint" || return 1
-  if [[ -n "$test_ac" && -n "$ids" ]]; then
+  if [[ -n "$test_ac" ]]; then
     run_check tests "$test_ac \"\$ids\"" || return 1
   fi
   return 0

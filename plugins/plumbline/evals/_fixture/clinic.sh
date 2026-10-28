@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared eval fixture: a small clinic app in phase 01 ("Treatment rooms"), with
-# the Plumbline docs a phase has once product and design are done. Cases source
+# the Plumbline docs a phase has once product has written its docs and ux.md. Cases source
 # this file from their scaffold script, then add or remove what they test.
 # Deliberately undecided in the docs: whether an admin may deactivate the
 # clinic's last active room. A good product engineer escalates it.
@@ -11,6 +11,7 @@
 # templates of the plugin version under test.
 set -e
 FIXTURE_TEMPLATES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../skills/kickoff/templates" && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/profile.sh"
 
 # Copy a phase template into the phase folder, as kickoff would.
 phase_template() { sed 's/<phase>/01/g' "$FIXTURE_TEMPLATES/phase/$1" > "$P/$1"; }
@@ -23,10 +24,10 @@ ready_plan() {
 Status: READY
 
 ## Team
-| Teammate | Model | Workstream |
-| --- | --- | --- |
-| eng-api | sonnet | Rooms API |
-| eng-web | sonnet | Rooms UI |
+| Teammate | Model | Workstream | Surface | Effort |
+| --- | --- | --- | --- | --- |
+| eng-api | sonnet | Rooms API | api | high |
+| eng-web | sonnet | Rooms UI | web-ui | medium |
 
 ## Ownership
 | Teammate | Owned globs |
@@ -34,8 +35,7 @@ Status: READY
 | eng-api | apps/api/** |
 | eng-web | apps/web/** |
 | product | docs/product/** |
-| design | docs/product/** |
-| qa | docs/product/** apps/web/e2e/qa/** |
+| qa | docs/product/** |
 
 ## Contracts
 docs/product/clinic/phases/phase-01/contracts/rooms.ts, landed with the phase docs.
@@ -43,10 +43,38 @@ docs/product/clinic/phases/phase-01/contracts/rooms.ts, landed with the phase do
 ## Tasks
 ### eng-api
 - [AC-01-001 AC-01-003] Create room endpoint with the admin check (NORMAL)
+  Files: apps/api/rooms/routes.js, apps/api/rooms/rooms.test.js
+  Red (unit): AC-01-001 an admin adds a room and it is active; AC-01-003 a receptionist cannot add rooms
+  E2E: AC-01-001 POST /api/rooms as an admin returns 201 and the room appears in GET /api/rooms
+  Change: createRoom checks the admin role and trims the name
+  Edge cases: names of 1-60 characters only
+  Check: node --test apps/api
+  Done when: the unit and e2e tests for AC-01-001 and AC-01-003 pass via ac-check
 - [AC-01-002] Reject duplicate room names (NORMAL)
+  Files: apps/api/rooms/routes.js, apps/api/rooms/rooms.test.js
+  Red (unit): AC-01-002 a duplicate room name is rejected with 409
+  E2E: AC-01-002 a second POST /api/rooms with "room 4" returns 409
+  Change: reject a name that matches an existing room of the clinic, ignoring case
+  Edge cases: the same name in another clinic is allowed
+  Check: node --test apps/api
+  Done when: the unit and e2e tests for AC-01-002 pass via ac-check
 - [AC-01-004] List rooms scoped to the caller's clinic (HIGH)
+  Files: apps/api/rooms/routes.js, apps/api/rooms/store.js
+  Red (unit): AC-01-004 only the caller's clinic rooms are listed
+  E2E: AC-01-004 GET /api/rooms as clinic A never returns clinic B's rooms
+  Change: filter the list by the caller's clinic
+  Edge cases: a caller without a clinic gets an empty list
+  Check: node --test apps/api
+  Done when: the unit and e2e tests for AC-01-004 pass via ac-check
 ### eng-web
 - [AC-01-001 AC-01-005] Rooms list and Add room dialog (NORMAL)
+  Files: apps/web/rooms/**
+  Red (unit): AC-01-005 the empty state shows "No rooms yet" with an Add room button
+  E2E: AC-01-001 an admin adds "Room 4" in the dialog and sees it in the list as Active
+  Change: build the Rooms list and the Add room dialog from ux.md
+  Edge cases: typed values are never cleared on error
+  Check: the web unit tests and the Playwright journey
+  Done when: the unit and e2e tests for AC-01-001 and AC-01-005 pass via ac-check
 PLAN
 }
 
@@ -57,8 +85,14 @@ git config core.autocrlf false
 
 A=docs/product/clinic
 P=$A/phases/phase-01
-mkdir -p "$P/contracts" "$P/prototypes" .claude apps/api/rooms apps/web/rooms
+mkdir -p "$P/contracts" .claude apps/api/rooms apps/web/rooms
 echo "$P" > .claude/current-phase
+
+# The project profile (v0.4b): an api and a web-ui surface. Clinics are tenants.
+# Run, Typecheck and Lint stay empty because the demo app has no such scripts;
+# an empty cell skips that check.
+project_profile yes none "| api | Node | apps/api/** | | | | node --dir apps/api |
+| web-ui | React | apps/web/** | | | | |"
 
 cat > "$A/vision.md" <<'EOF'
 # Clinic vision
@@ -146,26 +180,44 @@ EOF
 cat > "$P/ux.md" <<'EOF'
 # Phase 01 UX
 
-Owner: UX engineer. Decisions between design directions: product engineer.
+Owner: product engineer. Engineers build the UI from this text: no prototypes,
+mockups, wireframes or palette files.
 
 ## People and context
 Admins set rooms up on a desktop. Receptionists glance at the list on a desktop
 or tablet while talking to patients.
 
+## Journeys
+### UC-01-01 Add a room
+Trigger: an admin opens Settings > Rooms and chooses Add room. They type a name
+(and optionally a description) and save. The dialog closes and the new room is
+in the list as Active. Unhappy paths: a name that already exists shows "A room
+with this name already exists" under the field and keeps the typed values; a
+receptionist never sees the Add room button.
+### UC-01-02 List rooms
+Trigger: any user opens Settings > Rooms. They see their clinic's rooms, active
+first. An empty clinic shows "No rooms yet" (admins also get an Add room button).
+
 ## Screen inventory
-| Screen | Purpose | Entered from | Leads to |
-| --- | --- | --- | --- |
-| Rooms list | See and manage rooms | Settings > Rooms | Add room dialog |
-| Add room dialog | Add a room | Rooms list | Rooms list |
+| Screen | Use cases | Purpose | Entered from | Leads to |
+| --- | --- | --- | --- | --- |
+| Rooms list | UC-01-01, UC-01-02 | See and manage rooms | Settings > Rooms | Add room dialog |
+| Add room dialog | UC-01-01 | Add a room | Rooms list | Rooms list |
 
 ## Screens
 ### Rooms list
-- Primary action: Add room (admins only)
+- Purpose: see which rooms the clinic has.
+- Layout and hierarchy: page title "Rooms" with the Add room button at the top
+  right (admins only), then one row per room.
+- Components: table rows with name, description and an Active/Inactive badge.
 - States: empty ("No rooms yet"), loading (skeleton rows), error ("Couldn't load rooms. Retry"), success
-- Each row: name, description, Active/Inactive badge, actions menu (admins only)
+- Responsive behaviour: rows stack on a tablet.
+- Microcopy: heading "Rooms"; button "Add room".
 ### Add room dialog
-- Fields: Name (required), Description (optional). Save is disabled until Name is valid.
-- Errors appear under the field; typed values are never cleared on error.
+- Purpose: add one room.
+- Layout and hierarchy: modal with Name, Description, then Cancel and Save.
+- States: Save is disabled until Name is valid; error under the field; typed values are never cleared on error.
+- Microcopy: title "Add room"; error "A room with this name already exists".
 EOF
 
 cat > "$P/questions.md" <<'EOF'
@@ -228,4 +280,4 @@ module.exports = {
 EOF
 
 git add -A
-git commit -qm "Phase 01 docs: spec, acceptance criteria, UX"
+git commit -qm "Phase 01 docs: spec, acceptance criteria, ux"

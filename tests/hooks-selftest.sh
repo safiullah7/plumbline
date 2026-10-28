@@ -123,6 +123,31 @@ lock_cases() {
   check_out "$1: .plumbline refusal names kickoff.sh" 2 ownership-guard.sh "$(mk "$ENG" '{"file_path":"C:\\repo\\x\\.plumbline","content":"a"}')" "written by kickoff.sh"
   check "$1: .plumbline write allowed in the main session" 0 ownership-guard.sh "$(mk "" '{"file_path":"'"$T"'/repo/docs/product/demo/07-x/.plumbline","content":"profile=full"}')"
   check "$1: a file merely named like .plumbline-x allowed" 0 ownership-guard.sh "$(mk "$ENG" '{"file_path":"'"$T"'/repo/apps/api/.plumbline-notes","content":"a"}')"
+  # docs/product/project.md lists the commands the gates run: no agent changes it.
+  local pm="$T/repo/docs/product/project.md"
+  for a in "$ENG" "$SUBAGENT"; do
+    k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
+    check "$1: project.md Write blocked, $k"      2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$pm" 'x')")"
+    check "$1: project.md Edit blocked, $k"       2 ownership-guard.sh "$(mk "$a" "$(ti_edit_at "$pm" a b)")"
+    check "$1: project.md MultiEdit blocked, $k"  2 ownership-guard.sh "$(mk "$a" "$(jq -nc --arg f "$pm" '{file_path: $f, edits: [{old_string: "a", new_string: "b"}]}')")"
+    check "$1: project.md relative path blocked, $k" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at 'docs/product/project.md' 'x')")"
+    check "$1: project.md spelled with a trailing dot blocked, $k" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$pm." 'x')")"
+    check "$1: project.md Bash redirect blocked, $k"  2 ownership-guard.sh "$(mkb "$a" "echo x > docs/product/project.md")"
+    check "$1: project.md Bash sed -i blocked, $k"    2 ownership-guard.sh "$(mkb "$a" "sed -i s/x/y/ docs/product/project.md")"
+  done
+  if command -v cygpath >/dev/null 2>&1; then
+    pw=$(cygpath -w "$pm"); pw="${pw/project.md/Project.MD}"; pw="${pw/\\docs\\/\\DOCS\\}"
+    for a in "$ENG" "$SUBAGENT"; do
+      check "$1: project.md Windows path, odd case, blocked" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$pw" 'x')")"
+    done
+  fi
+  check "$1: project.md upper-case spelling blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/DOCS/Product/Project.MD" 'x')")"
+  check_out "$1: project.md refusal says only the user changes it" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$pm" 'x')")" "only the user changes it"
+  check "$1: project.md Write allowed in the main session" 0 ownership-guard.sh "$(mk "" "$(ti_write_at "$pm" 'x')")"
+  check "$1: project.md Bash read allowed" 0 ownership-guard.sh "$(mkb "$ENG" "cat docs/product/project.md")"
+  check "$1: project.md Bash read with grep and pipe allowed" 0 ownership-guard.sh "$(mkb "$SUBAGENT" "grep -n api docs/product/project.md | head")"
+  check "$1: project.md Bash write allowed in the main session" 0 ownership-guard.sh "$(mkb "" "echo x > docs/product/project.md")"
+  check "$1: another project.md-like file allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/apps/api/project.md.bak" 'x')")"
   # Other spellings of the same file on NTFS and APFS.
   local f
   for f in .Plumbline ".plumbline " .plumbline. '.plumbline::$DATA' ".PLUMBLINE. ."; do
@@ -225,6 +250,47 @@ assert "context: lead sees Module from .plumbline" grep -qx "Module: room-schedu
 assert "context: Module follows the phase line" test "$(ctx "$SESSION" | ctx_text | sed -n 2p)" = "Module: room-schedules"
 assert "context: teammate sees Module" grep -qx "Module: room-schedules" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
 rm -f "$P/.plumbline"
+# Surfaces: a Surfaces line from .plumbline, plus each surface's profile commands.
+assert "context: no Surfaces line without surfaces=" test -z "$(ctx "$SESSION" | ctx_text | grep -E '^Surfaces?')"
+printf 'module=rooms\nsurfaces=api,cli,web-ui-shop\n' > "$P/.plumbline"
+assert "context: Surfaces line without a profile" grep -qx "Surfaces: api,cli,web-ui-shop" <<<"$(ctx "$SESSION" | ctx_text)"
+assert "context: no per-surface lines without a profile" test -z "$(ctx "$SESSION" | ctx_text | grep '^Surface ')"
+assert "context: Surfaces comes right after Module" test "$(ctx "$SESSION" | ctx_text | sed -n 3p)" = "Surfaces: api,cli,web-ui-shop"
+mkdir -p docs/product
+cat > docs/product/project.md <<'PROFILE'
+# Project profile
+
+## Surfaces
+| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| api | node | apps/api/** | npm start | npx tsc -p apps/api | npx eslint apps/api | node --dir apps/api |
+| cli | go | cmd/** | | | golangci-lint run | go |
+| web-ui | react | apps/web/** | npm run dev | | | generic |
+| mobile-ui | rn | apps/mobile/** | | | | |
+PROFILE
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: Surface api line is the ac-check.sh command" grep -qxF "Surface api: check with bash \"$G/ac-check.sh\" \"<IDs>\" --surface api" <<<"$out"
+assert "context: Surface line doesn't show the raw cells" test -z "$(grep -E '^Surface .*(npx|node --dir|golangci)' <<<"$out")"
+assert "context: Surface line names the same scripts folder as the Plumbline scripts line" grep -qxF "Plumbline scripts: $G" <<<"$out"
+assert "context: a row with some cells gets its line" grep -qxF "Surface cli: check with bash \"$G/ac-check.sh\" \"<IDs>\" --surface cli" <<<"$out"
+assert "context: a profile row for a surface the feature doesn't list gets no line" test -z "$(grep -E '^Surface (web-ui|mobile-ui):' <<<"$out")"
+assert "context: a feature surface the profile lacks gets no line" test -z "$(grep '^Surface web-ui-shop' <<<"$out")"
+assert "context: profile lines stay in the Module/Surfaces block" test "$(grep -n '^Surface ' <<<"$out" | head -n1 | cut -d: -f1)" = 4
+assert "context: teammate sees the Surfaces line too" grep -qx "Surfaces: api,cli,web-ui-shop" <<<"$(ctx "$TEAMMATE_START" | ctx_text)"
+printf 'module=rooms\nsurfaces=mobile-ui\n' > "$P/.plumbline"
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: Surfaces line when the row has no commands" grep -qx "Surfaces: mobile-ui" <<<"$out"
+assert "context: a row with only empty cells adds no line" test -z "$(grep '^Surface mobile-ui' <<<"$out")"
+printf 'module=rooms\nsurfaces=api\n' > "$P/.plumbline"
+sb=$(git symbolic-ref --short HEAD); git checkout -q -b quick/surf-check
+printf 'branch=quick/surf-check\nids=AC-01-001\n' > .claude/plumbline-quick
+out=$(ctx "$SESSION" | ctx_text)
+assert "context: Quick marker still swaps the context with surfaces=" grep -qxF "Plumbline Quick change in progress (branch quick/surf-check): no feature folder; don't write phase docs." <<<"$out"
+assert "context: Quick marker hides Surfaces lines" test -z "$(grep -E '^Surfaces?[: ]' <<<"$out")"
+rm -f .claude/plumbline-quick
+git checkout -q "$sb" && git branch -q -D quick/surf-check
+rm -f "$P/.plumbline" docs/product/project.md
+assert "context: no Surfaces line once surfaces= is gone" test -z "$(ctx "$SESSION" | ctx_text | grep -E '^Surfaces?')"
 # A Quick change swaps the feature context for a one-line notice and keeps the scripts line.
 # The build skill creates the quick branch before it writes the marker.
 main_branch=$(git symbolic-ref --short HEAD)

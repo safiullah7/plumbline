@@ -25,5 +25,6 @@ before you write: the spec is only as good as the answers behind it.
    Non-Goals, Success metrics, Decisions. Cite the user's answers in Decisions.
    Anything still undecided goes to questions.md as OPEN (or ESCALATED if it
    blocks a P0), never into the spec as a guess.
-4. Show the user a short summary and the open questions, and suggest handing
-   spec.md to the UX engineer next.
+4. Show the user a short summary and the open questions. Next, when the phase
+   has a ux.md, the product engineer writes the journeys and screens into it
+   from the spec; then the lead plans.

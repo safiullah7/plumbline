@@ -1,7 +1,6 @@
 # Phase <phase> sign-off
 
 - [ ] Product verification: every journey walked (product engineer)
-- [ ] Design verification: every screen checked against ux.md (UX engineer)
 - [ ] Integration review complete (lead engineer)
 - [ ] QA verdict PASS (QA engineer)
 - [ ] Feature PR opened:

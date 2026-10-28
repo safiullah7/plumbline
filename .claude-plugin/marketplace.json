@@ -10,7 +10,7 @@
     {
       "name": "plumbline",
       "source": "./plugins/plumbline",
-      "description": "Phase-by-phase product delivery by an agent team: product engineer, UI/UX engineer, lead, engineers and QA, with quality gates"
+      "description": "Phase-by-phase product delivery by an agent team: product engineer, lead, engineers and QA, with quality gates"
     }
   ]
 }

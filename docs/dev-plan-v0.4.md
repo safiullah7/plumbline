@@ -249,6 +249,8 @@ Sensitive data: none
 
 ### 6.4 Roles and evidence by surface (v0.4b)
 
+Superseded in part by §16: no UX engineer, one required evidence kind per surface, no accessibility column.
+
 **Evidence kinds** are fixed tokens, so scripts can check them: `screenshots`,
 `axe`, `journeys`, `checklist`, `flow-tests`, `contract`, `authz`, `negative`,
 `transcripts`, `job-tests`, `failure-cases`, `golden-output`, `doc-examples`,
@@ -306,17 +308,30 @@ evals grade each line with a regex.
 ```
 Plumbline triage
 Size: Quick | Standard | Full
-Module: <name> (existing | new)
+Module: <name> (existing | new) | none
 Folder: none | docs/product/<module>/<nn>-<feature-slug>/
 Surfaces: <comma-separated>                                  (b)
-Roles: <e.g. product, lead, 2 engineers, UX, QA runner>      (b)
+Roles: <e.g. product, lead, 2 engineers, reviewer, UX, QA, QA runner> (b)
 Evidence: <kinds per surface, e.g. api: contract, authz>     (b)
 UX: yes | no
 Engineers: <n>
 Docs: none | slim | full
 Team: no | yes
+Models: lead opus, <each other role in Roles> <opus | sonnet>
 Why: <one line>
 ```
+
+**Models (revision 5, Safi 2026-10-26):** the lead is always Opus and only
+plans (a step-by-step plan per engineer), coordinates and reviews; it never
+writes code. Other roles get Opus only where the judgement carries risk:
+product for Full, a new module, or rules on permissions, money, personal data,
+migrations or many cases; UX for a new screen or flow; QA for auth or
+permissions, data separation, billing, migrations, concurrency or an ai eval
+design; engineers and reviewers for work in those areas (the lead may raise a
+HIGH workstream to Opus). Triage and the QA runner run on Sonnet. The build
+skill dispatches each role with its model and never overrides the lead's.
+The v0.4b trial of a Sonnet Quick lead was dropped: it skipped the code review
+in 2 eval runs.
 
 **Quick criteria IDs** are `AC-<yymmdd>-<nn>` (e.g. `AC-261024-01`): unique
 per day, and matching the gate regex and test naming.
@@ -418,7 +433,7 @@ the user in the main session (§6.9).
 | Script | Interface | Exit | Notes |
 | --- | --- | --- | --- |
 | `kickoff.sh` | Module form: `kickoff.sh <module> <feature-slug> [--profile standard\|full] [--ux\|--no-ux] [--new-module] [--surfaces s1,s2]`. Legacy form: `kickoff.sh <area> phase-NN` | 0 ok; 1 usage; 2 `--new-module` on an existing module | Module docs if missing (always with `--new-module`); folder `<nn>-<slug>`; profile and surface overlays; placeholders (`<phase>`→nn, `<Module>`, `<module>`); writes `.plumbline` and `.claude/current-phase`; prints the folder |
-| `ac-check.sh` | `ac-check.sh "<IDs>" [--surface <s>]` | 0 pass; 1 a check failed (last 30 log lines on stderr); 2 usage | Calls `run_checks` |
+| `ac-check.sh` | `ac-check.sh "<IDs>" [--surface <s>]` | 0 pass (per-ID lines, then `ac-check: pass`); 1 a check failed (last 30 log lines on stderr), or a blank AC tests cell; 2 usage, or (with a profile) an unknown surface or several surfaces and no `--surface` | Calls `run_checks` |
 | `run_checks` (lib.sh) | `run_checks "<IDs>" [surface]` | 0 or 1 | **Precedence:** `PLUMBLINE_TYPECHECK`/`LINT`/`TEST_AC` env vars > the surface's `project.md` commands and adapter > legacy `npm run -s …` defaults. The task gate maps a failure to exit 2 |
 | `ac-tests/node.sh`, `pytest.sh`, `go.sh` | `<adapter>.sh "<IDs>" [--dir <path>]` | 0 only if every ID has ≥ 1 passing test and none failing or skipped-as-pass; 1 otherwise | Prints `AC-01-001: pass (2)` / `fail` / `missing` lines; strips `\r` |
 | `ac-tests/generic.sh` | `generic.sh "<IDs>"`, command from `project.md` with `{ids_regex}` and `{ids_underscored}` placeholders | exit code of the command | Prints a warning that per-ID presence isn't proven |
@@ -492,8 +507,10 @@ Commands are verified against current docs before shipping:
 - **Flow tools when present:** Maestro (`maestro test <flow.yaml>` with
   `takeScreenshot`), `flutter test integration_test`, Detox, XCUITest,
   Espresso.
-- **Mockups** are captured at the same device size so `visual-diff.mjs`
-  compares like with like; a size mismatch is reported, never cropped.
+- **No screenshot comparison on mobile in v0.4b** (revision 4): the mockups are
+  HTML frames in points, simulator shots are in device pixels, so they could
+  never compare like with like. The runner records screenshots as evidence and
+  the UX engineer reviews them.
 - **No device:** the runner records `screenshots` as `not run` with the boot
   command, and asks the lead for a waiver.
 
@@ -512,6 +529,8 @@ Commands are verified against current docs before shipping:
 | `templates/surface/cli/` | spec section "Command surface" (commands, flags, exit codes, output formats, `--help`) | b |
 
 ### 6.12 Agents
+
+Superseded in part by §16: the UX engineer and the QA runner are gone; there are five agents.
 
 | Agent | v0.4a | v0.4b |
 | --- | --- | --- |
@@ -769,3 +788,49 @@ into the sections above (marked "revision 3") and the code:
 | 17 | Live smoke: current Claude Code has no TeamCreate tool, so Full would always stop | Teams detected from the env var, the Agent tool or TeamCreate; teammates spawned with the Agent tool and a `name`; subagent dispatches carry no `name` |
 | 18 | Live smoke: triage guessed a module for code no module owns | `Module: none` for such a Quick change; no `changes.md` row |
 | 19 | Live smoke: the lead didn't quote its `ac-check` line | The lead's Quick report quotes it, with each test by name |
+
+## 15. Revision 4: what the v0.4b review changed
+
+A read-only review of the built v0.4b diff found these; all are fixed in the
+code and the sections above:
+
+| # | Issue | Resolution |
+| --- | --- | --- |
+| 1 | A failing pytest `subTest` printed `PASSED` and counted as a pass | `SUBFAILED` lines count as fails |
+| 2 | A blank AC tests cell skipped the tests, and detection leaves it blank for Flutter and Rust | A blank cell fails the check with a message; `none` skips on purpose |
+| 3 | Any cell starting with node, pytest, go or generic became an adapter call | Only the bare name (plus `--dir`) is an adapter; anything else is a raw command |
+| 4 | An unknown or ambiguous surface silently ran the npm defaults | With a profile, it's an error that lists the surfaces; `(check)` rows are ignored |
+| 5 | Agents could edit `project.md`, whose cells the gates run | The ownership guard refuses agent writes to it, including through Bash |
+| 6 | Starting a session below the repo root made hooks and scripts see different projects | The build and kickoff skills stop and say to start in the repo root |
+| 7 | Detection named a second surface after its folder unchanged (`web-ui-Admin`) | Lowercased and dashed |
+| 8 | ac-check hid the per-ID lines and the generic warning on a pass | Printed before `ac-check: pass` |
+| 9 | The mobile visual comparison could never produce a result | No screenshot comparison on mobile in v0.4b |
+| 10–11 | Surface fallbacks went in a circle; a two-surface Quick change checked one | Fallback: `surfaces=`, then the profile rows by Paths, then web-ui; Quick is one surface |
+| 12 | A `pass` row beat a `fail` row; an empty Location counted | A `fail` wins; a pass needs a Location |
+| 14 | Engineers were shown raw adapter cells as commands | Context and agents show the `ac-check.sh … --surface` command |
+| 15 | Two generic recipes passed on no matching tests | Rust and .NET recipes require a passed count |
+| — | Agent text bloat, weak eval graders, no first-run eval | Trimmed; graders fixed; `build-first-run-profile` added |
+
+## 16. Revision 6: lean roles
+
+On 2026-10-27 Safi asked to make Plumbline cheaper and simpler without losing the
+gates. Wave 1 changed the agents, skills, templates and scripts; this section
+records what changed and why. It supersedes the parts of §6.4, §6.10 and §6.12 that
+name the UX engineer, the QA runner, the accessibility rules, the visual comparison
+and the `Models:` line. The earlier sections are kept as history.
+
+| # | Change | Why |
+| --- | --- | --- |
+| 1 | No UX engineer. Product writes `ux.md` (journeys, plus a text description of each screen) and a short module UI guide (`design-principles.md`). Engineers build the UI from that text. No prototypes, mockups or palette files | A separate design role cost a model run and a document set that engineers then had to match by eye; text is enough to build from |
+| 2 | One QA agent, `qa-engineer` (Sonnet, medium). It tests after the build that each journey and criterion works, fills `test-plan.md` as the functional test record, and records the evidence row. The `qa-runner` is deleted | QA planning before code had nothing left to run in parallel; one role is cheaper than two |
+| 3 | No UI scan and no hard testing by QA: no accessibility scan, screenshot comparison, visual diff or regression runs. `qa-summary.sh`, `capture.mjs`, `visual-diff.mjs`, `ac-json.sh` and their tests are deleted | The scan needed optional tooling and rarely ran; `ac-check` and the lead already cover the suites |
+| 4 | One required evidence kind per surface: `journeys` (web-ui, desktop-ui), `flow-tests` (mobile-ui), `transcripts` (api), `job-tests` (service), `golden-output` (cli), `doc-examples` (library), `sample-run` (data), `eval-set` (ai), `plan-output` (infra). The accessibility rules are gone | The deeper kinds (`contract`, `authz`, `negative`, `failure-cases`, `api-diff`, `idempotency`, `injection`) are covered by the engineers' tests and the reviewer |
+| 5 | TDD with unit and e2e tests. The lead (Opus, high) writes a plan per engineer: the failing unit test first, the e2e test, a done-when. Tests start with the AC ID | The plan, the engineer's reported red run and the lead's commit-order check enforce it; no script can prove ordering |
+| 6 | Effort by complexity. The lead rates each task LOW, NORMAL or HIGH and sets each engineer's effort from the hardest task, in a last `Effort` column of the Team table. Engineers, QA and the reviewer are Sonnet (reviewer Opus for HIGH work); product and the lead are Opus high; triage is Sonnet | Spend effort where the risk is; the roles themselves are fixed |
+| 7 | New `playwright` adapter and `+` cells: `node --dir storefront + playwright --dir storefront` runs unit and e2e tests together through `combine.sh`. Detection proposes `+ playwright` when `@playwright/test` is a dependency | An AC-tests cell held one adapter, so engineers' e2e tests would never have been run by the gate |
+| 8 | Briefs carry each engineer's whole task block and its screens' descriptions | The engineer works from the brief alone |
+| 9 | The triage block loses its `Models:` line | Roles are fixed, so the line was boilerplate |
+
+Checks: self-tests pass (1005 de-duplicated checks in the README count). The evals
+for the changed roles and the live smoke test are still to run; results go in
+`docs/evals/eval-v0.4b.md` when they exist.
