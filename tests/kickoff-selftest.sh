@@ -3,7 +3,9 @@
 # exactly) and the module form (Standard and Full, new and existing modules,
 # repo-wide numbering across both layouts, --no-ux, the standard overlay,
 # .plumbline, --surfaces: overlays, the UX default, unknown names; errors that
-# change nothing). Run from the repo root:
+# change nothing; --security at creation and --set-security afterwards: raise
+# only, security.md never overwritten, the legacy phase's first .plumbline).
+# Run from the repo root:
 #   bash tests/kickoff-selftest.sh
 # Works in bash on macOS and Linux, and in Git Bash on Windows.
 set -u
@@ -362,6 +364,149 @@ eq "legacy area: a different slug is fine" "$rc/$(tail -n1 <<<"$out")" "0/docs/p
 kickoff demo checkin >/dev/null 2>&1; eq "legacy area: old slug still refused after a newer feature" "$?" 1
 out=$(kickoff demo phase-11); rc=$?
 eq "legacy area: a legacy-form phase has no slug and doesn't block" "$rc" 0
+
+# --- Security level: --security at creation, --set-security afterwards ---
+rm -rf docs .claude
+SECTPL="$TPL/security/security.md"
+assert "templates: security.md is in templates/security/, not templates/phase/" test -f "$SECTPL" -a ! -e "$TPL/phase/security.md"
+
+# No flag, and none, change nothing: .plumbline has no security line and there is no security.md.
+out=$(kickoff shop plain-a); F=docs/product/shop/01-plain-a
+assert "--security absent: no security= line, no security.md" bash -c "! grep -q '^security=' '$F/.plumbline' && test ! -e '$F/security.md'"
+out=$(kickoff shop plain-b --security none); rc=$?; F=docs/product/shop/02-plain-b
+eq "--security none: exit 0" "$rc" 0
+assert "--security none writes nothing (rule 8): no key, no security.md" bash -c "! grep -q '^security=' '$F/.plumbline' && test ! -e '$F/security.md'"
+eq "--security none: the same files as without the flag" "$(cd docs/product/shop/01-plain-a && find . -type f | LC_ALL=C sort | paste -sd' ' -)" "$(cd $F && find . -type f | LC_ALL=C sort | paste -sd' ' -)"
+eq "--security none: feature_meta security is empty" "$(feature_meta security)" ""
+
+# --security at creation.
+out=$(kickoff shop locked --security attacks); rc=$?; F=docs/product/shop/03-locked
+eq "--security attacks: exit 0" "$rc" 0
+eq "--security attacks: last line is the folder" "$(tail -n1 <<<"$out")" "$F"
+eq "--security attacks: .plumbline is the usual lines, then security= last" "$(cat "$F/.plumbline")" "module=shop
+number=03
+profile=full
+ux=yes
+created=$(date +%Y-%m-%d)
+slug=locked
+security=attacks"
+eq "--security attacks: feature_meta security" "$(feature_meta security)" attacks
+assert "--security attacks: security.md is the template, Feature 03" same_as "$F/security.md" "$SECTPL" -e 's/Phase <phase>/Feature 03/g' -e 's/<phase>/03/g'
+eq "--security attacks: security.md title" "$(head -n1 "$F/security.md")" "# Feature 03 security"
+out=$(kickoff shop guarded --security=independent --surfaces api --no-ux); rc=$?; F=docs/product/shop/04-guarded
+eq "--security=independent: exit 0" "$rc" 0
+eq "--security independent: security= is the last line, after slug" "$(tail -n 2 "$F/.plumbline" | paste -sd' ' -)" "slug=guarded security=independent"
+eq "--security independent: surfaces and ux lines are where they were" "$(sed -n 4,5p "$F/.plumbline" | paste -sd' ' -)" "surfaces=api ux=no"
+assert "--security independent: security.md created" test -f "$F/security.md"
+out=$(kickoff shop standard-sec --profile standard --security attacks); F=docs/product/shop/05-standard-sec
+assert "--security on the standard profile: security.md created, key recorded" bash -c "test -f '$F/security.md' && grep -qx 'security=attacks' '$F/.plumbline'"
+
+# Bad values change nothing and exit 1, never 2.
+before=$(snapshot)
+kickoff shop bad --security high >/dev/null 2>&1; eq "--security with an unknown level: exit 1" "$?" 1
+kickoff shop bad --security >/dev/null 2>&1; eq "--security with no value: exit 1" "$?" 1
+kickoff shop bad --security "" >/dev/null 2>&1; eq "--security with an empty value: exit 1" "$?" 1
+kickoff shop bad --security Attacks >/dev/null 2>&1; eq "--security is case-sensitive: exit 1" "$?" 1
+kickoff clinic phase-01 --security attacks >/dev/null 2>&1; eq "--security on the legacy form: exit 1 (it takes no options)" "$?" 1
+eq "--security errors: nothing changed" "$(snapshot)" "$before"
+
+# --set-security on a legacy phase: no .plumbline until a level above none.
+rm -rf docs .claude
+kickoff clinic phase-01 >/dev/null; P=docs/product/clinic/phases/phase-01
+out=$(kickoff --set-security none 2>&1); rc=$?
+eq "--set-security none on a legacy phase: exit 0" "$rc" 0
+assert "--set-security none: no .plumbline, no security.md" test ! -e "$P/.plumbline" -a ! -e "$P/security.md"
+out=$(kickoff --set-security attacks 2>&1); rc=$?
+eq "--set-security attacks on a legacy phase: exit 0" "$rc" 0
+eq "--set-security: the legacy phase's first .plumbline is the security line alone" "$(cat "$P/.plumbline")" "security=attacks"
+eq "--set-security: feature_meta security" "$(feature_meta security)" attacks
+eq "--set-security: a legacy phase's other defaults still hold" "$(feature_meta profile)/$(feature_meta ux)/$(feature_meta module)" "full/yes/clinic"
+assert "--set-security: security.md from the template, titled Phase 01" same_as "$P/security.md" "$SECTPL" -e 's/<phase>/01/g'
+eq "--set-security: current-phase unchanged" "$(cur)" "$P"
+assert "--set-security: says what it recorded" grep -q "security=attacks recorded in $P/.plumbline" <<<"$out"
+assert "--set-security: ...and what it added" grep -q "^added $P/security.md$" <<<"$out"
+
+# The same level is a no-op; a raise replaces the line; a lower level or an unknown one exits 1.
+before=$(snapshot)
+out=$(kickoff --set-security attacks 2>&1); rc=$?
+eq "--set-security: the same level exits 0" "$rc" 0
+eq "--set-security: ...and changes nothing" "$(snapshot)" "$before"
+echo "my notes" >> "$P/security.md"
+out=$(kickoff --set-security independent 2>&1); rc=$?
+eq "--set-security: a raise exits 0" "$rc" 0
+eq "--set-security: ...replaces the line, no duplicate" "$(cat "$P/.plumbline")" "security=independent"
+eq "--set-security: an existing security.md is never overwritten" "$(tail -n1 "$P/security.md")" "my notes"
+for lvl in attacks none; do
+  before=$(snapshot)
+  out=$(kickoff --set-security $lvl 2>&1); rc=$?
+  eq "--set-security $lvl below independent: exit 1" "$rc" 1
+  assert "--set-security $lvl: the message says it can't be lowered" grep -q "never lowered" <<<"$out"
+  eq "--set-security $lvl: nothing changed" "$(snapshot)" "$before"
+done
+for tok in bogus Attacks "" "attacks,independent"; do
+  before=$(snapshot)
+  out=$(kickoff --set-security "$tok" 2>&1); rc=$?
+  eq "--set-security '$tok': exit 1" "$rc" 1
+  eq "--set-security '$tok': nothing changed" "$(snapshot)" "$before"
+done
+assert "--set-security with an unknown token: the message names the levels" grep -q "none, attacks or independent" <<<"$(kickoff --set-security bogus 2>&1)"
+out=$(kickoff --set-security=independent 2>&1); eq "--set-security=<level> form: same level, exit 0" "$?" 0
+
+# No positional arguments, and no other options; usage errors are exit 1, never 2.
+before=$(snapshot)
+kickoff --set-security >/dev/null 2>&1; eq "--set-security with no level: exit 1" "$?" 1
+kickoff --set-security attacks clinic >/dev/null 2>&1; eq "--set-security with a positional: exit 1" "$?" 1
+kickoff clinic phase-09 --set-security attacks >/dev/null 2>&1; eq "--set-security with the legacy form's arguments: exit 1" "$?" 1
+kickoff --set-security attacks --no-ux >/dev/null 2>&1; eq "--set-security with another option: exit 1" "$?" 1
+kickoff --set-security attacks --security attacks >/dev/null 2>&1; eq "--set-security with --security: exit 1" "$?" 1
+eq "--set-security usage errors: nothing changed" "$(snapshot)" "$before"
+out=$(kickoff 2>&1)
+assert "usage lists --set-security" grep -q -e '--set-security none|attacks|independent' <<<"$out"
+assert "usage lists --security" grep -q -e '\[--security none|attacks|independent\]' <<<"$out"
+
+# A module feature: the line goes last, security.md says Feature, and a missing file is added back.
+rm -rf docs .claude
+kickoff shop plain >/dev/null; F=docs/product/shop/01-plain
+out=$(kickoff --set-security independent 2>&1); rc=$?
+eq "--set-security on a module feature: exit 0" "$rc" 0
+eq "--set-security on a module feature: security= is the last line" "$(tail -n 2 "$F/.plumbline" | paste -sd' ' -)" "slug=plain security=independent"
+eq "--set-security on a module feature: the other lines are as they were" "$(head -n 6 "$F/.plumbline" | paste -sd' ' -)" "module=shop number=01 profile=full ux=yes created=$(date +%Y-%m-%d) slug=plain"
+assert "--set-security on a module feature: security.md says Feature 01" same_as "$F/security.md" "$SECTPL" -e 's/Phase <phase>/Feature 01/g' -e 's/<phase>/01/g'
+rm -f "$F/security.md"; before=$(cat "$F/.plumbline")
+out=$(kickoff --set-security independent 2>&1); rc=$?
+eq "--set-security at the same level, security.md missing: exit 0" "$rc" 0
+assert "...security.md is added back" test -f "$F/security.md"
+eq "...and .plumbline is unchanged" "$(cat "$F/.plumbline")" "$before"
+
+# A .plumbline with no trailing newline, and an existing security line among others.
+printf 'module=shop\nnumber=01\nslug=plain' > "$F/.plumbline"; rm -f "$F/security.md"
+kickoff --set-security attacks >/dev/null 2>&1
+eq "--set-security: a .plumbline with no trailing newline gets one first" "$(od -An -c "$F/.plumbline" | tr -d ' \n')" "$(printf 'module=shop\nnumber=01\nslug=plain\nsecurity=attacks\n' | od -An -c | tr -d ' \n')"
+printf 'module=shop\nsecurity = attacks # asked for\nnumber=01\n# security=independent (an old note)\nslug=plain\n' > "$F/.plumbline"
+kickoff --set-security independent >/dev/null 2>&1
+eq "--set-security: one security= line, the others kept (a comment line isn't a key)" "$(cat "$F/.plumbline")" "module=shop
+number=01
+# security=independent (an old note)
+slug=plain
+security=independent"
+eq "--set-security: feature_meta reads the new value" "$(feature_meta security)" independent
+printf 'module=shop\nsecurity=weird\n' > "$F/.plumbline"
+kickoff --set-security attacks >/dev/null 2>&1; eq "--set-security replaces a key it doesn't understand" "$(cat "$F/.plumbline")" "module=shop
+security=attacks"
+
+# No active feature.
+rm -f .claude/current-phase; before=$(snapshot)
+out=$(kickoff --set-security attacks 2>&1); rc=$?
+eq "--set-security with no active feature: exit 1" "$rc" 1
+assert "...says so" grep -q "no active feature" <<<"$out"
+eq "...changes nothing" "$(snapshot)" "$before"
+mkdir -p .claude; : > .claude/current-phase
+kickoff --set-security attacks >/dev/null 2>&1; eq "--set-security with an empty current-phase: exit 1" "$?" 1
+echo "docs/product/shop/99-gone" > .claude/current-phase
+kickoff --set-security attacks >/dev/null 2>&1; eq "--set-security with current-phase pointing nowhere: exit 1" "$?" 1
+
+# The phase templates are untouched by all of this.
+assert "templates/phase has no security mention" bash -c "! grep -rqi 'security' '$TPL/phase'"
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]

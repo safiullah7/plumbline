@@ -440,6 +440,85 @@ assert "make-briefs: the api brief gets the other screen's text" grep -qF 'a pla
 assert "make-briefs: no prototypes link any more" test -z "$(grep -F 'prototypes' "$bw")"
 bb="$BF/briefs/eng-batch.md"
 assert "make-briefs: an engineer whose use case has no screen gets no screen text" test -z "$(grep -E 'a grid of cards|a plain table|Screen descriptions' "$bb")"
+assert "make-briefs: no attack plan and no SEC IDs, no attacks section" test -z "$(grep -l 'Attacks to withstand' "$BF"/briefs/*.md)"
+
+# make-briefs: attacks. Keep the briefs above, then give eng-api SEC IDs.
+mkdir -p "$BT/before"; cp "$BF"/briefs/*.md "$BT/before/"
+cp "$BF/dev-plan.md" "$BT/plain-plan.md"
+sed -i -e 's/^- \[AC-01-002\] Menu endpoint/- [AC-01-002 SEC-01-001 SEC-01-002] Menu endpoint/' \
+       -e 's/^  Done when: AC-01-002 tests pass/&\n  Attacks: SEC-01-001 SEC-01-002/' "$BF/dev-plan.md"
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: SEC IDs without an attack plan add no section" test -z "$(grep -l 'Attacks to withstand' "$BF"/briefs/*.md)"
+cat >> "$BF/dev-plan.md" <<'EOF'
+
+## Attack plan
+Signals: tenancy, authorization
+Attack surface: backend/** (GET /menu)
+Attack fixtures: backend/test/attack/fixtures.js (second clinic, unauthenticated client) - built in task [AC-01-002 SEC-01-001]
+Skipped: "foreign keys": none in this feature
+
+| SEC ID | Surface | Attack | Must happen | Checked |
+| --- | --- | --- | --- | --- |
+| SEC-01-001 | api | Staff of clinic B calls GET /menu for clinic A | 404, nothing in the body | |
+| SEC-01-002 | api | No session calls GET /menu | 401 | |
+| SEC-01-003 | web | Another engineer's attack | 403 | |
+EOF
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: an engineer with SEC IDs gets the attacks section" grep -qx '## Attacks to withstand' "$ba"
+assert "make-briefs: ...with the Attack fixtures line" grep -qF 'Attack fixtures: backend/test/attack/fixtures.js (second clinic' "$ba"
+assert "make-briefs: ...with the table header" grep -q '^| SEC ID | Surface | Attack | Must happen | Checked |$' "$ba"
+assert "make-briefs: ...and its own rows" test "$(grep -c '^| SEC-01-00[12] |' "$ba")" = 2
+assert "make-briefs: ...but not another engineer's row" test -z "$(grep 'SEC-01-003' "$ba")"
+assert "make-briefs: ...nor the plan's Signals, Surface or Skipped lines" test -z "$(grep -E '^(Signals|Attack surface|Skipped):' "$ba")"
+assert "make-briefs: the section follows the acceptance criteria" \
+  test "$(grep '^## ' "$ba" | grep -A1 '^## Acceptance criteria' | tail -n1)" = "## Attacks to withstand"
+assert "make-briefs: SEC rows stay out of the acceptance criteria section" \
+  test -z "$(awk '/^## /{s=($0 ~ /^## Acceptance criteria/)} s' "$ba" | grep 'SEC-')"
+assert "make-briefs: engineers without SEC IDs get no section" test -z "$(grep -l 'Attacks to withstand' "$bw" "$bb")"
+assert "make-briefs: ...and eng-web's brief is byte-identical to before" cmp -s "$bw" "$BT/before/eng-web.md"
+assert "make-briefs: ...and eng-batch's too" cmp -s "$bb" "$BT/before/eng-batch.md"
+cp "$BT/plain-plan.md" "$BF/dev-plan.md"
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: back to a plan without SEC IDs, eng-api's brief is as before" cmp -s "$ba" "$BT/before/eng-api.md"
+
+# make-briefs: the literal ac-check command names the engineer's SEC IDs too, and shows
+# for an engineer with only SEC IDs. It needs a profile row for the engineer's surface.
+mkdir -p "$BT/docs/product"
+cat > "$BT/docs/product/project.md" <<'EOF'
+# Project profile
+
+## Surfaces
+| Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| api | Node | backend/** | | | | node |
+EOF
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: no SEC IDs, the ac-check command lists the AC IDs only (as before)" grep -qF 'ac-check.sh" "AC-01-002" --surface api' "$ba"
+cp "$ba" "$BT/before/eng-api.profile.md"
+sed -i -e 's/^- \[AC-01-002\] Menu endpoint/- [AC-01-002 SEC-01-001 SEC-01-002] Menu endpoint/' "$BF/dev-plan.md"
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: with SEC IDs, the ac-check command lists AC then SEC IDs" grep -qF 'ac-check.sh" "AC-01-002|SEC-01-001|SEC-01-002" --surface api' "$ba"
+cp "$BT/plain-plan.md" "$BF/dev-plan.md"
+sed -i -e 's/AC-01-002/SEC-01-009/g' "$BF/dev-plan.md"
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: an engineer with only SEC IDs still gets the ac-check command" grep -qF 'ac-check.sh" "SEC-01-009" --surface api' "$ba"
+cp "$BT/plain-plan.md" "$BF/dev-plan.md"
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: back to no SEC IDs, the brief is byte-identical to the earlier one" cmp -s "$ba" "$BT/before/eng-api.profile.md"
+# ### headings inside ## Attack plan keep the section open for the brief's rows too.
+sed -i -e 's/^- \[AC-01-002\] Menu endpoint/- [AC-01-002 SEC-01-001] Menu endpoint/' "$BF/dev-plan.md"
+cat >> "$BF/dev-plan.md" <<'EOF'
+
+## Attack plan
+Attack fixtures: backend/test/attack/fixtures.js
+
+### Round 1
+| SEC ID | Surface | Attack | Must happen | Checked |
+| --- | --- | --- | --- | --- |
+| SEC-01-001 | api | Staff of clinic B calls GET /menu for clinic A | 404 | |
+EOF
+CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
+assert "make-briefs: an attack plan row under a ### heading reaches the brief" grep -q '^| SEC-01-001 |' "$ba"
 rm -rf "$BT"
 
 echo "$pass passed, $failed failed"

@@ -2,6 +2,8 @@
 # The active phase at a glance: plan status, AC test coverage, open bugs, open
 # and escalated questions, and uncommitted files per owner. Read-only. An AC
 # counts as covered when its ID appears in a test file (PLUMBLINE_TEST_GLOBS).
+# A feature with a security level above none gets one more line (attacks planned
+# and own, open critical and high findings, the independent pass).
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "No active phase: .claude/current-phase is missing."; exit 1; }
 cd "$PROJECT_DIR" || exit 1
@@ -33,6 +35,19 @@ q=$(md_table "$dir/questions.md" 2>/dev/null)
 esc=$(awk -F'\t' 'toupper($6) == "ESCALATED"' <<<"$q")
 echo "Questions: $(awk -F'\t' 'toupper($6) == "OPEN"' <<<"$q" | grep -c .) open · $(count "$esc") escalated"
 [[ -n "$esc" ]] && awk -F'\t' '{ printf "  ESCALATED #%s: %s\n", $1, substr($4, 1, 120) }' <<<"$esc" | head -n 5
+
+# Security (v0.5): one line, only when the feature has a level above none. Reads
+# the plan and security.md; it runs nothing.
+lvl=$(security_level)
+if [[ "$lvl" != none ]]; then
+  US=$'\037'
+  planned=$(security_rows plan 2>/dev/null | grep -c '^row')
+  own=$(security_rows own 2>/dev/null | grep -c '^row')
+  openhigh=$(security_rows findings 2>/dev/null | awk -F"$US" '$1 == "row" { s = tolower($3); t = tolower($5)
+    if ((s == "critical" || s == "high") && t != "verified") c++ } END { print c + 0 }')
+  state=$(security_independent_state)
+  echo "security: $lvl · $planned planned attacks, $own own · open high $openhigh · independent pass ${state:-none}"
+fi
 
 dirty=$(dirty_files)
 if [[ -z "$dirty" ]]; then

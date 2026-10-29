@@ -33,8 +33,9 @@ done
 ids=""
 set -f
 for tok in $(printf '%s\n' "$raw" | tr -d '\r' | tr '|,' '  '); do
-  [[ "$tok" =~ ^[Aa][Cc][-_]([0-9]+)[-_]([0-9]+)$ ]] || usage
-  id="AC-${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+  [[ "$tok" =~ ^([Aa][Cc]|[Ss][Ee][Cc])[-_]([0-9]+)[-_]([0-9]+)$ ]] || usage
+  pre=$(printf %s "${BASH_REMATCH[1]}" | tr a-z A-Z)
+  id="$pre-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
   case " $ids " in *" $id "*) ;; *) ids="${ids:+$ids }$id" ;; esac
 done
 set +f
@@ -49,7 +50,7 @@ bad=0 warned=""
 for i in "${!cmds[@]}"; do
   (cd "$PROJECT_DIR" && eval "${cmds[$i]} \"\$given\"") 2>&1 | tr -d '\r' > "$W/out.$i"
   rc=${PIPESTATUS[0]}
-  grep -E '^AC-[0-9]+-[0-9]+: (pass|fail|missing)' "$W/out.$i" > "$W/ac.$i"
+  grep -E '^(AC|SEC)-[0-9]+-[0-9]+: (pass|fail|missing)' "$W/out.$i" > "$W/ac.$i"
   if [[ "$rc" != 0 ]]; then
     echo "$i" >> "$W/failed"
     [[ -s "$W/ac.$i" ]] || bad=1            # a runner problem
@@ -86,7 +87,7 @@ merged=$?
 if [[ -s "$W/failed" ]]; then
   while IFS= read -r i; do
     echo "--- ${cmds[$i]} (last 40 lines) ---"
-    grep -vE '^AC-[0-9]+-[0-9]+: (pass|fail|missing)' "$W/out.$i" | tail -n 40
+    grep -vE '^(AC|SEC)-[0-9]+-[0-9]+: (pass|fail|missing)' "$W/out.$i" | tail -n 40
   done < "$W/failed"
 fi
 exit 1

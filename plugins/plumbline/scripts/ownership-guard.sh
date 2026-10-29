@@ -10,9 +10,15 @@
 #     from the user, through the lead's main session. The guard judges the file
 #     the edit would produce, so a waiver can't be pieced together from fragments,
 #     and waiver lines the file already holds may stay.
+#   - in a file named security.md, the lines "Security waived:" and "Risk accepted:"
+#     are the user's too (v0.5), with their own message. Other files (an ADR, a
+#     SECURITY.md) and commands that only mention the phrase are untouched.
 # An agent's Bash command gets a best-effort check against accidental writes (a
-# waiver phrase, or a redirect or file command aimed at .plumbline or project.md);
-# it is not a sandbox, and Bash never goes through the ownership check.
+# waiver phrase, or a redirect or file command aimed at .plumbline or project.md;
+# the two security phrases when the command also names security.md and can write,
+# by a redirect, a file command or an interpreter; and kickoff.sh run with
+# --set-security or --security, which only the build skill may run); it is not a
+# sandbox, and Bash never goes through the ownership check.
 # During Build, a teammate may also only edit files it owns in the dev plan's
 # Ownership table. Exit 2 = block + feedback.
 source "$(dirname "${0//\\//}")/lib.sh"
@@ -34,6 +40,8 @@ tool=$(jqr '.tool_name // empty' <<<"$input")
 meta_msg="Plumbline: .plumbline is feature metadata written by kickoff.sh; ask the lead or the user to change it."
 profile_msg="Plumbline: docs/product/project.md lists the commands the gates run; only the user changes it (through the main session). Tell the lead what should change."
 waiver_msg="Only the user can approve a waiver. Tell the lead which evidence is missing and why; the build skill will ask the user."
+security_msg="Only the user can waive security work or accept a risk. Tell the lead; the build skill will ask the user."
+level_msg="Plumbline: only the build skill (the main session) sets a feature's security level with kickoff.sh --set-security or --security. Tell the lead what level the work needs."
 
 if [[ "$tool" == Bash ]]; then
   cmd=$(jqr '.tool_input.command // empty' <<<"$input")
@@ -57,6 +65,31 @@ if [[ "$tool" == Bash ]]; then
   fi
   if writes_to '(^|[^[:alnum:]_.-])project\.md($|[^[:alnum:]_.-])'; then
     echo "$profile_msg" >&2
+    exit 2
+  fi
+  # security.md: the user-only lines. A command that names the phrase and the file
+  # and can write is refused: a redirect, tee, cp, mv, dd, an in-place sed or perl, or
+  # an interpreter (which writes whatever its script says, so the file need not be
+  # an argument: python -c "open('security.md','a').write(...)", f=security.md; echo
+  # ... >> $f). A command that only reads or mentions (grep, cat, git log, git commit
+  # -m "... security.md") passes. Best effort, like the rules above: a file prepared
+  # elsewhere and copied in stays possible.
+  can_write() {
+    tr -d '\r' <<<"$cmd" | sed -E -e 's/[0-9]*>&[0-9-]//g' -e 's/[0-9]*>>?[[:space:]]*\/dev\/null//g' | grep -qiE \
+      -e '>' \
+      -e '(^|[^[:alnum:]_.-])(tee|cp|mv|dd|python3?|py|node|deno|bun|ruby|perl|awk|gawk|pwsh|powershell)([^[:alnum:]_-]|$)' \
+      -e '(^|[^[:alnum:]_.-])(sh|bash|zsh|dash)[[:space:]]+-[[:alnum:]]*c([^[:alnum:]]|$)' \
+      -e '(^|[^[:alnum:]_.-])sed[[:space:]](.*[[:space:]])?(-[[:alnum:]]*i|--in-place)'
+  }
+  if grep -qiE '(security[^[:alnum:]]*waived|risk[^[:alnum:]]*accepted)[[:space:]]*:' <<<"$cmd" \
+      && grep -qiE '(^|[^[:alnum:]_.-])security\.md($|[^[:alnum:]_.-])' <<<"$cmd" && can_write; then
+    echo "$security_msg" >&2
+    exit 2
+  fi
+  # kickoff.sh with a security flag (git, grep, rg, echo, printf and cat only mention it).
+  if tr '|;&' '\n\n\n' <<<"$cmd" | grep -vE '^[[:space:]]*(git|grep|rg|echo|printf|cat)[[:space:]]' \
+      | grep -qE 'kickoff\.sh[^[:space:]]*[[:space:]].*--(set-)?security($|[=[:space:]])'; then
+    echo "$level_msg" >&2
     exit 2
   fi
   exit 0
@@ -113,6 +146,26 @@ new_w=$(waiver_lines <<<"$new_text")
 if [[ -n "$new_w" ]] && LC_ALL=C comm -13 <(printf '%s\n' "$old_w") <(printf '%s\n' "$new_w") | grep -q .; then
   echo "$waiver_msg" >&2
   exit 2
+fi
+
+# The same for the two security lines, in a file named security.md only. The name is
+# exact (a SECURITY.md at the repo root may hold "Risk accepted:" headings); under
+# docs/product, where Windows would read SECURITY.md as the feature's file, any case counts.
+security_lines() {
+  grep -iE '^[^[:alnum:]]*(security[^[:alnum:]]*waived|risk[^[:alnum:]]*accepted)[[:space:]]*:' | tr -d '\r' \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | LC_ALL=C sort -u
+}
+sec_target=0
+[[ "$base" == security.md ]] && sec_target=1
+if [[ "$(printf '%s' "$base" | tr 'A-Z' 'a-z')" == security.md && "$prof" == docs/product/* ]]; then sec_target=1; fi
+if (( sec_target )); then
+  old_s=""
+  [[ -f "$target" && "$tool" != NotebookEdit && "$target" != *.ipynb ]] && old_s=$(security_lines < "$target")
+  new_s=$(security_lines <<<"$new_text")
+  if [[ -n "$new_s" ]] && LC_ALL=C comm -13 <(printf '%s\n' "$old_s") <(printf '%s\n' "$new_s") | grep -q .; then
+    echo "$security_msg" >&2
+    exit 2
+  fi
 fi
 
 build_active || exit 0

@@ -216,6 +216,12 @@ check "ready: task without AC blocked"     2 task-completed-gate.sh '{"task_subj
 check "ready: task with passing AC"        0 task-completed-gate.sh '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}'
 check "ready: task with failing AC"        2 task-completed-gate.sh '{"task_subject":"[AC-01-002] x","teammate_name":"eng-api"}'
 check "ready: task outside a team"         0 task-completed-gate.sh '{"task_subject":"x"}'
+AC_STUB=$PLUMBLINE_TEST_AC
+export PLUMBLINE_TEST_AC='f(){ case "$1" in SEC-01-001|AC-01-001\|SEC-01-001) true ;; *) false ;; esac; }; f'
+check "ready: SEC-only task with a passing test" 0 task-completed-gate.sh '{"task_subject":"[SEC-01-001] x","teammate_name":"eng-api"}'
+check "ready: AC and SEC task, the SEC test passing" 0 task-completed-gate.sh '{"task_subject":"[AC-01-001 SEC-01-001] x","teammate_name":"eng-api"}'
+check "ready: SEC-only task with a failing test" 2 task-completed-gate.sh '{"task_subject":"[SEC-01-002] x","teammate_name":"eng-api"}'
+export PLUMBLINE_TEST_AC=$AC_STUB
 check "ready: [chore] task completes without AC tests" 0 task-completed-gate.sh '{"task_subject":"[chore] Land contracts","teammate_name":"eng-api"}'
 assert "ready: gate timing hidden by default" \
   test -z "$(echo '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}' | bash "$G/task-completed-gate.sh" 2>&1)"
@@ -227,6 +233,10 @@ unset PLUMBLINE_HOOK_TIMING
 check_out "ready: untagged task creation refused" 2 task-created-gate.sh '{"task_subject":"Polish the UI"}' "names no AC IDs"
 check "ready: tagged task creation allowed"   0 task-created-gate.sh '{"task_subject":"[AC-01-002] Duplicate names","teammate_name":"eng-api"}'
 check "ready: [chore] task creation allowed"  0 task-created-gate.sh '{"task_subject":"[chore] Land contracts"}'
+check "ready: SEC-only task creation allowed" 0 task-created-gate.sh '{"task_subject":"[SEC-01-001] Attack fixtures","teammate_name":"eng-api"}'
+check "ready: AC and SEC task creation allowed" 0 task-created-gate.sh '{"task_subject":"[AC-01-002 SEC-01-001] Order list API"}'
+check "ready: Quick SEC task creation allowed" 0 task-created-gate.sh '{"task_subject":"[SEC-261028-01] Attack test"}'
+check "ready: a bad prefix is still refused" 2 task-created-gate.sh '{"task_subject":"[SEX-01-001] Polish the UI"}'
 
 # Context injection: the lead (SessionStart) and teammates (SubagentStart).
 ctx() { echo "$1" | bash "$G/context.sh" 2>/dev/null; }
