@@ -51,6 +51,50 @@ after, in that order, and say you couldn't run them (never claim a red or green 
    its AC ID), its first failing run and its final passing run, or say it
    couldn't be run and give the command.
 
+Attack tests (your brief or dispatch has `## Attacks to withstand`):
+- Build the `Attack fixtures:` it names in the task that owns them, before any
+  attack test; every other task reuses them. Don't invent your own second
+  tenant, client or token.
+- In Red, for each SEC ID of the task, also write the attack as a test: a
+  hostile caller doing exactly what the row's Attack says, asserting all of its
+  Must happen (not only a status). See it fail, then make it pass in Green.
+  The SEC ID starts the test title, never a file name.
+- Your ac-check IDs include the task's SEC IDs; report each SEC test's first
+  failing run like the others.
+
+Attack round (the dispatch says "Attack round"): you attack a finished
+feature you didn't write.
+- There's no brief: read the dispatch, security.md and the code in the
+  `Attack surface:` it names, and attack only that. You write only your own
+  test files and security.md; never edit the code under attack or the
+  authors' tests: findings go to the lead. Start the apps with the dispatch's
+  Run commands when an attack needs them.
+- Run the plan's attacks: `bash <scripts>/ac-check.sh "<their SEC IDs>"
+  --surface <s>`, per surface.
+- Then try what the plan missed: the catalogue items on its `Skipped:` lines,
+  and what the code itself suggests (other callers, other tenants' IDs,
+  missing and malformed input, replay, state out of order), each as a real
+  request or action. Quality over count; three or more of your own is the norm.
+- Write each as an attack test in a file of your own inside the surface's test
+  folder, on the `Attack fixtures:`, asserting what must happen (so it fails
+  while the hole is open). Its title starts with a new SEC ID continuing the
+  plan's numbering. Add a row for it under `## Own attacks` in the feature's
+  security.md: `| SEC ID | Surface | Attack | Must happen |`.
+- For each confirmed break, add a `## Findings` row: `| <n> | <severity> |
+  <finding> | open | <the failing run> |`, with no `|` inside a cell; the
+  Evidence starts with the SEC ID of its attack test (`SEC-01-003: fail ...`).
+  Severity: critical (another tenant's or user's data readable or writable,
+  auth bypass, money wrong), high (personal data leaked, privilege escalation
+  inside a tenant, injection with a shown effect), medium or low (reported,
+  not blocking). Without a shell, confirm a break from the code path and write
+  `not run: <command>` as its evidence.
+- In a later round, re-run each `fixed` finding's attack: mark it `verified`
+  when it is blocked, else leave it `open` and say why.
+- Don't soften a severity to make the pass easier; say so when you're unsure.
+  Commit your tests and security.md by path. Finish by writing `Independent
+  pass: complete (round <n>)` (the round from your dispatch), then report the
+  findings by severity, your SEC IDs and the ac-check output.
+
 Rules:
 - Edit only files matching your owned globs, which include your unit and e2e
   test folders. Need a change elsewhere? Message the owner or the lead.
@@ -85,7 +129,8 @@ By surface:
 | Go | `func TestAC_03_004_RejectsEmptyDateRange(t *testing.T)` |
 | Rust | `#[test] fn ac_03_004_rejects_empty_date_range()` |
 | Other | the ID first in the name; `AC_03_004` where dashes aren't allowed |
-Quick IDs follow the same forms (AC-261024-01, ac_261024_01).
+Quick IDs follow the same forms (AC-261024-01, ac_261024_01). SEC IDs too
+(`it('SEC-02-001 ...')`, `test_sec_02_001_...`, `TestSEC_02_001_...`).
 
 | Surface | Conventions |
 | --- | --- |

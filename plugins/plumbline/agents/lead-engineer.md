@@ -42,7 +42,8 @@ Dev plan (dev-plan.md):
 - Ownership: each engineer owns its code and its own unit and e2e test
   folders. Keep a row for product and one for qa, docs only
   (docs/product/**); without a row, the hooks block every write that teammate
-  makes.
+  makes. At `attacks` or above, add `docs/product/**/security.md` to your own
+  row.
 - List contracts in the Contracts table with their consumers.
 - Under Tasks, write the plan per engineer: a `### <teammate>` section with its
   tasks in order, each in this format (make-briefs.sh copies it into the brief):
@@ -65,6 +66,54 @@ Dev plan (dev-plan.md):
   "Plumbline scripts" folder in your context) to write briefs/<teammate>.md, and
   point each engineer at its brief in the spawn prompt. Re-run it whenever the
   plan changes.
+
+Attack plan (only at `attacks` or above: the `security=` line in the
+feature's .plumbline, or the level in your dispatch; at `none` or with no
+level, skip this):
+- Before the user approves the plan, add `## Attack plan` to dev-plan.md:
+  ```
+  ## Attack plan
+  Signals: tenancy, authorization
+  Attack surface: backend/src/features/orders/** (GET /orders, GET /orders/:id); frontend/src/pages/Orders*
+  Attack fixtures: backend/test/attack/fixtures.ts (second restaurant with one order; staff session for each; unauthenticated client) - built in task [AC-02-001 SEC-02-001]
+  Skipped: "write with another tenant's foreign key": orders take no client-supplied foreign keys
+
+  | SEC ID | Surface | Attack | Must happen | Checked |
+  | --- | --- | --- | --- | --- |
+  | SEC-02-001 | api | Staff of restaurant B calls GET /orders/<id of an order of restaurant A> with a valid session | 404, nothing from the order in the body | |
+  ```
+  `Signals:` the catalogue signals triage named, plus any your plan shows.
+  For each, one row per catalogue item that applies, plus any attack the plan
+  itself suggests (usually 4-12 rows), and one `Skipped:` line per item that
+  doesn't, with why. An attack is a concrete request, input or action, never
+  a topic ("check authz"). `Surface` is the project.md row whose AC tests
+  cell runs the test. Leave `Checked` empty; no `|` inside a cell. `Attack
+  surface:` lists the paths and routes, pages, jobs or modules attacked.
+  `Attack fixtures:` names the shared test helpers (a second tenant, an
+  unauthenticated client, a forged or expired token, a hostile payload
+  builder) and the task that builds them first.
+- IDs are SEC-<nn>-<nnn>, <nn> as in the AC IDs. A task that builds attacked
+  code carries its SEC IDs in its subject, an `Attacks:` line right under
+  it, and those tests in its Done when, e.g.
+  `- [AC-02-004 SEC-02-001] Order list API (HIGH)` with `Attacks: SEC-02-001`.
+- Raise, never lower: if your plan shows a signal triage's level doesn't
+  cover (every signal below is `independent`, except a by-ID read or list on
+  a tenant-scoped store that follows the existing pattern, or a small fix
+  inside an existing security-sensitive path: `attacks`), put
+  `Security level: <attacks|independent>` on its own line in dev-plan.md, the
+  reason on the next line, and report the raise. Never write `Security
+  waived:` or `Risk accepted:` lines: only the user's yes adds them.
+
+Attack catalogue (each item is one row when it applies):
+| Signal | Attacks |
+| --- | --- |
+| Authentication, sessions | no credential; expired or revoked token; a token issued for another audience or app; a downgraded role claim; replay after logout; CSRF where cookies carry the session |
+| Authorization, tenancy | read another tenant's record by its ID; list without the tenant filter (count or page leak); write with another tenant's foreign key; tenant or role taken from the body or query instead of the session; the admin path with a staff token; the same action across two tenants in one request |
+| Public or external input | missing, null and wrong-type fields; oversize body and strings; injection in each free-text field (SQL, HTML, header newline, path); duplicate submit or replay; unknown fields silently accepted (mass assignment); unexpected content type |
+| Money | zero or negative quantity; price or total supplied by the client; rounding at the boundary; double charge on retry; currency mismatch; a discount applied twice |
+| Sensitive data | appears in logs, URLs, error bodies, analytics or a public page; served without the check the rest of the record has; exported or searchable beyond the tenant |
+| `ai` | prompt injection through user data; a tool call with another user's or tenant's ID; model output acted on without validation; a refusal or timeout that leaves state half-written |
+| `infra` | a secret in state, output or logs; a port, bucket or queue exposed publicly; a destructive step with no plan review |
 
 Contracts first: before any engineer starts, land what By surface lists as
 "lands first" (shared types, API schemas, the database schema and migrations)
@@ -93,7 +142,8 @@ During build:
   marked done needs its commits, and a commit needs its task marked done.
 - Before accepting a workstream, run
   `bash <scripts>/ac-check.sh "<its IDs>" --surface <its surface>`; with no
-  project.md, drop `--surface`.
+  project.md, drop `--surface`. At `attacks` or above, its IDs include the SEC
+  IDs of its tasks (without a team nothing else runs them).
 - Before you ask the user to approve the plan, check each workstream's
   surface in docs/product/project.md: its AC tests cell must have a runner for
   every kind of test the plan names (a web-ui plan with E2E lines needs
@@ -108,6 +158,25 @@ During build:
   giving it the diff, the workstream's AC rows, its surface and the contracts:
   model sonnet for LOW or NORMAL work, model opus when the workstream has a
   HIGH task. Send Critical findings back to the engineer, then re-check.
+- At `attacks` or above, add "Security lens" to that dispatch with the
+  workstream's SEC IDs, their attack plan rows, the `Signals:` and `Skipped:`
+  lines, and the catalogue rows for those signals. Copy its verdict into each
+  row's `Checked` cell: `matches` or `mismatch: <what>`. A mismatch goes back
+  to the author as a task; a catalogue item it reports missing becomes a new
+  row and task. Then re-check.
+- Attack round (only at `independent`; `bash <scripts>/security-check.sh
+  --no-run` shows the required level, without a part the user waived): after
+  every workstream is accepted and before you report the build done (QA comes
+  after), dispatch one fresh plumbline:senior-engineer with model sonnet,
+  effort high and no name. Give it "Attack round", the round number, the
+  `## Attack plan` section with its `Attack surface:` and `Attack fixtures:`
+  lines, each workstream's summary for that surface, and each surface's Run
+  command from project.md. Send each open Critical or High finding in
+  security.md to the engineer who owns the code (the fix starts with a
+  failing attack test), set its Status to `fixed` when they report it, then
+  dispatch the attacker again to verify. After three rounds with Critical or
+  High rows still open, stop and return "Needs user" with those rows; the
+  build skill asks the user and dispatches you again.
 - Wait for teammates to finish. Do not declare the build done until every task is
   complete and the full test suite passes. /plumbline:status shows coverage and
   uncommitted work.
@@ -126,23 +195,32 @@ criteria AC-<yymmdd>-<nn>; there's no feature folder or dev plan):
    files, the failing unit test to write first for each ID (named after it),
    the e2e test when the criterion is a journey through a UI, API or CLI, the
    change, the edge cases, how to check it, and Done when. It implements and
-   commits its own files by path; you don't write the code.
+   commits its own files by path; you don't write the code. At `attacks` (the
+   dispatch says so), also give it `## Attacks to withstand`: the fixtures to
+   build and the attack rows from the catalogue (`| SEC ID | Surface | Attack |
+   Must happen |`, IDs SEC-<yymmdd>-<nn>), with the SEC IDs in its task.
 3. Run `bash <scripts>/ac-check.sh "<IDs>"` (<scripts>: "Plumbline scripts" in
    your context or the dispatch), with `--surface <s>` when the dispatch names
-   a surface; send failures back to the engineer.
+   a surface; send failures back to the engineer. At `attacks`, the IDs
+   include the SEC IDs.
 4. Dispatch plumbline:code-reviewer (model sonnet, opus for a HIGH change),
    giving it the diff against the default branch, the criteria and the surface.
+   At `attacks`, add "Security lens" and the attack rows as in During build.
 5. Send Critical findings back to the engineer to fix; re-run ac-check and review.
 6. Push, then `gh pr create` with the request, criteria, tests and review in the
    body. If gh is missing or not authenticated, push and print the compare URL.
+   At `attacks`, push and open the PR only when ac-check passes every SEC ID
+   and no Critical or High finding (or lens mismatch) is open; otherwise stop
+   and report them.
 7. If docs/product/<module>/ exists, add `| <date> | <request> | <IDs> | <PR> |`
    to its changes.md and commit and push it by path.
 8. Report the PR link (or the compare URL), the ac-check line exactly as
    printed, each test by name, and the reviewer's findings with how each was
-   resolved.
+   resolved. At `attacks`, add the attack rows and the lens table.
 Never create a folder and never merge. If the work grows past Quick (over 3
 criteria, another module, a new screen or flow, a schema or shared-contract
-change), stop and report it for re-triage instead of expanding the scope.
+change, or it needs `independent`), stop and report it for re-triage instead
+of expanding the scope.
 
 By surface:
 | Surface | HIGH when a task touches | Lands first |
