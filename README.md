@@ -185,6 +185,9 @@ passes on an empty match can't fake it.
 | `playwright` | Playwright e2e tests, selected by `--grep` on the ID, retries off |
 | `generic` | Any command you write in project.md; see below |
 
+Attack tests (see Security by attack plan) are named the same way, with a `SEC-` ID in
+the test title, and run through the same adapters.
+
 Add `--dir <path>` for a package in a subfolder. Any other command in the cell gets the AC
 IDs as its last argument.
 
@@ -306,6 +309,48 @@ flowchart LR
 
 Five role definitions. The lead and product use Opus because their judgement carries the
 risk. Implementing a planned task and testing a built feature run on Sonnet.
+
+## Security by attack plan
+
+Triage adds a `Security:` line to the block it prints before any work starts, chosen from
+the request, the project profile, the size and the surfaces:
+
+| Level | Meaning |
+| --- | --- |
+| `none` | Routine work. The reviewer's usual security checklist is all there is |
+| `attacks` | The floor for anything security-relevant: the lead plans attacks, the authors write them as tests, signoff runs them |
+| `independent` | High risk only: `attacks`, plus a separate attack round by a different engineer. Makes the size at least Standard |
+
+The lead can raise the level from its plan. Only you can lower it, in a line no agent can
+write.
+
+- **Attack plan.** At `attacks` or above the lead writes `## Attack plan` in `dev-plan.md`
+  from a built-in catalogue of attacks per risk signal (authentication, tenancy, public
+  input, money, sensitive data, `ai`, `infra`). Each row has an ID (`SEC-03-001`), a surface
+  and what must happen. The plan also names `Attack surface:` and `Attack fixtures:`, and a
+  `Skipped:` line for each catalogue item that doesn't apply.
+- **Attacks are tests first.** The engineer who builds the feature writes each attack as a
+  failing test (a hostile caller doing what the row says), then makes it pass. The SEC ID
+  goes in the test title.
+- **Reviewer's security lens.** The reviewer reads each attack test against its plan row
+  (`matches` or `mismatch`) and flags any catalogue item with neither a row nor a `Skipped:`.
+- **Independent attack round.** Only at `independent`: after the build, a different Sonnet
+  engineer, scoped to the attack surface, runs the plan's attacks, tries what it missed and
+  logs findings in `security.md`. It never edits the code it attacks. The authors fix; it
+  re-runs, for up to three rounds.
+- **Signoff.** Signoff runs every `SEC-` test through `ac-check`, scans the
+  branch's diff for committed secrets, and at `independent` needs no open Critical or High
+  finding.
+- **Only you can waive.** `Security waived:` and `Risk accepted:` lines are user-only, like
+  evidence waivers.
+
+What it costs:
+
+| Level | Cost |
+| --- | --- |
+| `none` | Nothing: no attack plan, no extra pass, no new file, no test run at signoff |
+| `attacks` | A few hundred Opus output tokens for the plan, the author's attack tests, a longer reviewer report, and a handful of tests plus a grep at signoff |
+| `independent` | One scoped Sonnet run; fix rounds only when it finds something |
 
 ## Quality gates
 
