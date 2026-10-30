@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" width="112" alt="Plumbline logo: a plumb bob hanging from a line">
+  <img src="docs/assets/logo.svg" width="112" alt="Plumbline logo: a plumb line ending in a check mark">
 </p>
 
 <h1 align="center">Plumbline</h1>
