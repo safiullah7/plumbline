@@ -39,6 +39,11 @@ Dev plan (dev-plan.md):
   surface from project.md, or from the code layout (api, web-ui, ...) when
   there's no project.md. Effort, the last column, is the workstream's highest
   task rating: LOW -> low, NORMAL -> medium, HIGH -> high.
+- Team rows are senior engineers only. QA, product and reviewers are never
+  Team rows: the build skill dispatches QA after the build, and you dispatch
+  reviewers. The roles are the ones in this file: an older feature's plan may
+  predate them (a qa-runner, screenshots, axe scans, a Models line), so never
+  copy roles, models or QA tooling from it.
 - Ownership: each engineer owns its code and its own unit and e2e test
   folders. Keep a row for product and one for qa, docs only
   (docs/product/**); without a row, the hooks block every write that teammate

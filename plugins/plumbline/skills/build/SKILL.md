@@ -152,8 +152,18 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    3. Dispatch plumbline:lead-engineer to write dev-plan.md (Status: DRAFT,
       1-2 engineers): per engineer, ordered tasks with the failing unit test
       first, the e2e test and a done-when, and the Team table with each
-      engineer's Effort. Show its summary and ask one question: approve the
-      plan, or change it (say what). Relay changes to the lead until approved.
+      engineer's Effort. Before the question, show the plan itself, read from
+      dev-plan.md (not only the lead's prose), as a short review in this order:
+      the file path; the Team table (engineer, workstream, surface, effort);
+      per engineer, one line per task (IDs, title, rating); the contracts
+      that land first; the attack plan (level, row count, `Attack surface:`,
+      and each row's ID and attack in a few words; the first 12 and "+n more"
+      when longer); the key decisions; the risks; and the plan's open items
+      for the user. If the Team table has a row that isn't a senior engineer
+      (qa, qa-runner, product), or the plan names a model or QA tool the
+      current roles don't have, send it back to the lead before asking. Then
+      ask one question: approve the plan, or change it (say what). Relay
+      changes to the lead until approved.
       When the Security line isn't `none`, the dispatch also gives the level
       and the signals from the block's Why line; the lead adds the `## Attack
       plan`. Before the question, if dev-plan.md has a `Security level:` line, run
@@ -161,7 +171,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       it changed by path); then run
       `bash <plugin>/scripts/security-check.sh --no-run` and act on the levels
       and plan rows it prints, never on prose (a line it can't read goes back
-      to the lead; `Checked`, findings and the independent pass come later).
+      to the lead; `Checked`, findings and the independent pass come later,
+      so don't present those gaps to the user as problems at this point).
       With the question show the required level, the attack plan's row count
       and its `Attack surface:` line, and say the user can raise the level
       (run `--set-security` and send the lead back to plan for it) or waive a
