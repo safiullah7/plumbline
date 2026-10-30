@@ -62,6 +62,7 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    Surfaces: <comma-separated>
    Roles: <e.g. product, lead, 2 engineers, reviewer, QA>
    Evidence: <one kind per surface, e.g. web-ui: journeys; api: transcripts>
+   Security: none | attacks | independent
    UX: yes | no
    Engineers: <n>
    Docs: none | slim | full
@@ -81,6 +82,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    - Confirm is `always` (confirm the block as a whole).
    Otherwise go straight on. If an answer changes the module, size, surfaces
    or criteria, re-run step 2 with the answers added and print the new block.
+   The user may raise the Security level in any answer, never lower it here.
+   `independent` is never Quick: a Quick block raised to it is re-triaged as
+   Standard (re-run step 2 with that added).
    From here on, dispatch only the roles the Roles line lists. `UX: yes`
    means the feature has UI: product writes ux.md. Give no model to the lead,
    or to product after triage: both run on opus. Engineers run on sonnet with
@@ -101,6 +105,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       `<plugin>/scripts/ac-tests/<name>.sh`); else `npm run -s typecheck`,
       `npm run -s lint`, `npm run -s test:ac`; plus each surface's Run command
       (the dev server QA and the e2e tests use) and the browser tool QA drives.
+      When the Security line isn't `none`, add
+      `bash <plugin>/scripts/security-check.sh`, and say signoff runs the
+      attack (SEC) tests, so the Run commands must be up then.
       Say that
       Claude Code will ask them to approve any it doesn't already allow, and
       that a denied command stops the change. This is information, not a
@@ -116,18 +123,25 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       profile>. Criteria: <IDs and
       text>. Branch: <branch> (created; you're on it). Scripts: <plugin>/scripts.
       Pick the engineer's effort by the work's complexity."
+      When the Security line is `attacks`, add "Security: attacks. Signals:
+      <the signals from the block's Why line>."
       The lead dispatches one senior engineer on sonnet, runs
       `ac-check.sh "<IDs>" --surface <surface>`, gets a review, pushes and
       opens the PR; it never creates a folder or merges. If it reports the
       work outgrew Quick, go back to step 2 with its reasons.
    3. Wrap-up, also after a failure or a cancel: delete `.claude/plumbline-quick`
       and report the PR link (or the compare URL), the `ac-check.sh` result,
-      and the reviewer's findings and how each was resolved.
+      and the reviewer's findings and how each was resolved. If the lead
+      stopped before the PR (a SEC ID failed or a Critical or High finding is
+      open), relay its report and ask: fix it (dispatch the lead again with
+      the report), re-triage as Standard, or stop. Quick has no risk
+      acceptance.
 6. **Standard.**
    1. From the default branch, run
       `bash <plugin>/scripts/kickoff.sh <module> <feature-slug> --profile standard --ux --surfaces <s1,s2>`
       (`--no-ux` when the block says `UX: no`; <s1,s2> is the Surfaces line
-      without spaces). Its last line is the feature folder; use that path from
+      without spaces; add `--security <level>` when the Security line isn't
+      `none`). Its last line is the feature folder; use that path from
       now on, and say so if it differs from the block's. Then create and switch to the branch `feature/<nn>-<feature-slug>`,
       with <nn> from the printed folder, and commit the new docs (and a
       project.md you wrote in step 1) by path.
@@ -140,6 +154,18 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       first, the e2e test and a done-when, and the Team table with each
       engineer's Effort. Show its summary and ask one question: approve the
       plan, or change it (say what). Relay changes to the lead until approved.
+      When the Security line isn't `none`, the dispatch also gives the level
+      and the signals from the block's Why line; the lead adds the `## Attack
+      plan`. Before the question, if dev-plan.md has a `Security level:` line, run
+      `bash <plugin>/scripts/kickoff.sh --set-security <level>` (commit what
+      it changed by path); then run
+      `bash <plugin>/scripts/security-check.sh --no-run` and act on the levels
+      and plan rows it prints, never on prose (a line it can't read goes back
+      to the lead; `Checked`, findings and the independent pass come later).
+      With the question show the required level, the attack plan's row count
+      and its `Attack surface:` line, and say the user can raise the level
+      (run `--set-security` and send the lead back to plan for it) or waive a
+      part (step 8).
    4. Tell the lead the plan is approved: it sets READY, runs make-briefs.sh and
       builds, dispatching each engineer as a subagent on sonnet with that
       engineer's Effort, reviewing each workstream against the plan,
@@ -151,6 +177,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       column (call TeamCreate first if your Claude Code has it). Teammates can't
       spawn teammates, so you spawn them all. When every workstream is reviewed and the full
       suite passes, the lead ticks "Integration review" in signoff.md.
+      At `independent`, the lead then runs the attack round, before QA. A
+      `Security level:` raise during the build is handled as in 6.3. When the
+      lead returns "Needs user", handle it as in step 8.
    5. Verify. Dispatch plumbline:qa-engineer to test the flows (functional
       only) with: "Standard: check each journey and criterion works, fill
       test-plan.md Traceability, log bugs in qa-report.md, record the Evidence
@@ -158,13 +187,16 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       verdict box. Required evidence: <the block's Evidence line>." Dispatch
       plumbline:product-engineer to walk the finished journeys against the criteria (Journey results, Product
       findings, Success metrics results in signoff.md) and tick Product
-      verification. Then follow
+      verification. At `attacks` or above, make sure each surface's Run
+      command is up (signoff runs the attack tests; it usually still is from
+      QA). Then follow
       /plumbline:signoff (<plugin>/skills/signoff/SKILL.md): gap check, full
       suite, push, PR. If the gap check lists gaps, send each to its owner and
       run it again.
 7. **Full.** Requires teams (step 3). Run
    `bash <plugin>/scripts/kickoff.sh <module> <feature-slug> --profile full --ux --surfaces <s1,s2>`
-   (or `--no-ux`), adding `--new-module` when the block says the module is new,
+   (or `--no-ux`), adding `--new-module` when the block says the module is new
+   and `--security <level>` (at least `attacks` for Full),
    then create the branch from the printed folder as in 6.1. For a new module,
    product writes vision.md first. Then the full flow:
    discovery (follow <plugin>/skills/discover/SKILL.md yourself, since it asks
@@ -184,6 +216,18 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
      own line:
      `Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)`,
      where <name> is the user's name (`git config user.name`, else ask).
+   - Security lines work the same way (agents can't write them either): only
+     after the user's explicit yes, add the line yourself to the feature's
+     security.md, on its own line:
+     `Security waived: <attacks|independent> - <reason> (approved by <name>)`
+     (it removes only the part it names);
+     `Risk accepted: #<n> <severity> <the finding text exactly as in the row> - <reason> (approved by <name>)`;
+     `Risk accepted: secret <path> - <reason> (approved by <name>)` for a
+     secrets-scan hit. When the lead returns "Needs user" with open rows, or
+     the gap check lists an open finding or a secret, ask per row or path:
+     fix again, accept the risk, or stop; write the lines the user approved,
+     then dispatch the lead again with the answers. Never in Quick:
+     it has no waivers or acceptances.
    - Cleanup on stop: delete `.claude/plumbline-quick` if you wrote it.
 9. **No shell** (e.g. eval runs). Do steps 1-3 as usual. Then:
    - Quick: skip step 4, the branch and the marker. Dispatch the lead as in 5.2, adding
@@ -193,4 +237,4 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
      commands to run once a shell is available.
    - Standard or Full: create the feature folder by hand, as the hand fallback
      in <plugin>/skills/kickoff/SKILL.md describes (with the block's
-     surfaces), then stop: building needs a shell for git and the tests.
+     surfaces and security level), then stop: building needs a shell for git and the tests.

@@ -127,6 +127,25 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   Full.
 - Evidence: each surface's kind from By surface, as `<surface>: <kind>`,
   surfaces separated by `; `.
+- Security: judge what the change does, not what the code merely touches. A
+  request that matches the `none` row's examples is `none`; otherwise the
+  highest matching row wins. Name the matched signals in Why (the lead plans
+  attacks against them). `independent` is never Quick: it makes the size at
+  least Standard. Attacks are not acceptance criteria: the criteria rules stay.
+  | Signal | Level |
+  | --- | --- |
+  | New or changed authentication, sessions, tokens, passwords, keys, OAuth | independent |
+  | New or changed authorization: roles, permissions, who may see or do what | independent |
+  | Tenant scoping changes (`Multi-tenant: yes` only): a new tenant-scoped store, a cross-tenant query or share, new tenant resolution | independent |
+  | Money: billing, payments, refunds, credits, pricing rules | independent |
+  | `Sensitive data:` isn't `none` and the change stores, shows, exports or logs it in a new way | independent |
+  | A new entry point for unauthenticated or external input: public endpoint, webhook, upload, import, parser of untrusted files | independent |
+  | `ai` surface with tool use, user data in prompts, or output that drives actions | independent |
+  | `infra` surface touching secrets, networking, public exposure or deletes | independent |
+  | A new read-by-ID or list endpoint, query or export on a tenant-scoped store, following the existing pattern | attacks |
+  | A bug fix or small change inside an existing security-sensitive path, with no design change | attacks |
+  | Full size with none of the above | attacks |
+  | Routine work that follows an existing pattern: validation like a 409, UI changes, copy, sorting, filters on data the page already shows, reports on data the caller already sees | none |
 - Return this block exactly, one chosen value per line:
   ```
   Plumbline triage
@@ -136,6 +155,7 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   Surfaces: <comma-separated>
   Roles: <e.g. product, lead, 2 engineers, reviewer, QA>
   Evidence: <the kind per surface, e.g. api: transcripts; web-ui: journeys>
+  Security: none | attacks | independent
   UX: yes | no
   Engineers: <n>
   Docs: none | slim | full

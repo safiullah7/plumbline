@@ -2,14 +2,19 @@
 name: kickoff
 description: Start a new feature (or a legacy phase) - create its docs folder from templates and mark it current.
 disable-model-invocation: true
-argument-hint: "<module> <feature-slug> [--profile standard|full] [--ux|--no-ux] [--new-module] [--surfaces s1,s2] | <area> phase-NN"
+argument-hint: "<module> <feature-slug> [--profile standard|full] [--ux|--no-ux] [--new-module] [--surfaces s1,s2] [--security none|attacks|independent] | <area> phase-NN | --set-security <level>"
 ---
 Arguments, in either form:
 - Module form: `<module> <feature-slug> [--profile standard|full] [--ux|--no-ux]
-  [--new-module] [--surfaces s1,s2]`, e.g. `rooms room-schedules --profile standard`.
+  [--new-module] [--surfaces s1,s2] [--security none|attacks|independent]`, e.g. `rooms room-schedules --profile standard`.
   Defaults: full, with UX (with --surfaces: UX only if a surface is a web-ui,
-  mobile-ui or desktop-ui; --ux or --no-ux wins).
+  mobile-ui or desktop-ui; --ux or --no-ux wins). `--security` writes
+  `security=<level>` into .plumbline and, at `attacks` or above, creates
+  security.md in the feature folder; `none` (the default) writes nothing.
 - Legacy form: `<area> <phase-id> [short-name]`, e.g. `vet phase-03`.
+- `--set-security <level>` alone raises the current feature's (or legacy
+  phase's) level the same way: never lowers, and the same level is a no-op.
+  The main session runs it; the guard refuses it from agents.
 
 <plugin> is the folder two levels above this SKILL.md.
 
@@ -33,6 +38,10 @@ Arguments, in either form:
    /plumbline:discover to interview me and draft spec.md, then the journeys
    and screens in ux.md (both by the product engineer); without UX, spec.md
    only.
+4. `--set-security <level>`: skip steps 1-3; run
+   `bash <plugin>/scripts/kickoff.sh --set-security <level>`, show an exit 1's
+   message and stop; else commit the changed .plumbline and a new security.md
+   by path on the current branch.
 
 **Hand fallback** (no shell, or the command is refused): create exactly the
 files the script would, from the templates/ folder next to this SKILL.md. Never
@@ -80,7 +89,10 @@ spaces with the first letter capitalised (vet-records -> Vet records).
      prototypes/).
   6. Write <folder>/.plumbline, one per line: `module=<module>`, `number=<nn>`,
      `slug=<feature-slug>`, `profile=<standard|full>`, `surfaces=<s1,s2>` (only if given),
-     `ux=<yes|no>`, `created=<YYYY-MM-DD>`.
+     `ux=<yes|no>`, `created=<YYYY-MM-DD>`, and `security=<level>` only with
+     `--security attacks` or `independent`; then also copy
+     templates/security/security.md into the folder (never over an existing
+     file), with the replacements of step 3.
 - Both: write the folder path (relative to the repo root, no trailing slash)
   as the only line of .claude/current-phase. Claude Code asks permission for
   files in .claude/; if the write is refused, tell me the exact line to put

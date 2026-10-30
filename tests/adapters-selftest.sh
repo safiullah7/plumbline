@@ -33,7 +33,7 @@ skip() { echo "skip  $1"; }
 adapter() {
   local name="$1" root="$2"; shift 2
   all=$(CLAUDE_PROJECT_DIR="$root" bash "$A/$name.sh" "$@" 2>&1); rc=$?
-  out=$(grep -E '^AC-[0-9]+-[0-9]+: ' <<<"$all")
+  out=$(grep -E '^(AC|SEC)-[0-9]+-[0-9]+: ' <<<"$all")
 }
 # expect <case> <rc> <per-ID lines, one per argument...>
 expect() {
@@ -61,6 +61,25 @@ common_cases() { # adapter, fixture root, label
   expect "$l: one passes, one missing" 1 "AC-01-001: pass (2)" "AC-01-099: missing"
   adapter "$a" "$r" "AC-01-001, AC-01-002"
   expect "$l: comma list, fail wins" 1 "AC-01-001: pass (2)" "AC-01-002: fail"
+}
+# The SEC cases for every runner, on a fixture that also has these tests:
+#   SEC-01-001 one passing  SEC-01-002 failing  sec_01_003 lowercase, passing
+#   SEC-261024-01 passing   AC-07-001 passing (no SEC-07-001 test)
+#   SEC-08-001 passing (no AC-08-001 test)
+# So a SEC ID selecting an AC test, or the reverse, shows as a wrong line.
+sec_cases() { # adapter, fixture root, label
+  local a="$1" r="$2" l="$3"
+  adapter "$a" "$r" "SEC-01-001";   expect "$l: SEC pass" 0 "SEC-01-001: pass (1)"
+  adapter "$a" "$r" "SEC-01-002";   expect "$l: SEC fail" 1 "SEC-01-002: fail"
+  adapter "$a" "$r" "SEC-01-099";   expect "$l: SEC missing" 1 "SEC-01-099: missing"
+  adapter "$a" "$r" "sec_01_003";   expect "$l: SEC underscore/lowercase form" 0 "SEC-01-003: pass (1)"
+  adapter "$a" "$r" "SEC-261024-01"; expect "$l: Quick SEC ID" 0 "SEC-261024-01: pass (1)"
+  adapter "$a" "$r" "SEC-07-001";   expect "$l: SEC-07-001 doesn't select AC-07-001's test" 1 "SEC-07-001: missing"
+  adapter "$a" "$r" "AC-08-001";    expect "$l: AC-08-001 doesn't select SEC-08-001's test" 1 "AC-08-001: missing"
+  adapter "$a" "$r" "AC-07-001|SEC-08-001"
+  expect "$l: AC and SEC in one call, both reported" 0 "AC-07-001: pass (1)" "SEC-08-001: pass (1)"
+  adapter "$a" "$r" "AC-01-001|SEC-01-002"
+  expect "$l: mixed call, SEC fail wins" 1 "AC-01-001: pass (2)" "SEC-01-002: fail"
 }
 # PATH without the folders holding <tool>, or nothing when one of them also holds
 # awk (a shared /usr/bin), since the adapters need it.
@@ -112,9 +131,16 @@ test('AC-01-004 parent', async (t) => { await t.test('only a skipped subtest', {
 test('ac_01_005 lowercase underscores', () => {});
 test('AC-261024-01 quick', () => {});
 test('AC-01-0010 other', () => { assert.fail('must not count for AC-01-001'); });
+test('SEC-01-001 one', () => {});
+test('SEC-01-002 fails', () => { assert.equal(1, 2); });
+test('sec_01_003 lowercase underscores', () => {});
+test('SEC-261024-01 quick', () => {});
+test('AC-07-001 ac only', () => {});
+test('SEC-08-001 sec only', () => {});
 test('unrelated', () => { assert.fail('not selected'); });
 EOF
   common_cases node "$N" node:test "todo"
+  sec_cases node "$N" node:test
   # Monorepo: the root package.json names jest (not installed), the subfolder's
   # doesn't, so a pass proves the run folder's package.json picked node:test.
   M="$T/node-mono"; mkdir -p "$M/apps/web/test"
@@ -156,6 +182,12 @@ test.todo('AC-01-004 todo');
 test('ac_01_005 lowercase underscores', () => {});
 test('AC-261024-01 quick', () => {});
 test('AC-01-0010 other', () => { expect(1).toBe(2); });
+test('SEC-01-001 one', () => {});
+test('SEC-01-002 fails', () => { expect(1).toBe(2); });
+test('sec_01_003 lowercase underscores', () => {});
+test('SEC-261024-01 quick', () => {});
+test('AC-07-001 ac only', () => {});
+test('SEC-08-001 sec only', () => {});
 test('unrelated', () => { expect(1).toBe(2); });
 EOF
 }
@@ -181,6 +213,7 @@ else
     adapter node "$root" "AC_01_005";    expect "$r: underscore ID form" 0 "AC-01-005: pass (1)"
     adapter node "$root" "AC-261024-01|AC-01-099"
     expect "$r: Quick ID passes, other missing" 1 "AC-261024-01: pass (1)" "AC-01-099: missing"
+    sec_cases node "$root" "$r"
   done
 fi
 
@@ -239,6 +272,10 @@ a.spec.js|AC-01-009 per project|expected|passed|passed
 a.spec.js|AC-01-009 per project|expected|passed|passed
 AC-01-011.spec.js|works|expected|passed|passed
 a.spec.js|   AC-01-012   spaced   |expected|passed|passed
+a.spec.js|SEC-01-001 plain|expected|passed|passed
+a.spec.js|Attacks > SEC-01-002 bad|unexpected|passed|failed
+a.spec.js|AC-07-001 ac only|expected|passed|passed
+a.spec.js|SEC-08-001 sec only|expected|passed|passed
 EOF
   pw_fake() { # root args...: sets out, all and rc, with the recorded report in $T/pw.json
     local root="$1"; shift
@@ -263,6 +300,17 @@ EOF
   if [[ "$(cat "$T/pw.args")" == */pw-fake" test --grep [Aa][Cc][-_]01[-_]001|[Aa][Cc][-_]01[-_]007 --reporter=json --retries=0" ]]; then
     ok "playwright: the runner is called with --grep <regex>, --reporter=json and --retries=0, in the run folder"
   else fail "playwright: runner arguments ('$(cat "$T/pw.args")')"; fi
+  pw_fake "$W" "SEC-01-001";  expect "playwright json: SEC pass" 0 "SEC-01-001: pass (1)"
+  pw_fake "$W" "SEC-01-002";  expect "playwright json: SEC fail, ID in a describe title" 1 "SEC-01-002: fail"
+  pw_fake "$W" "SEC-01-099";  expect "playwright json: SEC missing" 1 "SEC-01-099: missing"
+  pw_fake "$W" "SEC-07-001";  expect "playwright json: SEC-07-001 doesn't select AC-07-001's test" 1 "SEC-07-001: missing"
+  pw_fake "$W" "AC-08-001";   expect "playwright json: AC-08-001 doesn't select SEC-08-001's test" 1 "AC-08-001: missing"
+  pw_fake "$W" "AC-07-001|SEC-08-001"
+  expect "playwright json: AC and SEC in one call" 0 "AC-07-001: pass (1)" "SEC-08-001: pass (1)"
+  pw_fake "$W" "AC-01-001, sec_01_001"
+  if [[ "$(cat "$T/pw.args")" == */pw-fake" test --grep [Aa][Cc][-_]01[-_]001|[Ss][Ee][Cc][-_]01[-_]001 --reporter=json --retries=0" ]]; then
+    ok "playwright: a SEC ID gets its own prefix in the --grep regex"
+  else fail "playwright: SEC --grep ('$(cat "$T/pw.args")')"; fi
   pw_fake "$W" --dir apps/web "AC-01-001"
   if [[ "$(cut -d' ' -f1 "$T/pw.args")" == */pw-fake/apps/web && "$out" == "AC-01-001: pass (2)" ]]; then
     ok "playwright: --dir runs it in that folder, finding the bin in a parent's node_modules"
@@ -304,6 +352,20 @@ EOF
   if [[ "$rc" == 1 && "$all" == *"(last 40 lines)"* && "$all" == *$'\n60' && "$all" != *$'\n20\n'* ]]; then
     ok "combine: a failing command's output tail is the last 40 lines"
   else fail "combine: tail (rc $rc)"; fi
+  comb --cmd "echo 'SEC-01-001: pass (1)'; echo 'SEC-01-002: pass (1)'; echo 'SEC-01-003: missing'; echo 'SEC-01-004: fail'; false #" \
+       --cmd "echo 'SEC-01-001: pass (2)'; echo 'SEC-01-002: fail'; echo 'SEC-01-003: missing'; echo 'AC-01-001: pass (1)'; false #" \
+       "SEC-01-001|sec_01_002|SEC-01-003|SEC-01-004|AC-01-001"
+  expect "combine: SEC lines merge like AC lines, next to an AC line" 1 \
+    "SEC-01-001: pass (3)" "SEC-01-002: fail" "SEC-01-003: missing" "SEC-01-004: fail" "AC-01-001: pass (1)"
+  comb --cmd "echo 'AC-03-001: pass (1)'; echo 'SEC-03-001: fail' #" --cmd "echo 'SEC-03-001: pass (2)' #" "SEC-03-001|AC-03-001"
+  expect "combine: AC-03-001 and SEC-03-001 are separate keys" 1 "SEC-03-001: fail" "AC-03-001: pass (1)"
+  comb --cmd "echo 'SEC-01-001: pass (1)' #" "SEC-01-001"
+  expect "combine: a SEC-only call" 0 "SEC-01-001: pass (1)"
+  comb --cmd "echo 'SEC-01-001: fail'; seq 1 3; false #" "SEC-01-001"
+  if [[ "$rc" == 1 && "$all" == *"(last 40 lines)"* && "$all" == *$'\n3' && "$all" != *$'\nSEC-01-001: fail\n1\n'* ]]; then
+    ok "combine: a SEC line isn't repeated in the failing command's tail"
+  else fail "combine: SEC tail (rc $rc, '$all')"; fi
+  comb --cmd "true #" "SEC-01-001|SEX-01-002"; eq_rc "combine: usage: a prefix that isn't AC or SEC exits 2" 2
   comb "AC-01-001"; eq_rc "combine: usage: no --cmd exits 2" 2
   comb --cmd "true #"; eq_rc "combine: usage: no IDs exits 2" 2
   comb --cmd "true #" "AC-01-001|foo"; eq_rc "combine: usage: a token that isn't an ID exits 2" 2
@@ -348,6 +410,12 @@ test.fixme('AC-01-004 fixme', () => {});
 test('ac_01_005 lowercase underscores', () => {});
 test('AC-261024-01 quick', () => {});
 test('AC-01-0010 other', () => { expect(1).toBe(2); });
+test('SEC-01-001 one', () => {});
+test('SEC-01-002 fails', () => { expect(1).toBe(2); });
+test('sec_01_003 lowercase underscores', () => {});
+test('SEC-261024-01 quick', () => {});
+test('AC-07-001 ac only', () => {});
+test('SEC-08-001 sec only', () => {});
 test('AC-01-006 times out', async () => { await new Promise((r) => setTimeout(r, 3000)); });
 test.describe('serial', () => {
   test.describe.configure({ mode: 'serial' });
@@ -358,6 +426,7 @@ test('AC-01-009 flaky: passes only on a retry', ({}, info) => { expect(info.retr
 test('unrelated', () => { expect(1).toBe(2); });
 EOF
   common_cases playwright "$FXP" playwright "fixme"
+  sec_cases playwright "$FXP" playwright
   adapter playwright "$FXP" "AC-01-006";  expect "playwright: a timed-out test is a fail" 1 "AC-01-006: fail"
   adapter playwright "$FXP" "AC-01-007|AC-01-008"
   expect "playwright: a test not run after a serial failure is missing" 1 "AC-01-007: fail" "AC-01-008: missing"
@@ -395,6 +464,9 @@ test('AC-05-001 unit only', () => {});
 test('AC-05-004 unit passes', () => {});
 test('AC-05-005 unit and e2e', () => {});
 test('AC-05-006 unit fails', () => { assert.equal(1, 2); });
+test('SEC-05-001 unit only', () => {});
+test('SEC-05-004 unit passes', () => {});
+test('SEC-05-005 unit and e2e', () => {});
 EOF
   cat > "$C/e2e/flow.spec.js" <<'EOF'
 const { test, expect } = require('@playwright/test');
@@ -402,6 +474,9 @@ test('AC-05-002 e2e only', () => {});
 test('AC-05-004 e2e fails', () => { expect(1).toBe(2); });
 test('AC-05-005 unit and e2e', () => {});
 test('AC-05-006 e2e passes', () => {});
+test('SEC-05-002 e2e only', () => {});
+test('SEC-05-004 e2e fails', () => { expect(1).toBe(2); });
+test('SEC-05-005 unit and e2e', () => {});
 EOF
   both=(--cmd "bash '$A/node.sh'" --cmd "bash '$A/playwright.sh'")
   adapter combine "$C" "${both[@]}" "AC-05-001|AC-05-002|AC-05-003|AC-05-004|AC-05-005|AC-05-006"
@@ -409,6 +484,9 @@ EOF
     "AC-05-001: pass (1)" "AC-05-002: pass (1)" "AC-05-003: missing" "AC-05-004: fail" "AC-05-005: pass (2)" "AC-05-006: fail"
   adapter combine "$C" "${both[@]}" "AC-05-001, ac_05_002, AC-05-005"
   expect "combine: ...all passing exits 0" 0 "AC-05-001: pass (1)" "AC-05-002: pass (1)" "AC-05-005: pass (2)"
+  adapter combine "$C" "${both[@]}" "SEC-05-001|SEC-05-002|SEC-05-003|SEC-05-004|SEC-05-005|AC-05-005"
+  expect "combine: node + playwright with SEC IDs (unit only, e2e only, neither, one fails, both) and an AC ID" 1 \
+    "SEC-05-001: pass (1)" "SEC-05-002: pass (1)" "SEC-05-003: missing" "SEC-05-004: fail" "SEC-05-005: pass (2)" "AC-05-005: pass (2)"
   # The same two runners from one --dir each, as a profile cell would write them.
   M2="$FXP/combo2"; mkdir -p "$M2/web/test" "$M2/web/e2e"
   cp "$C/package.json" "$C/playwright.config.js" "$M2/web/"
@@ -417,7 +495,7 @@ EOF
   expect "combine: each command's own --dir" 0 "AC-05-005: pass (2)"
   # A project without Playwright: the runner problem fails the run, node's pass still shows.
   all=$(PATH="$T/no-npx:$PATH" CLAUDE_PROJECT_DIR="$N" bash "$A/combine.sh" "${both[@]}" "AC-01-001" 2>&1); rc=$?
-  out=$(grep -E '^AC-[0-9]+-[0-9]+: ' <<<"$all")
+  out=$(grep -E '^(AC|SEC)-[0-9]+-[0-9]+: ' <<<"$all")
   if [[ "$rc" == 1 && "$out" == "AC-01-001: pass (2)" && "$all" == *"playwright: not installed"* ]]; then
     ok "combine: Playwright not installed fails the whole run, saying so"
   else fail "combine: playwright missing (rc $rc, '$all')"; fi
@@ -450,6 +528,13 @@ class TestAC_01_005:
 def test_ac_261024_01_quick(): pass
 def test_ac_01_0010_other(): assert False, "must not count for AC-01-001"
 
+def test_sec_01_001_one(): pass
+def test_sec_01_002_fails(): assert False
+def test_Sec_01_003_lowercase(): pass
+def test_sec_261024_01_quick(): pass
+def test_ac_07_001_ac_only(): pass
+def test_sec_08_001_sec_only(): pass
+
 @pytest.fixture
 def broken(): raise RuntimeError("fixture broke")
 
@@ -457,6 +542,7 @@ def test_ac_01_006_error(broken): pass
 def test_unrelated(): assert False
 EOF
   common_cases pytest "$P" pytest "xfail/xpass"
+  sec_cases pytest "$P" pytest
   adapter pytest "$P" "AC-01-006"; expect "pytest: ERROR counts as fail" 1 "AC-01-006: fail"
   # Subtests (pytest 9): a failing unittest subTest leaves its test PASSED plus a
   # SUBFAILED line; parameters and subtest messages may hold spaces.
@@ -541,6 +627,13 @@ func TestAc_01_005(t *testing.T)        {}
 func TestAC_261024_01Quick(t *testing.T) {}
 func TestAC_01_0010(t *testing.T)       { t.Fatal("must not count for AC-01-001") }
 
+func TestSEC_01_001(t *testing.T)         {}
+func TestSEC_01_002Fail(t *testing.T)     { t.Fatal("bad") }
+func TestSec_01_003(t *testing.T)         {}
+func TestSEC_261024_01Quick(t *testing.T) {}
+func TestAC_07_001(t *testing.T)          {}
+func TestSEC_08_001(t *testing.T)         {}
+
 // A parent here, a leaf with the same name in package b.
 func TestAC_01_007(t *testing.T) {
 	t.Run("skipped", func(t *testing.T) { t.Skip("later") })
@@ -562,6 +655,7 @@ func TestAC_01_007(t *testing.T)    {}
 EOF
   # AC-01-001 has TestAC_01_001 and TestAC_01_001InB: the "two passing tests".
   common_cases go "$G" go "skipped-subtests parent"
+  sec_cases go "$G" go
   adapter go "$G" "AC-01-007"; expect "go: same name, parent in one package, leaf in another" 0 "AC-01-007: pass (1)"
   adapter go "$G" "AC-01-008"; expect "go: parent ignored, passing subtest counts" 0 "AC-01-008: pass (1)"
   M="$T/go-mono"; mkdir -p "$M/services/api"
@@ -632,6 +726,25 @@ gen --surface api "AC-01-001"
 if [[ "$rc" == 1 && "$err" == *'no "### api" command block under "## Generic commands"'* ]]; then
   ok "generic: a ### under another section isn't used"
 else fail "generic: wrong section (rc $rc, '$out', '$err')"; fi
+gen --surface cli "SEC-03-001|sec_03_002, AC-03-001"
+if [[ "$rc" == 0 && "$out" == $'regex=SEC[-_]03[-_]001|SEC[-_]03[-_]002|AC[-_]03[-_]001\nunder=SEC_03_001 SEC_03_002 AC_03_001' ]]; then
+  ok "generic: SEC IDs keep their prefix in both placeholders, AC IDs stay as they were"
+else fail "generic: SEC placeholders (rc $rc, '$out', '$err')"; fi
+gen --surface cli "SEC-261024-01"
+[[ "$rc" == 0 && "$out" == $'regex=SEC[-_]261024[-_]01\nunder=SEC_261024_01' ]] && ok "generic: Quick SEC ID" \
+  || fail "generic: Quick SEC ID (rc $rc, '$out')"
+# The regex must not select the other prefix's names (as go test -run or grep would).
+names=$'TestAC_03_001\nTestSEC_03_001\nac-03-001 works\nSEC-03-001 works'
+gen --surface cli "SEC-03-001"
+re=$(sed -n 's/^regex=//p' <<<"$out")
+[[ "$(grep -E "$re" <<<"$names" | paste -sd, -)" == "TestSEC_03_001,SEC-03-001 works" ]] \
+  && ok "generic: SEC-03-001's regex never selects AC-03-001's test" || fail "generic: SEC regex ('$re')"
+gen --surface cli "AC-03-001"
+re=$(sed -n 's/^regex=//p' <<<"$out")
+[[ "$(grep -E "$re" <<<"$names" | paste -sd, -)" == "TestAC_03_001" ]] \
+  && ok "generic: AC-03-001's regex never selects SEC-03-001's test" || fail "generic: AC regex ('$re')"
+gen --surface cli "SEC-01-001|SEX-01-002"
+[[ "$rc" == 2 ]] && ok "generic: a prefix that isn't AC or SEC is a usage error" || fail "generic: bad prefix (rc $rc)"
 gen --surface web-ui "AC-01-001"
 if [[ "$rc" == 1 && "$err" == *'no "### web-ui" command block'* ]]; then ok "generic: missing ### surface exits 1, says so"
 else fail "generic: missing surface (rc $rc, '$err')"; fi

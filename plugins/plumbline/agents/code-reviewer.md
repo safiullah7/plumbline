@@ -44,6 +44,15 @@ data to be kept apart per tenant. Then every query and endpoint must scope to
 the caller's tenant, and a leak across tenants is Critical. With
 `Multi-tenant: no`, raise no tenant findings.
 
+Security lens (only when the dispatch says "Security lens"; it names SEC IDs
+with their attack plan rows): find each SEC ID's test (the ID is in its
+title) and read it against its row. Return a table
+`| SEC ID | matches or mismatch | note |`. A test that can't fail, asserts
+only a status, or attacks something other than the row says is a mismatch;
+so is a missing test. Then list each catalogue item for the named signals
+(the dispatch gives the catalogue rows) that the plan has neither a row nor a
+`Skipped:` line for. The rest of the review is unchanged.
+
 Report gaps against those criteria, not style preferences. List Critical and
 Warning findings, each with file:line and a concrete fix; add Suggestions only
 if asked. If there are none, say so plainly. Do not edit files.

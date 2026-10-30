@@ -3,8 +3,9 @@
 # current feature. /plumbline:kickoff and /plumbline:build run it; it never
 # creates a branch or commits (the skills do that).
 #   kickoff.sh <module> <feature-slug> [--profile standard|full] [--ux|--no-ux]
-#              [--new-module] [--surfaces s1,s2]
+#              [--new-module] [--surfaces s1,s2] [--security none|attacks|independent]
 #   kickoff.sh <area> phase-NN
+#   kickoff.sh --set-security none|attacks|independent
 # Module form (defaults: full, UX): adds the module docs that are missing
 # (vision, design-principles when UX, decisions, changes), then
 # docs/product/<module>/<nn>-<slug>/ with the next repo-wide number (in a legacy
@@ -27,13 +28,23 @@
 # (Vet_Records phase-1, phase-03-auth); the module form needs lowercase slugs.
 # Both write .claude/current-phase, print "added <path>" for each module or area
 # doc they add, and print the feature folder (repo-relative) as the last line.
+# --security <level> (module form only) writes security=<level> as the last line of
+# .plumbline and, for attacks or independent, creates security.md from
+# templates/security/. none, or no flag, writes neither.
+# --set-security <level> (no other argument) raises the active feature's level
+# (.claude/current-phase; module or legacy form): it replaces the security= line,
+# creates security.md if it is missing (never over an existing one), and gives a
+# legacy phase its first .plumbline. The same level changes nothing (it only adds a
+# missing security.md); a lower level or an unknown one exits 1, and none writes
+# nothing. It never exits 2.
 # Exit 0 = created, 1 = usage or the feature already exists, 2 = --new-module on
 # a module that already exists. On 1 and 2 nothing is changed.
 source "$(dirname "${0//\\//}")/lib.sh"
 usage() {
   [[ -n "${1:-}" ]] && echo "kickoff: $1" >&2
-  echo "usage: kickoff.sh <module> <feature-slug> [--profile standard|full] [--ux|--no-ux] [--new-module] [--surfaces s1,s2]" >&2
+  echo "usage: kickoff.sh <module> <feature-slug> [--profile standard|full] [--ux|--no-ux] [--new-module] [--surfaces s1,s2] [--security none|attacks|independent]" >&2
   echo "       kickoff.sh <area> phase-NN" >&2
+  echo "       kickoff.sh --set-security none|attacks|independent" >&2
   exit 1
 }
 exists() { echo "kickoff: $1 already exists; nothing changed." >&2; exit 1; }
@@ -43,9 +54,61 @@ TPL="$PLUMBLINE_SCRIPTS/../skills/kickoff/templates"
 [[ -d "$TPL/phase" ]] || { echo "kickoff: templates not found at $TPL" >&2; exit 1; }
 cd "$PROJECT_DIR" || exit 1
 
+# security.md from its template into a feature folder: "Feature <nn>" in the title
+# for a module-form feature, "Phase <nn>" for a legacy phase; never over a file.
+make_security_md() { # feature folder, number, Feature|Phase
+  local dst="$1/security.md"
+  [[ -e "$dst" ]] && return 0
+  [[ -f "$TPL/security/security.md" ]] || { echo "kickoff: $TPL/security/security.md not found" >&2; return 1; }
+  sed -e "s/Phase <phase>/$3 $2/g" -e "s/<phase>/$2/g" "$TPL/security/security.md" > "$dst" && echo "added ${dst#"$PROJECT_DIR"/}"
+}
+
+# --set-security: raise the active feature's level (see the header).
+set_security() { # level
+  local want="$1" w c cur dir rel f tmp n word="Feature"
+  w=$(security_rank "$want")
+  (( w >= 0 )) || { echo "kickoff: '$want' isn't a security level (none, attacks or independent)" >&2; exit 1; }
+  dir=$(phase_dir) || { echo "kickoff: no active feature (.claude/current-phase is missing)" >&2; exit 1; }
+  dir="${dir%/}"
+  [[ "$dir" != "$PROJECT_DIR" && -d "$dir" ]] || { echo "kickoff: .claude/current-phase doesn't point at a feature folder" >&2; exit 1; }
+  rel="${dir#"$PROJECT_DIR"/}"; f="$dir/.plumbline"
+  cur=$(feature_meta security | tr -d '[:space:]`'); c=$(security_rank "${cur:-none}")
+  if (( w < c )); then
+    echo "kickoff: security is $cur for $rel; a level can be raised, never lowered here (only the user waives a part, in security.md)" >&2
+    exit 1
+  fi
+  if (( w == 0 )); then echo "kickoff: security stays none; nothing recorded."; exit 0; fi
+  n=$(feature_meta number)
+  if [[ -z "$n" ]]; then
+    word=Phase; n="${rel##*/}"
+    [[ "$n" =~ ^phase-([0-9]+) ]] && n="${BASH_REMATCH[1]}" || n=00
+  fi
+  if (( w > c )); then
+    if [[ -f "$f" ]]; then
+      tmp=$(mktemp)
+      grep -vE '^[[:space:]]*security[[:space:]]*=' "$f" > "$tmp"
+      [[ -s "$tmp" && -n "$(tail -c1 "$tmp")" ]] && echo >> "$tmp"
+      echo "security=$want" >> "$tmp"
+      cat "$tmp" > "$f"; rm -f "$tmp"
+    else
+      echo "security=$want" > "$f"
+    fi
+    echo "security=$want recorded in $rel/.plumbline"
+  else
+    echo "kickoff: security is already $want for $rel; nothing recorded."
+  fi
+  make_security_md "$dir" "$n" "$word" || exit 1
+  exit 0
+}
+
 profile=full ux=yes ux_set="" new_module="" surfaces="" has_surfaces="" opts="" pos=()
+sec_level="" has_security="" set_level="" has_set=""
 while (( $# )); do
   case "$1" in
+    --security)   (( $# >= 2 )) || usage; sec_level="$2"; has_security=1; opts=1; shift 2 ;;
+    --security=*) sec_level="${1#*=}"; has_security=1; opts=1; shift ;;
+    --set-security)   (( $# >= 2 )) || usage; set_level="$2"; has_set=1; shift 2 ;;
+    --set-security=*) set_level="${1#*=}"; has_set=1; shift ;;
     --profile)    (( $# >= 2 )) || usage; profile="$2"; opts=1; shift 2 ;;
     --profile=*)  profile="${1#*=}"; opts=1; shift ;;
     --ux)         ux=yes; ux_set=1; opts=1; shift ;;
@@ -57,6 +120,10 @@ while (( $# )); do
     *)            pos+=("$1"); shift ;;
   esac
 done
+if [[ -n "$has_set" ]]; then   # no positionals, so before the check below
+  (( ${#pos[@]} == 0 )) && [[ -z "$opts" ]] || usage "--set-security takes no other argument"
+  set_security "$set_level"
+fi
 (( ${#pos[@]} == 2 )) || usage
 # The legacy form takes whatever v0.3's hand kickoff took (Vet_Records phase-01,
 # phase-3, phase-03-auth) and refuses only names that would break a path or the
@@ -111,6 +178,9 @@ fi
 # --- Module form ---
 module="${pos[0]}" slug="${pos[1]}" mdir="docs/product/${pos[0]}"
 [[ "$profile" == standard || "$profile" == full ]] || usage "--profile is standard or full"
+if [[ -n "$has_security" ]]; then
+  (( $(security_rank "$sec_level") >= 0 )) || usage "--security is none, attacks or independent"
+fi
 if [[ -n "$has_surfaces" ]]; then
   [[ "$surfaces" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]] \
     || usage "--surfaces is a comma-separated list, e.g. api,web-ui"
@@ -189,6 +259,8 @@ gitkeep "$feature" contracts briefs
   echo "ux=$ux"
   echo "created=$(date +%Y-%m-%d)"
   echo "slug=$slug"
+  [[ -n "$has_security" && "$sec_level" != none ]] && echo "security=$sec_level"
 } > "$feature/.plumbline"
+case "$sec_level" in attacks|independent) make_security_md "$feature" "$nn" Feature >/dev/null ;; esac
 current "$feature"
 printf '%s\n' "$feature"

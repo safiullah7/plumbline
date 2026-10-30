@@ -426,6 +426,452 @@ run_checks() { # "<IDs separated by |>" [surface]
   return 0
 }
 
+# --- Security (dev plan v0.5 §6) ---
+
+# Stdin lines that are filled-in approvals: they start with the given ERE (the
+# kind of line, its subject and the dash that leads into the reason), then a
+# reason, and end with "(approved by <name>)", with no <placeholder> left, so the
+# template's example approves nothing. Any case. Shared by the evidence waivers,
+# the security waivers and the risk acceptances. With a second argument "keep" the
+# <placeholder> test is left to the caller: a risk acceptance repeats a finding's
+# text, which may hold <id> itself, so security_accepted tests only what follows it.
+approved_line() { # head ERE [keep]
+  tr -d '\r' | { if [[ "${2:-}" == keep ]]; then cat; else grep -v '<[^>]*>'; fi; } \
+    | grep -iE "$1[^[:space:]].*\\(approved by [^)]*[^) ][^)]*\\)[[:space:]]*\$"
+}
+
+# security.md in the active feature folder (it may not exist).
+security_file() {
+  local dir
+  dir=$(phase_dir) || return 1
+  printf '%s\n' "$dir/security.md"
+}
+
+# 0, 1 or 2 for none, attacks or independent; -1 for any other token.
+security_rank() { # token
+  case "${1:-}" in none) echo 0 ;; attacks) echo 1 ;; independent) echo 2 ;; *) echo -1 ;; esac
+}
+
+# The two places a level is written, spaces and backticks stripped; nothing when
+# the place has none. A dev plan "Security level:" line with no token reads as
+# "(blank)". A token security_rank doesn't know is a gap.
+security_key_token() {
+  local v
+  v=$(feature_meta security)
+  v="${v//[[:space:]\`]/}"
+  [[ -n "$v" ]] && printf '%s\n' "$v"
+  return 0
+}
+security_plan_token() {
+  local dir line
+  dir=$(phase_dir) || return 0
+  line=$(grep -m1 -iE '^Security level:' "$dir/dev-plan.md" 2>/dev/null)
+  if [[ -z "$line" ]]; then
+    # Only a declaration written some other way: an unknown token, not silence.
+    [[ -n "$(security_plan_bad_line)" ]] && echo "(unreadable)"
+    return 0
+  fi
+  line="${line#*:}"; line="${line//[[:space:]\`]/}"
+  printf '%s\n' "${line:-(blank)}"
+}
+# The first dev plan line that declares a Security level the strict parser above
+# doesn't accept: its first words, after any of - > * _ and spaces, are "security
+# level" and then a colon (**Security level:** x, - Security level: x, an indented
+# one). A mention mid-sentence is not one. Nothing when there is none.
+security_plan_bad_line() {
+  local dir
+  dir=$(phase_dir) || return 0
+  tr -d '\r' < "$dir/dev-plan.md" 2>/dev/null \
+    | grep -iE '^[-*>_[:space:]]*security[[:space:]]+level[*_[:space:]]*:' | grep -viE '^Security level:' | head -n 1
+  return 0
+}
+
+# The recorded level: the higher of .plumbline's security= and the dev plan's
+# "Security level:" line; none when neither is there. An unknown token counts as
+# attacks, so the checks run and the token itself is a gap.
+security_level() {
+  local best=0 t r
+  for t in "$(security_key_token)" "$(security_plan_token)"; do
+    [[ -n "$t" ]] || continue
+    case "$t" in none) r=0 ;; independent) r=2 ;; *) r=1 ;; esac
+    (( r > best )) && best=$r
+  done
+  [[ -n "$(security_plan_bad_line)" ]] && (( best < 1 )) && best=1
+  case "$best" in 0) echo none ;; 1) echo attacks ;; *) echo independent ;; esac
+}
+
+# The parts the user has waived in security.md, one per line: a filled-in
+# "Security waived: <attacks|independent> - <reason> (approved by <name>)".
+security_waived_parts() {
+  local f
+  f=$(security_file) && [[ -f "$f" ]] || return 0
+  approved_line '^Security waived:[[:space:]]*(attacks|independent)[[:space:]]*(-|—|:)[[:space:]]*' < "$f" \
+    | awk '{ sub(/^[^:]*:[ \t]*/, ""); sub(/[^A-Za-z].*/, ""); print tolower($0) }'
+}
+
+# True when the part (attacks or independent) is waived.
+security_part_waived() { # part
+  security_waived_parts | grep -qx "$1"
+}
+
+# The parts of the recorded level the user hasn't waived, on one line: attacks,
+# independent, both ("attacks independent"), or none. independent includes attacks.
+# The level may be passed in when the caller has it.
+security_required() { # [level]
+  local lvl="${1:-}" parts="" p out="" waived
+  [[ -n "$lvl" ]] || lvl=$(security_level)
+  case "$lvl" in attacks|independent) parts=attacks ;; esac
+  [[ "$lvl" == independent ]] && parts="$parts independent"
+  waived=" $(security_waived_parts | paste -sd' ' -) "
+  for p in $parts; do [[ "$waived" == *" $p "* ]] || out="$out${out:+ }$p"; done
+  echo "${out:-none}"
+}
+
+# Rows of one security table: plan (the dev plan's ## Attack plan), own or
+# findings (security.md's ## Own attacks and ## Findings). Each output line is
+# "row" or "gap", then the cells or the message, joined by the unit separator
+# (0x1f; a tab would merge empty cells in read). Unlike md_table, the header must
+# be exact and every | line up to the next # or ## heading is counted (### and
+# deeper headings stay inside the section, and each table under them is read the
+# same way): a row after a blank or text line, a | line that belongs to no table,
+# a row with the wrong cell count (a | in a cell), a bad SEC ID or severity, a
+# missing section or header is a gap, so nothing is dropped silently. Returns 1,
+# printing nothing, when the file doesn't exist.
+security_rows() { # plan|own|findings
+  local dir file h hdr
+  dir=$(phase_dir) || return 1
+  case "${1:-}" in
+    plan)     file="$dir/dev-plan.md"; h="Attack plan"; hdr="SEC ID|Surface|Attack|Must happen|Checked" ;;
+    own)      file="$dir/security.md"; h="Own attacks"; hdr="SEC ID|Surface|Attack|Must happen" ;;
+    findings) file="$dir/security.md"; h="Findings"; hdr="#|Severity|Finding|Status|Evidence" ;;
+    *) return 1 ;;
+  esac
+  [[ -f "$file" ]] || return 1
+  awk -v h="$h" -v hdr="$hdr" -v kind="$1" -v file="${file##*/}" '
+    function trim(x) { gsub(/^[ \t]+|[ \t]+$/, "", x); return x }
+    function gap(m) { printf "gap%s%s\n", US, m }
+    function ishdr(l,    k, m, c2, ok) {
+      m = split(l, c2, "|")
+      ok = (m - 2 == ncol && c2[1] == "" && c2[m] == "")
+      for (k = 1; ok && k <= ncol; k++) if (trim(c2[k + 1]) != want[k]) ok = 0
+      return ok
+    }
+    # A blank or text line, or a ### heading, ends the table being read.
+    function endtable() {
+      if (state == 1) gap(file " line " NR ": the table under ## " h " has a header but no separator row")
+      if (state == 1 || state == 2 || state == 9) state = 3
+    }
+    BEGIN { US = "\037"; ncol = split(hdr, want, "|"); state = 0 }
+    { sub(/\r$/, "") }
+    /^#+([ \t]|$)/ {
+      match($0, /^#+/)
+      if (RLENGTH >= 3) { if (insec) { endtable(); if (state == 3) state = 0 } next }   # ### and deeper stay in the section
+      insec = (trim($0) == "## " h); if (insec) found = 1; next
+    }
+    !insec { next }
+    trim($0) !~ /^\|/ { endtable(); next }
+    {
+      line = trim($0); anytable = 1
+      if (state == 3) {
+        if (ishdr(line)) { state = 1; next }     # another table, with the same exact header
+        gap(file " line " NR ": a table row after a blank or text line; the table under ## " h " is split"); next
+      }
+      if (state == 9) next
+      if (state == 1) {
+        if (line ~ /^\|[ :|-]+$/) { state = 2; next }
+        gap(file " line " NR ": no separator row under the header of ## " h); state = 9; next
+      }
+      n = split(line, c, "|"); cells = n - 2
+      if (state == 0) {
+        if (ishdr(line)) { state = 1; next }
+        gap(file " line " NR ": the table under ## " h " must have the header | " hdr " |"); state = 9; next
+      }
+      if (c[1] != "" || c[n] != "") { gap(file " line " NR ": a table row must start and end with |"); next }
+      if (cells != ncol) { gap(file " line " NR ": " cells " cells, expected " ncol " (a | inside a cell?)"); next }
+      for (i = 2; i < n; i++) { c[i] = trim(c[i]); gsub(/\t/, " ", c[i]) }
+      if (kind != "findings" && c[2] !~ /^SEC-[0-9]+-[0-9]+$/) { gap(file " line " NR ": \"" c[2] "\" is not a SEC ID (SEC-<nn>-<nnn>)"); next }
+      if (kind == "findings" && tolower(c[3]) !~ /^(critical|high|medium|low)$/) { gap(file " line " NR ": severity \"" c[3] "\" is not critical, high, medium or low"); next }
+      if (kind == "findings") { c[3] = tolower(c[3]); c[5] = tolower(c[5]) }   # severity and status read in any case
+      out = "row"
+      for (i = 2; i < n; i++) out = out US c[i]
+      print out
+    }
+    END {
+      if (!found) gap(file " has no \"## " h "\" section")
+      else if (!anytable) gap(file ": ## " h " has no table with the header | " hdr " |")
+      else if (state == 1) gap(file ": the last table under ## " h " has a header but no separator row")
+    }' "$file"
+}
+
+# The "Independent pass:" value in security.md, e.g. "not started" or "complete (round 2)".
+security_independent_state() {
+  local f
+  f=$(security_file) && [[ -f "$f" ]] || return 0
+  awk 'tolower(substr($0, 1, 17)) == "independent pass:" { sub(/\r$/, ""); sub(/^[^:]*:[ \t]*/, ""); sub(/[ \t]+$/, ""); print; exit }' "$f"
+}
+
+# A string with whitespace squeezed and trimmed, and lower-cased when the second
+# argument is 1, for comparing what the user accepted with what a row says.
+security_squeeze() { # string [fold]
+  local s
+  s=$(printf '%s' "$1" | tr -s '[:space:]' ' ' | sed -e 's/^ //' -e 's/ $//')
+  [[ "${2:-}" == 1 ]] && s=$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')
+  printf '%s' "$s"
+}
+
+# True when security.md holds a filled-in "Risk accepted: <subject> - <reason>
+# (approved by <name>)" whose text starts with the subject (whitespace squeezed;
+# case too when fold is 1), then a dash or colon. A longer subject, or a row edited
+# since, is not covered. The subject is the row's own text and may hold <id> or a
+# path with a <; only what follows it (the reason and the approval) must be free of
+# <placeholders>.
+security_accepted() { # subject fold
+  local f line body want re='^([[:space:]]+(-|—)|[[:space:]]*:)[[:space:]]*[^[:space:]]'
+  f=$(security_file) && [[ -f "$f" ]] || return 1
+  want=$(security_squeeze "$1" "$2")
+  while IFS= read -r line; do
+    body=$(security_squeeze "${line#*:}" "$2")
+    [[ "$body" == "$want"* ]] || continue
+    body="${body#"$want"}"
+    grep -q '<[^>]*>' <<<"$body" && continue
+    [[ "$body" =~ $re ]] && return 0
+  done < <(approved_line '^Risk accepted:[[:space:]]*' keep < "$f")
+  return 1
+}
+
+# The commit the feature branched from: the merge base of HEAD with
+# $PLUMBLINE_BASE_REF when set (and only that), else with the target of
+# origin/HEAD, else main, else master. Returns 1 when there is none.
+secrets_base() {
+  local ref t
+  if [[ -n "${PLUMBLINE_BASE_REF:-}" ]]; then
+    git -C "$PROJECT_DIR" merge-base HEAD "$PLUMBLINE_BASE_REF" 2>/dev/null
+    return
+  fi
+  t=$(git -C "$PROJECT_DIR" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)
+  for ref in "$t" main master; do
+    [[ -n "$ref" ]] && git -C "$PROJECT_DIR" merge-base HEAD "$ref" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+# Secret-looking additions on the branch since its base: "<path>:<line>" for each
+# added line holding a private-key block, an AWS key ID, a Stripe live secret key,
+# a GitHub token or a Slack bot token, and "<path>:1" for each added .env file
+# other than .env.example, .env.sample and .env.template. Narrow on purpose:
+# removed lines, publishable keys and the word "password" never hit. Returns 2,
+# printing nothing, when there is no base to compare with.
+secrets_scan() {
+  local base re
+  base=$(secrets_base) || return 2
+  re='-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|sk_live_[0-9A-Za-z]{10,}|ghp_[0-9A-Za-z]{30,}|xoxb-[0-9A-Za-z-]{10,}'
+  {
+    git -C "$PROJECT_DIR" -c core.quotepath=false diff --no-color --no-ext-diff -U0 "$base" HEAD 2>/dev/null | tr -d '\r' | awk '
+      /^diff --git / { inh = 0; next }
+      !inh && /^\+\+\+ / { f = substr($0, 5); if (f == "/dev/null") f = ""; else { sub(/^b\//, "", f); sub(/\t.*$/, "", f) }; next }
+      /^@@/ { match($0, /\+[0-9]+/); ln = substr($0, RSTART + 1, RLENGTH - 1) + 0; inh = 1; next }
+      inh && /^\+/ { if (f != "") printf "%s\t%d\t%s\n", f, ln, substr($0, 2); ln++ }' \
+      | grep -E -e "$re" | cut -f1,2 | tr '\t' ':'
+    git -C "$PROJECT_DIR" -c core.quotepath=false diff --name-only --diff-filter=ACR "$base" HEAD 2>/dev/null | tr -d '\r' \
+      | awk '{ n = $0; sub(/^.*\//, "", n); n = tolower(n)
+          if (n == ".env.example" || n == ".env.sample" || n == ".env.template") next
+          if (n == ".env" || substr(n, 1, 5) == ".env.") print $0 ":1" }'
+  } | awk '!seen[$0]++'
+  return 0
+}
+
+# Runs one surface's attack tests through ac-check.sh (typecheck and lint skipped)
+# and prints a gap for each ID that doesn't print "<ID>: pass", or one gap for the
+# surface when the run couldn't start. With SECURITY_RESULTS_FILE set, each ID's
+# result is also appended to it as "<ID>, <surface>, <result>[, <note>]" (unit
+# separator); a note is something the report says that isn't a gap. Two cases:
+#   - the generic adapter prints no per-ID lines, only a "generic:" warning, and
+#     ac-check exits 0 when its command does: every ID of that run passes by exit
+#     status (a non-zero exit with no ID lines stays a gap);
+#   - the third argument lists the attacker's own attacks, one "<ID>" or
+#     "<ID><US><finding>" per line. The attacker writes each so it fails while the
+#     hole is open, so a failing one that a finding covers (<finding>) is a note,
+#     and one nothing covers is a gap that says to record a finding or fix it.
+security_run() { # surface "<ID>|<ID>" ["<own attack lines>"]
+  local s="$1" ids="$2" owns="${3:-}" out rc id line re ctx args seen=0 US=$'\037' label own cover nt hint
+  label="${s:-the default surface}"
+  if [[ -n "$s" ]]; then
+    profile_surface "$s" >/dev/null; rc=$?
+    if (( rc == 1 )); then
+      echo "surface \"$s\" (for ${ids//|/ }) isn't in docs/product/project.md's Surfaces table; the profile lists: $(surface_list)"
+      return 0
+    fi
+  fi
+  if [[ ! -f "$PLUMBLINE_SCRIPTS/ac-check.sh" ]]; then
+    echo "attack tests for ${ids//|/ } could not run: ac-check.sh is missing from $PLUMBLINE_SCRIPTS"
+    return 0
+  fi
+  args=("$ids"); [[ -n "$s" ]] && args+=(--surface "$s")
+  out=$(cd "$PROJECT_DIR" && PLUMBLINE_TYPECHECK= PLUMBLINE_LINT= CLAUDE_PROJECT_DIR="$PROJECT_DIR" \
+    bash "$PLUMBLINE_SCRIPTS/ac-check.sh" "${args[@]}" 2>&1); rc=$?
+  out=$(tr -d '\r' <<<"$out")
+  # Why a run gave nothing: ac-check's own first line when it failed, else the last line.
+  if (( rc != 0 )); then
+    ctx=$(grep -m1 '^ac-check:' <<<"$out")
+    [[ -n "$ctx" ]] || ctx=$(grep . <<<"$out" | tail -n 1)
+  fi
+  for id in ${ids//|/ }; do grep -qE "^$id: " <<<"$out" && seen=1; done
+  if (( ! seen )); then
+    if (( rc == 0 )) && grep -q '^generic: ' <<<"$out"; then
+      for id in ${ids//|/ }; do
+        [[ -n "${SECURITY_RESULTS_FILE:-}" ]] && printf '%s%s%s%s%s%s%s\n' "$id" "$US" "$s" "$US" "pass (exit status)" "$US" "$id: generic runner: passed by exit status" >> "$SECURITY_RESULTS_FILE"
+      done
+      return 0
+    fi
+    for id in ${ids//|/ }; do
+      [[ -n "${SECURITY_RESULTS_FILE:-}" ]] && printf '%s%s%s%sno result\n' "$id" "$US" "$s" "$US" >> "$SECURITY_RESULTS_FILE"
+    done
+    echo "attack tests for ${ids//|/ } on $label gave no results (ac-check exit $rc): ${ctx:-no output}"
+    return 0
+  fi
+  for id in ${ids//|/ }; do
+    line=$(grep -m1 -E "^$id: " <<<"$out")
+    own=$(awk -F"$US" -v id="$id" '$1 == id { print 1; exit }' <<<"$owns")
+    cover=$(awk -F"$US" -v id="$id" '$1 == id { print $2; exit }' <<<"$owns")
+    re="^$id: fail"
+    nt=""; [[ -n "$own" && -n "$cover" && "$line" =~ $re ]] && nt="$id fails: $cover"
+    [[ -n "${SECURITY_RESULTS_FILE:-}" ]] && printf '%s%s%s%s%s%s\n' "$id" "$US" "$s" "$US" "${line:+${line#"$id: "}}" "${nt:+$US$nt}" >> "$SECURITY_RESULTS_FILE"
+    re="^$id: pass( |\(|\$)"
+    [[ "$line" =~ $re ]] && continue
+    [[ -n "$nt" ]] && continue
+    if [[ -n "$line" ]]; then
+      hint=""; re="^$id: fail"
+      [[ -n "$own" && "$line" =~ $re ]] && hint=" (own attack: record a finding in security.md that names $id, or fix it)"
+      echo "attack test did not pass on $label: $line$hint"
+    else
+      echo "attack test $id gave no result on $label (ac-check exit $rc)${ctx:+: $ctx}"
+    fi
+  done
+}
+
+# Every security gap of the active feature, one per line; nothing when the recorded
+# level is none (the v0.4b path: no new check, no test run). The rules are dev plan
+# v0.5 §6.4.4. It reads documents and git, and runs the attack tests through
+# security_run unless --no-run. security-check.sh and signoff-check.sh both call it.
+security_gaps() { # [--no-run]
+  local run=1 dir sec plan lvl req kt pt kr pr US=$'\037' pairs="" nplan=0 gapped=0 profile=""
+  local kind a b c d e id surf chk desc n sev txt st hit hits rc s ids bad planids="" ownids="" excuses="" ownmap="" note named
+  [[ "${1:-}" == --no-run ]] && run=0
+  dir=$(phase_dir) || return 0
+  kt=$(security_key_token); pt=$(security_plan_token); bad=$(security_plan_bad_line)
+  case "$kt" in "") kr=0 ;; none) kr=0 ;; attacks) kr=1 ;; independent) kr=2 ;; *) kr=-1 ;; esac
+  case "$pt" in "") pr=0 ;; none) pr=0 ;; attacks) pr=1 ;; independent) pr=2 ;; "(unreadable)") pr=0 ;; *) pr=-1 ;; esac
+  # The recorded level, as security_level works it out from the same two tokens.
+  lvl=none
+  (( kr < 0 || pr < 0 )) && lvl=attacks
+  (( kr == 1 || pr == 1 )) && lvl=attacks
+  (( kr == 2 || pr == 2 )) && lvl=independent
+  [[ -n "$bad" && "$lvl" == none ]] && lvl=attacks   # a declaration we can't read counts as attacks
+  [[ "$lvl" == none ]] && return 0
+  sec="$dir/security.md"; plan="$dir/dev-plan.md"
+  [[ -f "$PROJECT_DIR/docs/product/project.md" ]] && profile=1
+
+  (( kr < 0 )) && echo "unknown security level \"$kt\" in .plumbline security= (use none, attacks or independent)"
+  (( pr < 0 )) && echo "unknown security level \"$pt\" on the Security level: line in dev-plan.md (use none, attacks or independent)"
+  [[ -n "$bad" ]] && echo "Security level line in dev-plan.md can't be read: $(security_squeeze "$bad"); write \`Security level: <attacks|independent>\` on its own line"
+  (( pr > kr && kr >= 0 )) && echo "raise not recorded: dev-plan.md says Security level: $pt but .plumbline says ${kt:-nothing}; run kickoff.sh --set-security $pt"
+  [[ -f "$sec" ]] || echo "security.md is missing; run kickoff.sh --set-security $lvl to create it"
+
+  req=$(security_required "$lvl")
+
+  # The lead's attack plan: its rows, the reviewer's verdict, and what to run.
+  if [[ " $req " == *" attacks "* ]]; then
+    if [[ ! -f "$plan" ]]; then
+      echo "dev-plan.md is missing, so there is no attack plan"
+    else
+      while IFS=$US read -r kind a b c d e; do
+        if [[ "$kind" == gap ]]; then echo "$a"; gapped=1; continue; fi
+        nplan=$((nplan + 1)); id="$a"; surf="$b"; chk="$e"; planids="$planids $id "
+        desc=empty; [[ -n "$chk" ]] && desc="\"$chk\""
+        case "$chk" in
+          [Mm][Aa][Tt][Cc][Hh][Ee][Ss]*) ;;
+          *) echo "attack $id: Checked is $desc, not matches (dev-plan.md ## Attack plan)" ;;
+        esac
+        if [[ -n "$profile" && -z "$surf" ]]; then
+          echo "attack $id has no Surface (dev-plan.md ## Attack plan)"
+        else
+          pairs="$pairs${profile:+$surf}$US$id"$'\n'
+        fi
+      done < <(security_rows plan)
+      (( nplan == 0 && gapped == 0 )) && echo "the attack plan has no rows (dev-plan.md ## Attack plan)"
+    fi
+  fi
+
+  if [[ -f "$sec" ]]; then
+    # The attacker's own attacks run like the plan's, whenever any part is required.
+    while IFS=$US read -r kind a b c d e; do
+      if [[ "$kind" == gap ]]; then echo "$a"; continue; fi
+      [[ "$req" == none ]] && continue
+      id="$a"; surf="$b"
+      # The plan's IDs are strict: a failing one is always a gap. Only an own attack can be covered.
+      [[ "$planids" == *" $id "* ]] || ownids="$ownids $id "
+      if [[ -n "$profile" && -z "$surf" ]]; then
+        echo "own attack $id has no Surface (security.md ## Own attacks)"
+      else
+        pairs="$pairs${profile:+$surf}$US$id"$'\n'
+      fi
+    done < <(security_rows own)
+
+    # A critical or high finding stays open until it is verified or the user accepts it.
+    # Each own attack is written to fail while its hole is open, so a failing one is not
+    # a gap when a finding naming it (in its Finding or Evidence cell) covers it: a
+    # medium or low finding, or a critical or high one the user accepted. A verified
+    # finding covers nothing (the fix is claimed, so the test must pass). An open
+    # critical or high finding is a gap of its own; the failing test is only noted.
+    while IFS=$US read -r kind a b c d e; do
+      if [[ "$kind" == gap ]]; then echo "$a"; continue; fi
+      n="${a#\#}"; sev="$b"; txt="$c"; st="$d"   # security_rows lowercases severity and status
+      note=""
+      if [[ "$sev" == critical || "$sev" == high ]]; then
+        if [[ "$st" == verified ]]; then :
+        elif security_accepted "#$n $sev $txt" 1; then note="finding #$n (accepted)"
+        else
+          note="finding #$n ($sev, open; its own gap)"
+          echo "open $sev finding #$n: $txt (security.md); have it fixed and verified, or ask the user to accept the risk"
+        fi
+      elif [[ "$st" != verified ]]; then
+        note="finding #$n ($sev)"
+      fi
+      [[ -n "$note" ]] || continue
+      for named in $(grep -oE 'SEC-[0-9]+-[0-9]+' <<<"$txt $e" | sort -u); do
+        [[ "$ownids" == *" $named "* && "$excuses" != *"$named$US"* ]] && excuses="$excuses$named$US$note"$'\n'
+      done
+    done < <(security_rows findings)
+    for named in $ownids; do ownmap="$ownmap$named$US$(awk -F"$US" -v id="$named" '$1 == id { print $2; exit }' <<<"$excuses")"$'\n'; done
+
+    if [[ " $req " == *" independent "* ]]; then
+      st=$(security_independent_state)
+      [[ "$st" =~ ^[Cc]omplete[[:space:]]*\(round[[:space:]]+[0-9]+\)$ ]] || echo "the independent pass is ${st:-missing}, not complete (security.md Independent pass:)"
+    fi
+  fi
+
+  # Committed secrets, unless the user accepted that path.
+  hits=$(secrets_scan); rc=$?
+  if (( rc == 2 )); then
+    echo "secrets scan could not run: no base branch to compare with (PLUMBLINE_BASE_REF, origin/HEAD, main or master)"
+  else
+    while IFS= read -r hit; do
+      [[ -n "$hit" ]] || continue
+      security_accepted "secret ${hit%:*}" 0 && continue
+      echo "secret-looking $hit; remove it, or ask the user to accept it with a Risk accepted: secret ${hit%:*} line"
+    done <<<"$hits"
+  fi
+
+  # The attack tests, per surface.
+  if (( run )) && [[ -n "$pairs" ]]; then
+    while IFS= read -r s; do
+      ids=$(awk -F"$US" -v s="$s" '$2 != "" && $1 == s { print $2 }' <<<"$pairs" | sort -u | paste -sd'|' -)
+      [[ -n "$ids" ]] && security_run "$s" "$ids" "$ownmap"
+    done < <(awk -F"$US" 'NF > 1 { print $1 }' <<<"$pairs" | sort -u)
+  fi
+  return 0
+}
+
 debug_log() {
   [[ -n "${PLUMBLINE_HOOK_DEBUG:-}" ]] && echo "$1" >> "${TMPDIR:-/tmp}/plumbline-hooks.jsonl"
   return 0

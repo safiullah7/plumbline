@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# TaskCompleted: a teammate's task is done only when it names its AC IDs and
-# typecheck, lint and those AC-tagged tests pass. A [chore] task has no AC tests,
+# TaskCompleted: a teammate's task is done only when it names its AC IDs (SEC IDs
+# count too) and typecheck, lint and those tests pass. A [chore] task has no AC tests,
 # so it needs typecheck and lint only. Exit 2 = refuse + feedback.
 source "$(dirname "${0//\\//}")/lib.sh"
 input=$(cat); debug_log "$input"
@@ -20,7 +20,7 @@ who=$(jqr '.teammate_name // empty' <<<"$input")
 # the profile lists several, except for a [chore], which then runs every
 # surface's typecheck and lint.
 subject=$(jqr '.task_subject // empty' <<<"$input")
-ids=$(grep -oE 'AC-[0-9]+-[0-9]+' <<<"$subject" | sort -u | paste -sd'|' -)
+ids=$(grep -oE '(AC|SEC)-[0-9]+-[0-9]+' <<<"$subject" | sort -u | paste -sd'|' -)
 chore=""
 shopt -s nocasematch
 [[ -z "$ids" && "$subject" =~ ^[[:space:]]*\[chore\] ]] && chore=1

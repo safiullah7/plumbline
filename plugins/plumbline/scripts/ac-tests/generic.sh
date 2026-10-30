@@ -6,6 +6,7 @@
 # "## Generic commands" section of docs/product/project.md. Before it runs:
 #   {ids_regex}       -> AC[-_]01[-_]001|AC[-_]01[-_]002
 #   {ids_underscored} -> AC_01_001 AC_01_002
+# A SEC ID keeps its own prefix (SEC[-_]01[-_]001, SEC_01_001).
 # The block runs with bash -c in the repo root (or --dir, relative to it), so
 # quote a placeholder that holds | or brackets: go test ./... -run '{ids_regex}'.
 # Its output passes through unchanged.
@@ -29,21 +30,23 @@ while (( $# )); do
   esac
 done
 [[ -n "$surface" ]] || usage
-# IDs split on |, commas or spaces; AC_01_001 and lowercase forms are accepted.
+# IDs split on |, commas or spaces; AC_01_001 and lowercase forms are accepted,
+# and SEC IDs the same way.
 ids=""
 set -f   # no globbing of the split tokens
 for tok in $(printf '%s\n' "$raw" | tr -d '\r' | tr '|,' '  '); do
-  [[ "$tok" =~ ^[Aa][Cc][-_]([0-9]+)[-_]([0-9]+)$ ]] || usage
-  id="AC-${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+  [[ "$tok" =~ ^([Aa][Cc]|[Ss][Ee][Cc])[-_]([0-9]+)[-_]([0-9]+)$ ]] || usage
+  pre=$(printf %s "${BASH_REMATCH[1]}" | tr a-z A-Z)
+  id="$pre-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
   case " $ids " in *" $id "*) ;; *) ids="${ids:+$ids }$id" ;; esac
 done
 set +f
 [[ -n "$ids" ]] || usage
 ids_regex="" ids_underscored=""
 for id in $ids; do
-  IFS=- read -r _ a b <<<"$id"
-  ids_regex="${ids_regex:+$ids_regex|}AC[-_]$a[-_]$b"
-  ids_underscored="${ids_underscored:+$ids_underscored }AC_${a}_$b"
+  IFS=- read -r p a b <<<"$id"
+  ids_regex="${ids_regex:+$ids_regex|}$p[-_]$a[-_]$b"
+  ids_underscored="${ids_underscored:+$ids_underscored }${p}_${a}_$b"
 done
 
 run_dir="$PROJECT_DIR"

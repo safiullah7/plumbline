@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The part every dedicated adapter (node, pytest, go) shares, sourced after the
-# adapter has set NAME and usage(): argument parsing, AC ID normalisation, the
+# adapter has set NAME and usage(): argument parsing, AC/SEC ID normalisation, the
 # run folder, the log files and the per-ID report. It sets dir, ids, re, run_dir,
 # LOG and OUT, changes into run_dir, and defines report and finish. generic.sh
 # has its own arguments and doesn't use it.
@@ -17,21 +17,25 @@ while (( $# )); do
   esac
 done
 # IDs split on |, commas or spaces; AC_01_001 and lowercase forms are accepted and
-# reported as AC-01-001. Anything else is a usage error.
+# reported as AC-01-001. SEC IDs (SEC-01-001) work the same. Anything else is a
+# usage error.
 ids=""
 set -f   # no globbing of the split tokens
 for tok in $(printf '%s\n' "$raw" | tr -d '\r' | tr '|,' '  '); do
-  [[ "$tok" =~ ^[Aa][Cc][-_]([0-9]+)[-_]([0-9]+)$ ]] || usage
-  id="AC-${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+  [[ "$tok" =~ ^([Aa][Cc]|[Ss][Ee][Cc])[-_]([0-9]+)[-_]([0-9]+)$ ]] || usage
+  pre=$(printf %s "${BASH_REMATCH[1]}" | tr a-z A-Z)
+  id="$pre-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
   case " $ids " in *" $id "*) ;; *) ids="${ids:+$ids }$id" ;; esac
 done
 set +f
 [[ -n "$ids" ]] || usage
-# The runner's filter: AC-01-001 -> [Aa][Cc][-_]01[-_]001, joined by |.
+# The runner's filter: AC-01-001 -> [Aa][Cc][-_]01[-_]001, SEC-01-001 ->
+# [Ss][Ee][Cc][-_]01[-_]001, joined by |.
 re=""
 for id in $ids; do
-  IFS=- read -r _ a b <<<"$id"
-  re="${re:+$re|}[Aa][Cc][-_]$a[-_]$b"
+  IFS=- read -r p a b <<<"$id"
+  case "$p" in AC) p="[Aa][Cc]" ;; *) p="[Ss][Ee][Cc]" ;; esac
+  re="${re:+$re|}$p[-_]$a[-_]$b"
 done
 
 # --dir is relative to the repo root (an absolute path is taken as is).

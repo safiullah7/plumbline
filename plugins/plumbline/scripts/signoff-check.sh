@@ -8,6 +8,10 @@
 # surface: web-ui and desktop-ui journeys, mobile-ui flow-tests, api transcripts,
 # service job-tests, cli golden-output, library doc-examples, data sample-run, ai
 # eval-set, infra plan-output. Features without surfaces= have no evidence rule.
+# A feature whose security level (.plumbline security= or the dev plan's Security
+# level: line) is attacks or independent also gets the rules of security_gaps in
+# lib.sh: it runs the attack tests and scans the branch for secrets. At none (or
+# with no level) nothing is added and nothing is run.
 # Exits 1 and lists each gap, or exits 0 when there are none.
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "Signoff check: no active phase (.claude/current-phase is missing)."; exit 1; }
@@ -36,12 +40,13 @@ while IFS= read -r b; do [[ -n "$b" ]] && gaps+=("open bug $b (qa-report.md)"); 
 ere_quote() { sed 's/[][\.*^$+?(){}|]/\\&/g' <<<"$1"; }
 # "Evidence waived: <kind> (<surface>) - <reason> (approved by <name>)", the dash
 # also "—" or ":". A waiver line counts only when it's filled in: no <placeholder>
-# left and an "(approved by <name>)" ending, so the template's example waives nothing.
+# left and an "(approved by <name>)" ending, so the template's example waives nothing
+# (approved_line in lib.sh, shared with the security waivers).
 evidence_waived() { # kind surface
   local k s
   k=$(ere_quote "$1"); s=$(ere_quote "$2")
-  { tr -d '\r' < "$dir/qa-report.md"; } 2>/dev/null | grep -v '<[^>]*>' \
-    | grep -qiE "^Evidence waived:[[:space:]]*$k[[:space:]]*\\($s\\)[[:space:]]*(-|—|:)[[:space:]]*[^[:space:]].*\\(approved by [^)]*[^) ][^)]*\\)[[:space:]]*\$"
+  { tr -d '\r' < "$dir/qa-report.md"; } 2>/dev/null \
+    | approved_line "^Evidence waived:[[:space:]]*$k[[:space:]]*\\($s\\)[[:space:]]*(-|—|:)[[:space:]]*" | grep -q .
 }
 
 # Features with surfaces= in .plumbline (v0.4b) are checked by surface; legacy
@@ -105,6 +110,12 @@ while IFS= read -r f; do [[ -n "$f" ]] && gaps+=("$f (questions.md)"); done < <(
 while IFS= read -r line; do
   [[ -n "$line" ]] && gaps+=("unticked sign-off box: $(sed -E 's/^[[:space:]]*- \[ \][[:space:]]*//' <<<"$line") (signoff.md)")
 done < <({ tr -d '\r' < "$dir/signoff.md"; } 2>/dev/null | grep -E '^[[:space:]]*- \[ \]' | grep -viE '(phase|feature) pr|merged|^[[:space:]]*- \[ \][[:space:]]*Design verification')
+
+# Security (v0.5): only a feature whose recorded level isn't none has more to check;
+# security_gaps runs its attack tests and scans the branch for secrets (lib.sh).
+if [[ "$(security_level)" != none ]]; then
+  while IFS= read -r g; do [[ -n "$g" ]] && gaps+=("$g"); done < <(security_gaps)
+fi
 
 if (( ${#gaps[@]} == 0 )); then
   echo "Signoff check: no gaps in $rel."

@@ -176,6 +176,31 @@ checks true true 'f(){ [ "$1" = "AC-01-001" ]; }; f'
 out=$(ac "AC-01-002|AC-01-001" 2>&1); rc=$?
 eq "ac-check: missing tests exit 1" "$rc" 1
 assert "ac-check: names the IDs whose tests failed" has "$out" "ac-check: tests for AC-01-001|AC-01-002 failed"
+checks true true 'f(){ [ "$1" = "SEC-03-001" ]; }; f'
+out=$(ac SEC-03-001 2>&1); rc=$?
+eq "ac-check: a SEC-only call runs the tests" "$rc" 0
+checks true true 'f(){ [ "$1" = "AC-03-001|SEC-03-001" ]; }; f'
+out=$(ac "[AC-03-001 SEC-03-001] x" 2>&1); rc=$?
+eq "ac-check: AC and SEC IDs in text reach the test command as one list" "$rc" 0
+checks true true 'f(){ [ "$1" = "SEC-261028-01" ]; }; f'
+out=$(ac SEC-261028-01 2>&1); rc=$?
+eq "ac-check: a Quick SEC ID" "$rc" 0
+checks true true 'f(){ [ "$1" = "SEC-03-001" ]; }; f'
+out=$(ac "SEC-03-002|SEC-03-001" 2>&1); rc=$?
+eq "ac-check: failing SEC tests exit 1" "$rc" 1
+assert "ac-check: ...naming the SEC IDs" has "$out" "ac-check: tests for SEC-03-001|SEC-03-002 failed"
+checks true true 'f(){ echo "SEC-05-001: fail"; for i in $(seq 1 40); do echo "runner $i"; done; false; }; f'
+out=$(ac SEC-05-001 2>&1); rc=$?
+assert "ac-check: a long failing log still shows the per-ID line" test "$rc" = 1 -a -n "$(grep -x 'SEC-05-001: fail' <<<"$out")"
+checks true true 'f(){ echo "AC-05-001: fail"; echo "short log"; false; }; f'
+out=$(ac AC-05-001 2>&1)
+eq "ac-check: ...and a short one shows it once" "$(grep -c '^AC-05-001: fail$' <<<"$out")" 1
+checks true true 'f(){ echo noise; echo "SEC-04-001: pass (2)"; printf "AC-04-001: pass (1)\r\n"; echo "  SEC-04-002: indented"; }; f'
+out=$(ac "AC-04-001|SEC-04-001" 2>/dev/null)
+eq "ac-check: a pass shows AC and SEC per-ID lines, pass line last" "$(sed 's/ (.*//' <<<"$out" | paste -sd';' -)" \
+  "SEC-04-001: pass;AC-04-001: pass;ac-check: pass"
+ac "SEC-03" >/dev/null 2>&1; rc=$?
+eq "ac-check: a SEC prefix with one number is a usage error" "$rc" 2
 for a in "" "--bogus AC-01-001" "no ids here" "AC-01-001 --surface"; do
   ac $a >/dev/null 2>&1; rc=$?
   eq "ac-check: usage exit 2 for '${a}'" "$rc" 2

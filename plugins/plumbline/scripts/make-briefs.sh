@@ -3,10 +3,11 @@
 # Ownership row, its surface (the Team table's Surface column, when there is one)
 # with that surface's checks from docs/product/project.md, its tasks (each task's
 # whole block: the files, the failing test, the e2e test, the change, the
-# done-when), only the AC rows those tasks cite, the screens for those use cases
-# with each screen's description from ux.md, and the contracts it consumes,
-# ending with links to the full docs. Engineers read their brief first instead of every phase doc, which is
-# most of a build's reading. The lead runs this when it marks the plan READY and
+# done-when), only the AC rows those tasks cite, the attack plan's fixtures line
+# and the rows for the SEC IDs those tasks cite (when there are any), the screens
+# for those use cases with each screen's description from ux.md, and the contracts
+# it consumes, ending with links to the full docs. Engineers read their brief first
+# instead of every phase doc, which is most of a build's reading. The lead runs this when it marks the plan READY and
 # again whenever the plan changes. Prints each brief's path.
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "make-briefs: no active phase (.claude/current-phase is missing)." >&2; exit 1; }
@@ -15,10 +16,11 @@ plan="$dir/dev-plan.md" acs_md="$dir/acceptance-criteria.md" ux="$dir/ux.md"
 rel=$(phase_rel)
 mkdir -p "$dir/briefs"
 
-# Raw Markdown table lines (header, separator, rows) under "## <heading>".
-section_table() { # file heading
+# Raw Markdown table lines (header, separator, rows) under "## <heading>"; with a
+# third argument, ### and deeper headings stay inside the section (as in security_rows).
+section_table() { # file heading [deep]
   [[ -f "$1" ]] || return 0
-  awk -v h="$2" '{ sub(/\r$/, "") } /^#+ / { sec = (index($0, "## " h) == 1); next } sec && /^\|/' "$1"
+  awk -v h="$2" -v deep="${3:-}" '{ sub(/\r$/, "") } /^#+ / { if (deep == "" || $0 !~ /^###/) sec = (index($0, "## " h) == 1); next } sec && /^\|/' "$1"
 }
 # Keep a table's header and separator, plus the rows matching an ERE.
 filter_rows() { # ERE
@@ -39,6 +41,13 @@ while IFS=$'\t' read -r name _; do
   ac_rows=""
   if [[ -n "$acs" && -f "$acs_md" ]]; then
     ac_rows=$(tr -d '\r' < "$acs_md" | grep -E '^\|' | filter_rows "^[|][[:space:]]*($(alt <<<"$acs"))[[:space:]]*[|]")
+  fi
+  secs=$(grep -oE 'SEC-[0-9]+-[0-9]+' <<<"$tasks" | sort -u)
+  attacks=""
+  if [[ -n "$secs" ]]; then
+    fixtures=$(awk '{ sub(/\r$/, "") } /^#+ / { if ($0 !~ /^###/) sec = (index($0, "## Attack plan") == 1); next } sec && /^Attack fixtures:/' "$plan")
+    rows=$(section_table "$plan" "Attack plan" deep | filter_rows "^[|][[:space:]]*($(alt <<<"$secs"))[[:space:]]*[|]")
+    attacks=$(printf '%s\n%s' "$fixtures" "$rows" | sed '/^$/d')
   fi
   ucs=$(grep -oE 'UC-[0-9]+-[0-9]+' <<<"$ac_rows" | sort -u)
   screens=$(section_table "$ux" "Screen inventory")
@@ -72,8 +81,9 @@ while IFS=$'\t' read -r name _; do
     checks="Typecheck: $(cell 5)
 Lint: $(cell 6)
 AC tests: $(cell 7)"
-    [[ -n "$acs" ]] && checks="$checks
-Before you report a task done: bash \"<scripts>/ac-check.sh\" \"$(alt <<<"$acs")\" --surface $surface
+    # The command names the engineer's SEC IDs too, so its attack tests run with its AC tests.
+    [[ -n "$acs$secs" ]] && checks="$checks
+Before you report a task done: bash \"<scripts>/ac-check.sh\" \"$(printf '%s\n%s\n' "$acs" "$secs" | sed '/^$/d' | alt)\" --surface $surface
 (<scripts> is the \"Plumbline scripts\" folder in your context; briefs are committed, so they name no machine path.)"
   fi
 
@@ -97,6 +107,7 @@ Before you report a task done: bash \"<scripts>/ac-check.sh\" \"$(alt <<<"$acs")
     echo
     echo "## Acceptance criteria for your tasks"
     echo "${ac_rows:-(none cited)}"
+    if [[ -n "$attacks" ]]; then echo; echo "## Attacks to withstand"; echo "$attacks"; fi
     if [[ -n "$rules" ]]; then echo; echo "## Business rules (spec.md)"; echo "$rules"; fi
     if [[ -n "$perms" ]]; then echo; echo "## Data and permissions (spec.md)"; echo "$perms"; fi
     if [[ -n "$screens" ]]; then echo; echo "## Screens"; echo "$screens"; fi

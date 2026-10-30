@@ -157,10 +157,17 @@ grep -rn "AC-[0-9]*-[0-9]*" test/
 Also list every agent dispatched during this part (name and type), and
 quote the triage block and the ac-check line (ac-check: pass ...) as printed.
 
+PART 6b - A security-relevant Standard change. When I say "continue Part 6b",
+tell me exactly: "Type: /plumbline:build add GET /orders/:id to the API; orders
+belong to a tenant, and the tenant comes from the session". Answer the build
+skill's questions with its recommended option (approve the plan). When it has
+finished, quote the triage block, the plan-approval summary, the "## Attack plan"
+section of the new dev-plan.md, and the signoff check output.
+
 PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Part 1, state: CLEAN; MATCHES REMOTE; NO INSTALLED COPY; the version matches
   the branch name (branch v0.3 means version 0.3.x; branch v0.4a means 0.4.0-alpha; branch v0.4b
-  means 0.4.0);
+  means 0.4.0; branch v0.5 means 0.5.0);
   show the tree hash
 - Part 1, checks: "Validation passed" for the plugin and for the marketplace;
   every self-test run ends "0 failed" (hooks twice, scripts, lib, kickoff,
@@ -205,6 +212,11 @@ PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Part 6, no folder: docs/product holds no new folder for this change (only demo and
   shop; a project.md file is fine, the profile is written on first use)
 - Part 6, cleanup: .claude/plumbline-quick no longer exists
+- Part 6b, triage: the block shows "Security: attacks" (or "independent"), never "none"
+- Part 6b, plan: dev-plan.md has "## Attack plan" with SEC-ID rows (a cross-tenant
+  read by ID among them), "Attack surface:" and "Attack fixtures:" lines
+- Part 6b, tests: attack tests with SEC IDs in their titles exist and pass, and the
+  signoff check ran them
 Then show how many times each hook fired:
 for e in PreToolUse TaskCreated TaskCompleted TeammateIdle SessionStart SubagentStart; do echo "$e $(grep -c "\"hook_event_name\":\"$e\"" /tmp/plumbline-hooks.jsonl)"; done
 (SessionStart shows 0 here: it fires before Part 2 moves the log aside. Step 0

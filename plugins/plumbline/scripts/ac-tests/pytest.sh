@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# AC test adapter for pytest: runs the tests named after the given AC IDs and
-# reports each ID.
-#   pytest.sh [--dir <path>] [--surface <s>] "AC-01-001|AC-01-002"
-# Runs `python -m pytest -k "ac_01_001 or ac_01_002" -rA -q` in the run folder,
+# AC test adapter for pytest: runs the tests named after the given AC (or SEC)
+# IDs and reports each ID.
+#   pytest.sh [--dir <path>] [--surface <s>] "AC-01-001|AC-01-002|SEC-01-001"
+# Runs `python -m pytest -k "ac_01_001 or sec_01_001" -rA -q` in the run folder,
 # with the first Python that can import pytest: .venv or venv in the run folder,
 # then .venv in the repo root, then python, then python3.
 # Prints one line per ID: "AC-01-001: pass (2)", "AC-01-001: fail" or
@@ -56,8 +56,8 @@ done
 
 kexpr=""
 for id in $ids; do
-  IFS=- read -r _ a b <<<"$id"
-  kexpr="${kexpr:+$kexpr or }ac_${a}_$b"
+  IFS=- read -r p a b <<<"$id"
+  kexpr="${kexpr:+$kexpr or }$(printf %s "$p" | tr A-Z a-z)_${a}_$b"
 done
 
 COLUMNS=200 NO_COLOR=1 "$py" -m pytest -k "$kexpr" -rA -q -p no:cacheprovider 2>&1 \
