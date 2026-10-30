@@ -1,525 +1,337 @@
 <p align="center">
-  <img src="docs/assets/logo.png" width="112" alt="Plumbline logo: a plumb bob hanging from a line">
+  <img src="docs/assets/logo.svg" width="104" alt="Plumbline logo: a plumb line ending in a check mark">
 </p>
 
 <h1 align="center">Plumbline</h1>
 
 <p align="center">
-  <strong>Ship software feature by feature with a Claude Code agent team,<br>
-  and hold every feature against its spec before it merges.</strong>
+  <strong>Your dev team, inside Claude Code.</strong><br>
+  Product, lead, senior engineers, security and QA: an autonomous agent team that turns one
+  request into a reviewed, tested, documented pull request.
 </p>
 
 <p align="center">
-  <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-18213a?style=flat-square">
-  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-e9c46a?style=flat-square">
-  <img alt="Evals 1.00, up from a 0.84 baseline" src="https://img.shields.io/badge/evals-1.00%20(from%200.84)-2a9d8f?style=flat-square">
-  <img alt="1007 self-tests passing" src="https://img.shields.io/badge/self--tests-1007%20passing-2a9d8f?style=flat-square">
-  <img alt="Live team test 11 of 11" src="https://img.shields.io/badge/live%20team%20test-11%2F11-2a9d8f?style=flat-square">
-  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=flat-square">
+  <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-10182B?style=for-the-badge">
+  <img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-34D399?style=for-the-badge">
+  <img alt="1846 self-tests passing" src="https://img.shields.io/badge/self--tests-1%2C846%20passing-34D399?style=for-the-badge">
+  <img alt="Evals: no regressions" src="https://img.shields.io/badge/evals-no%20regressions-34D399?style=for-the-badge">
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=for-the-badge">
 </p>
 
 <p align="center">
-  <a href="#size-the-work">Quick, Standard, Full</a> ·
-  <a href="#works-with">Works with</a> ·
-  <a href="#how-it-works-full">How it works</a> ·
-  <a href="#the-team">The team</a> ·
-  <a href="#quality-gates">Quality gates</a> ·
-  <a href="#proof-not-promises">Proof</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#roadmap">Roadmap</a>
+  <a href="#-quick-start-60-seconds">Quick start</a> ·
+  <a href="#-how-to-use-it">How to use it</a> ·
+  <a href="#-meet-your-team">The team</a> ·
+  <a href="#-how-it-works">How it works</a> ·
+  <a href="#-quality-gates-that-cant-be-talked-past">Quality gates</a> ·
+  <a href="#-security-by-attack-plan">Security</a> ·
+  <a href="#-works-with-your-stack">Your stack</a> ·
+  <a href="#-proof-not-promises">Proof</a>
 </p>
+
+<p align="center">
+  <img src="docs/assets/plumbline-team.gif" width="100%" alt="Animated tour: a user asks their Plumbline team for a patient portal. Product asks clarifying questions, the lead plans at the whiteboard while engineers watch, engineers build test-first, the lead reviews and a security engineer tries to break it, QA files a bug that gets fixed, and a PR arrives for the user to merge.">
+</p>
+<p align="center"><sub>A feature build, start to finish (sped up). <a href="docs/assets/plumbline-team.mp4">Watch the full film (MP4, 100 s)</a>.</sub></p>
 
 ---
 
-> A plumb line is the builder's oldest instrument: a weight on a string that shows true
-> vertical, so nothing gets built crooked. **Plumbline does that for software built by AI
-> agents.** Each feature is specified, planned, built and verified by a small team
-> of specialised Claude agents. Every step is checked against the product docs by scripts,
-> not by the model's say-so.
+## ⚡ Why builders use it
 
-## Why Plumbline
+AI agents write code fast. Left alone they also **guess requirements, skip edge cases,
+overwrite each other's files, delete the failing test and declare victory.** Plumbline
+replaces "trust me" with a process: spec-driven, test-first, and enforced by
+deterministic hooks, not by the model's say-so.
 
-AI agents write code fast. Left alone, they also guess requirements, skip edge cases, edit
-each other's files, delete the failing test, and declare victory. Plumbline replaces trust
-with structure.
-
-| Without a process | With Plumbline |
+| You, without Plumbline | You, with Plumbline |
 | --- | --- |
-| "Done" means the agent says it's done | Done means typecheck, lint and **the tests named after each acceptance criterion** pass, enforced by a hook |
-| Requirements live in a chat message | A spec with priorities, Non-Goals and success metrics, plus acceptance criteria with IDs (`AC-01-004`) |
-| Parallel agents overwrite each other | An **Ownership table**: a teammate can only edit the files it owns |
-| A failing test gets skipped under pressure | Engineers are told never to delete, skip or weaken a test, and an eval checks they don't |
-| Unanswered questions become guesses | The product engineer escalates; signoff refuses to pass with an open escalation |
-| The UI drifts from the spec | Product describes every screen in `ux.md`, engineers build from that text, and QA checks each journey works in the built app |
+| Write a long prompt, hope it understood | Say what you want. **Product asks the questions** that matter, then writes the spec and acceptance criteria |
+| One agent does everything, badly in places | **A team with roles**: product decides *what*, the lead decides *how*, seniors build, QA tests, a reviewer reads the diff |
+| "Done" = the agent says so | Done = **typecheck, lint and the tests named after each criterion pass**, checked by a hook |
+| Parallel agents trample each other | **Least-privilege file ownership**: an engineer can only edit the files it owns |
+| Security is an afterthought | **Red-team by design**: the lead plans the attacks, engineers write them as failing tests first, risky work gets an independent attack round |
+| Context is lost between sessions | **Persistent project memory** and living docs: spec, decisions, change log, a roadmap |
+| You review a mystery diff | You get a **PR with every gate passed** and a paper trail. You merge |
 
-## Size the work
+## 🚀 Quick start (60 seconds)
 
-Most requests don't need ten documents and a team. Start with
-**`/plumbline:build <request>`**. The product engineer reads your docs and code, picks a
-size, and prints its decision before anything is created. This is an **example** of that
-block (the values are illustrative, not measured):
+```bash
+# 1. Install the plugin into your project
+claude plugin marketplace add safiullah7/plumbline
+claude plugin install plumbline@plumbline --scope project
+
+# 2. Start Claude Code (agent teams are only needed for Full-size work)
+CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
+```
+
+```text
+# 3. Ask your team for something
+/plumbline:build add CSV export to the invoices page
+```
+
+That's it. Plumbline sizes the work, asks only what it must, runs the right process and
+ends with a PR. **You stay the decision-maker**: you answer product's questions, approve
+the plan once, and merge.
+
+**Needs:** Claude Code (agent teams for Full-size work) · `jq` · Git Bash on Windows ·
+your project's typecheck, lint and test commands (Plumbline detects them).
+
+## 🧭 How to use it
+
+You talk to Plumbline with one command, **`/plumbline:build <what you want>`**, in plain
+English. The product engineer reads your docs and code, sizes the request and shows you
+its decision before anything is created.
+
+### Three sizes, picked for you
+
+| | ⚡ **Quick** | 🧩 **Standard** | 🏗️ **Full** |
+| --- | --- | --- | --- |
+| **Ask for** | A small change in one place | A feature in an existing module | A new module, auth, billing, migrations, or ~10+ criteria |
+| **Example** | `/plumbline:build make the double-booking check ignore cancelled bookings` | `/plumbline:build add CSV export to the invoices page` | `/plumbline:build patient portal: patients sign in and see their own X-rays, treatment plans and invoices` |
+| **Who works** | 1 engineer + reviewer | Product, lead, 1-2 engineers, QA | The whole team, in parallel |
+| **You do** | Merge the PR | Approve the plan once, merge | Answer the interview, approve the plan, merge |
+| **You get** | A branch, tests named after 1-3 criteria, a review, a PR | A feature folder with spec, criteria, plan and test record, plus the PR | Everything, with an agent team and the full quality pipeline |
+
+### What you'll see
+
+Plumbline prints its triage before it touches anything:
 
 ```text
 Plumbline triage
-Size: Quick
-Module: rooms (existing)
-Folder: none
-Surfaces: api
-Roles: product, lead, 1 engineer, reviewer
-Evidence: api: transcripts
-UX: no
-Engineers: 1
-Docs: none
-Team: no
-Why: one rule changes in one module; no new screen, schema or shared contract
+Size: Full
+Module: patient-portal (new)
+Surfaces: api; web-ui
+Roles: product, lead, 4 engineers, reviewer, QA
+Evidence: api: transcripts; web-ui: journeys
+Security: independent
+Engineers: 4
+Team: yes
+Why: new sign-in and per-practice patient data (tenancy, sensitive data)
 ```
 
-**Fixed roles, effort by complexity.** The lead runs on Opus (high effort) and never writes
-code: it writes each engineer a step-by-step plan with the tests, rates every task LOW,
-NORMAL or HIGH, and reviews against the plan. Product runs on Opus (high effort); the triage
-step runs on Sonnet. Engineers, the QA engineer and the reviewer run on Sonnet; the
-reviewer moves to Opus only for HIGH work. The lead picks each engineer's effort from the
-hardest task in the workstream (LOW is low, NORMAL is medium, HIGH is high) and writes it in
-the `Effort` column of the plan's Team table.
+Then the product engineer clarifies, like a real PM would (example):
 
-**TDD with unit and e2e tests.** Engineers work test-first: a failing unit test, then the
-change, then refactor. They also write an e2e test for each journey. Test names start with
-the AC ID. The lead's plan lists, per engineer, the first failing test, the e2e test and a
-**done when**: those tests pass under `ac-check`.
+```text
+Product › Can a parent see a child's records?
+You     › Yes, until 18.
+Product › Are some dentist notes private?
+You     › Internal notes stay hidden.
+Product › How long can an X-ray download link live?
+You     › 10 minutes.
+```
 
-| | **Quick** | **Standard** | **Full** |
+From there the team runs on its own: spec → plan (you approve) → test-first build →
+review → attack round → QA → signoff → **PR #42, ready for your review.**
+
+### More things to ask for
+
+```text
+/plumbline:build rate-limit the login endpoint to 5 attempts per minute per IP
+/plumbline:build let clinic admins export appointments as CSV for a date range
+/plumbline:build add a dark mode toggle to the settings screen
+/plumbline:build new billing module: invoices, refunds and Stripe payments
+```
+
+### Everyday commands
+
+| Command | Use it to |
+| --- | --- |
+| `/plumbline:build <request>` | Get anything built: sized, planned, built, tested, PR'd |
+| `/plumbline:status` | See where a feature stands: plan, test coverage, bugs, questions, uncommitted work |
+| `/plumbline:handoff` | Save progress and get a prompt to resume in a fresh session |
+| `/plumbline:signoff` | Run the gap check and open or update the PR |
+| `/plumbline:phase-next` | Get the next feature proposed from evidence: missed metrics, shipped bugs, open findings |
+
+<details>
+<summary><b>Driving a Full feature by hand</b></summary>
+
+```text
+/plumbline:kickoff clinic scheduling    # docs from templates, a branch, the current feature
+/plumbline:discover                     # interview → spec.md
+…                                       # product, lead, engineers and QA do their parts
+/plumbline:status                       # where things stand
+/plumbline:signoff                      # gap check → PR (you merge)
+/plumbline:phase-next                   # what to build next
+```
+
+Flags: `/plumbline:kickoff <module> <feature-slug> [--profile standard|full] [--no-ux] [--security none|attacks|independent]`.
+</details>
+
+## 👥 Meet your team
+
+| | Role | What they own | Runs on |
 | --- | --- | --- | --- |
-| Fits | One module, up to 3 criteria, no new screen or flow, no schema or shared-contract change | Anything between | A module built from scratch, 3+ screens, a data migration, an auth, permissions or billing change, cross-module work, or about 10+ criteria |
-| Produces | A `quick/<yymmdd>-<slug>` branch, tests named after 1-3 criteria (`AC-<yymmdd>-<nn>`), the check, a review, a PR. **No folder.** | A slim feature folder (spec, criteria, functional test record, dev plan, plus `ux.md` when there is UI) | The whole process below, with an agent team |
-| People | One engineer and a reviewer | 1-2 engineers, a QA check, one plan approval from you | Product, lead, engineers, QA and a reviewer |
-| Agent team | No | Only with 2 engineers and teams enabled | Yes (needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) |
+| 🧭 | **Product engineer** | *What* gets built: research, clarifying questions, spec, acceptance criteria (`AC-01-004`), user journeys and screen text, decisions | Opus · high effort |
+| 🏗️ | **Lead engineer** | *How* it gets built: a step-by-step plan per engineer, contracts, the attack plan, reviews every workstream. **Never writes code** | Opus · high effort |
+| 🛠️ | **Senior engineers** | One workstream each: test-first (red → green → refactor), unit + e2e tests, attack tests | Sonnet · effort set by the lead per task |
+| 🛡️ | **Security (attack round)** | A senior engineer who didn't write the code tries to break it, logs findings, verifies the fixes | Sonnet · high effort |
+| 🔎 | **QA engineer** | Tests the working feature like a real user, files bugs, re-tests fixes | Sonnet · medium effort |
+| 🧪 | **Code reviewer** | Fresh-eyes review of every diff: authorization, contracts, tests, performance, security lens | Sonnet, Opus for HIGH work |
 
-**When Plumbline asks you something:** when the request is too vague for observable
-criteria, when triage can't decide the size or the module, always before Full work, and
-when `PLUMBLINE_CONFIRM=always`. Before
-any branch or file it lists the commands it will run (git, `gh`, your tests);
-Claude Code asks you to approve any it doesn't already allow. Standard also asks one
-question: approve the plan, or change it. Otherwise it goes straight on.
+**Smart model routing.** Opus where judgement carries the risk, Sonnet where a precise plan
+is executed. The lead rates every task LOW, NORMAL or HIGH and sets each engineer's effort
+to match, so you don't pay Opus prices for routine work.
 
-The quality bars hold at every size: observable acceptance criteria, tests named after
-them, a script check, a review, and a PR you merge. Quick runs its check
-with `ac-check.sh` (typecheck, lint and the AC-named tests), because subagents aren't covered
-by the task hooks.
+**They remember.** Agents keep project memory across sessions, and everything they decide
+lands in `docs/product/`: vision, decisions, a change log and each feature's spec, plan and
+test record. Your product documents itself as it grows.
 
-**Only you can waive.** An agent can't write an `Evidence waived:` line:
-the ownership guard blocks it, for every agent and at every size. When evidence can't be
-produced, the main session asks
-you, and writes the line only after your explicit yes.
+## 🔁 How it works
 
-## Works with
+```mermaid
+flowchart LR
+    U(["You: /plumbline:build"]) --> P["🧭 Product<br/>questions → spec, criteria, journeys"]
+    P --> L["🏗️ Lead<br/>plan per engineer, attack plan"]
+    L -->|"you approve"| B["🛠️ Engineers<br/>TDD: unit + e2e + attack tests"]
+    B --> R["Lead review + 🧪 reviewer<br/>comments → fixes"]
+    R --> A["🛡️ Attack round<br/>findings → fixes → verified"]
+    A --> Q["🔎 QA<br/>journeys, bugs → fixes"]
+    Q --> S(["✅ Signoff gap check → PR"])
+    S --> M(["You merge"])
 
-Plumbline reads what kind of software you are building and adapts. The kinds are
-**surfaces**: `web-ui`, `mobile-ui`, `desktop-ui`, `api`, `service`, `cli`, `library`,
-`data`, `ai` and `infra`. One product can have several; a feature takes the union of what
-its surfaces need.
+    classDef you fill:#10182B,color:#fff,stroke:#10182B;
+    classDef gate fill:#34D399,color:#10182B,stroke:#1f9e70;
+    class U,M you;
+    class S gate;
+```
 
-| Surface | QA checks (one required evidence kind) | The reviewer adds |
+1. **Clarify.** Product researches your docs and code, asks you what it can't decide, and
+   writes the spec and observable acceptance criteria. Unanswered questions are escalated,
+   never guessed.
+2. **Plan.** The lead questions product where the spec is thin, splits the work along
+   file-ownership seams, lands shared contracts first and writes each engineer a plan: the
+   failing unit test, the e2e test, the change, edge cases and a *done when*. You approve.
+3. **Build.** Engineers work test-first in parallel. Hooks enforce ownership and won't let a
+   task close until its tests pass.
+4. **Review and attack.** The lead reviews each workstream with the code reviewer; comments
+   go back and get fixed. For risky work, a security engineer tries to break it.
+5. **Test.** QA uses the built feature like a real user, files bugs, and re-tests the fixes.
+6. **Ship.** A deterministic gap check runs, the PR opens, docs and memory are updated.
+   **You merge.** Plumbline never merges or deploys for you.
+
+## 🔒 Quality gates that can't be talked past
+
+Gates are plain **bash + jq hooks**, not model judgement. They switch on when the plan says
+`Status: READY`, so discovery and planning run freely.
+
+| Gate | What it stops | What the agent sees |
 | --- | --- | --- |
-| `web-ui` | `journeys` | UI states against `ux.md`, keyboard, XSS |
-| `mobile-ui` | `flow-tests` | Offline and flaky network, permissions, lifecycle, battery, store rules |
-| `desktop-ui` | `journeys` | Window states, keyboard, updates |
-| `api` | `transcripts` | Authorization on every endpoint, validation, idempotency, migrations; tenant scoping when `Multi-tenant: yes` |
-| `service` | `job-tests` | Idempotency, retries, dead letters, observability |
-| `cli` | `golden-output` | Exit codes, stdout and stderr, `--help`, no prompts in non-interactive paths |
-| `library` | `doc-examples` | Breaking changes, naming, error types |
-| `data` | `sample-run` | PII, backfills, partial failure |
-| `ai` | `eval-set` | Prompt injection, data leakage, eval coverage, fallbacks, cost |
-| `infra` | `plan-output` | Blast radius, secrets, rollback |
+| **Ownership guard** | Editing another engineer's files | `Ownership guard: eng-a does not own src/b/from-a.txt (owns: src/a/**). Message the owner or the lead.` |
+| **Task-created gate** | Work that isn't tied to a criterion | `Task gate: "Untagged task" names no AC IDs.` |
+| **Task-completed gate** | "Done" without proof | Runs typecheck, lint and the tests named after the task's IDs; refuses until they pass |
+| **Idle gate** | Uncommitted work left behind | Reminds twice, then escalates to the lead |
+| **Waiver lock** | An agent lowering its own bar | `Evidence waived:`, `Security waived:` and `Risk accepted:` lines are **user-only** |
 
-There is no UX engineer. For a surface with a UI, the product engineer writes `ux.md`:
-the journeys and a text description of each screen. The senior engineers build the UI
-from that text.
+Signoff starts with a script that lists every gap. Example output on a feature that isn't
+ready:
 
-The QA engineer records the evidence as a row in `qa-report.md`'s `## Evidence` table
-(kind, surface, location, result). Signoff blocks on a required kind with no `pass`
-row, unless you waive it: `Evidence waived: <kind> (<surface>) - <reason> (approved by
-<who>)`. Only you can waive; an agent can't write that line. Deeper kinds such as
-`contract`, `authz` and `negative` are no longer required; the engineers' tests and the
-reviewer cover them.
+```text
+$ bash scripts/signoff-check.sh
+Signoff check: 5 gap(s) in docs/product/clinic/01-scheduling:
+- AC-01-004 has no passing test in test-plan.md
+- QA verdict is PENDING, not PASS (qa-report.md)
+- open bug BUG-01-001 (high): Clinic B's rooms appear in clinic A's list (qa-report.md)
+- OPEN question #1: Grey out inactive rooms, or hide them? (questions.md)
+- unticked sign-off box: Integration review complete (lead engineer) (signoff.md)
+```
 
-### The project profile: `docs/product/project.md`
+<details>
+<summary><b>What a teammate is told at start-up</b> (example)</summary>
 
-On the first `/plumbline:build`, if there is no `docs/product/project.md`, the plugin runs
-`scripts/detect-project.sh` on your manifests (`package.json`, `pyproject.toml`, `go.mod`,
-`pubspec.yaml`, `Cargo.toml`) and shows you its proposal. You answer once: use it as is,
-edit it, or skip it. The plugin then writes the file with a `Confirmed by:` line, and
-triage, the gates and QA read it from then on. Weak signals (an LLM SDK, dbt, Terraform,
-a native app folder, Electron, Tauri) come as `(check)` rows that you keep or delete.
-Edit the file any time the product changes shape. This is an **example**:
+```text
+Plumbline phase: docs/product/clinic/01-scheduling (dev plan: READY).
+You are eng-api. You own: apps/api/**
+Your brief: docs/product/clinic/01-scheduling/briefs/eng-api.md. Read it before anything else.
+Questions in questions.md: 1 open, 0 escalated to the user.
+```
+
+Each engineer works from a generated brief: its files, its tasks, only the criteria and
+attacks those tasks cite, the business rules, its screens and contracts. Focused context,
+fewer tokens, no missed rules.
+</details>
+
+## 🛡️ Security by attack plan
+
+Every request gets a `Security:` level at triage, from a rubric about **what the change
+does**: authentication, permissions, tenancy, money, sensitive data, public input, AI tool
+use, infrastructure.
+
+| Level | What happens | Extra cost |
+| --- | --- | --- |
+| `none` | Routine work: the reviewer's security checklist | Nothing |
+| `attacks` | The lead plans concrete attacks from a catalogue; engineers write each as a **failing test first**; signoff **runs** them and scans the diff for committed secrets | A few hundred tokens for the plan, a handful of tests |
+| `independent` | All of the above, plus a **separate attack round**: a different engineer, scoped to the attack surface, tries what the plan missed. Findings are fixed and re-verified | One scoped run, fix rounds only when it finds something |
+
+An attack plan row looks like this:
+
+```text
+| SEC ID     | Surface | Attack                                              | Must happen          |
+| SEC-01-001 | api     | Patient A swaps in patient B's ID on GET /xrays/:id | 404, nothing leaked |
+```
+
+Attack tests can't be faked: signoff runs every `SEC-` test through the same adapters as
+the feature's tests. The level can only go up; only you can lower it.
+
+## 🧰 Works with your stack
+
+Plumbline reads what you're building and adapts. Ten **surfaces**: `web-ui`, `mobile-ui`,
+`desktop-ui`, `api`, `service`, `cli`, `library`, `data`, `ai`, `infra`. On the first run it
+detects your stack from `package.json`, `pyproject.toml`, `go.mod`, `pubspec.yaml` or
+`Cargo.toml`, proposes a **project profile**, and you confirm it once.
+
+| Test adapter | Runs |
+| --- | --- |
+| `node` | node:test, jest or vitest |
+| `pytest` | pytest, selected by the criterion ID |
+| `go` | `go test -run` on names like `TestAC_01_001` |
+| `playwright` | Playwright e2e tests, retries off |
+| `generic` | Any command you write in the profile (Rust, .NET, Gradle, Flutter, Swift…) |
+
+Join two adapters with `+` (`node --dir web + playwright --dir web`) to run unit and e2e
+tests together. Every adapter prints one line per ID (`pass`, `fail` or `missing`), so a
+runner that matches nothing can't pass.
+
+<details>
+<summary><b>The project profile (<code>docs/product/project.md</code>)</b></summary>
 
 ```markdown
 # Project profile
 
 Confirmed by: Safi on 2026-10-25. Edit it when the product changes shape.
 Confirm: auto
-Multi-tenant: no
-Sensitive data: none
+Multi-tenant: yes
+Sensitive data: patient records
 
 ## Surfaces
 | Surface | Stack | Paths | Run | Typecheck | Lint | AC tests |
 | --- | --- | --- | --- | --- | --- | --- |
-| web-ui | Next.js | apps/web/** | npm run dev -w apps/web (http://localhost:3000) | npm run -s typecheck -w apps/web | npm run -s lint -w apps/web | node --dir apps/web |
-| api | Go | services/api/** | go run ./cmd/api (http://localhost:8080) | go vet ./... | golangci-lint run | go --dir services/api |
+| web-ui | React, Vite | frontend/** | npm --prefix frontend run dev | npm --prefix frontend run -s typecheck | npm --prefix frontend run -s lint | node --dir frontend + playwright --dir frontend |
+| api | Express, TypeScript | backend/** | npm --prefix backend run dev | npm --prefix backend run -s typecheck | npm --prefix backend run -s lint | node --dir backend |
 ```
 
-`Confirm:` is `auto` or `always` (confirm every triage). `Multi-tenant:` and
-`Sensitive data:` are read by the reviewer and product agents. Cells never contain a `|`.
-
-### Test adapters
-
-The **AC tests** cell says how to run the tests named after acceptance-criteria IDs.
-Adapters live in `plugins/plumbline/scripts/ac-tests/`. Each prints one line per ID
-(`pass`, `fail` or `missing`) and fails when an ID has no passing test, so a runner that
-passes on an empty match can't fake it.
-
-| Adapter | Runs |
-| --- | --- |
-| `node` | node:test, jest or vitest (vitest, then jest, else node:test) |
-| `pytest` | pytest, selected by `-k` on the lowercase ID (`ac_01_001`) |
-| `go` | `go test` with `-run`, on test names such as `TestAC_01_001` |
-| `playwright` | Playwright e2e tests, selected by `--grep` on the ID, retries off |
-| `generic` | Any command you write in project.md; see below |
-
-Attack tests (see Security by attack plan) are named the same way, with a `SEC-` ID in
-the test title, and run through the same adapters.
-
-Add `--dir <path>` for a package in a subfolder. Any other command in the cell gets the AC
-IDs as its last argument.
-
-**Unit and e2e together.** Join two adapters with `+` and the cell runs both. An ID passes
-when a runner passes it and none fails it; it fails when any runner fails it; otherwise it
-is `missing`. Example:
-
-```text
-| web-ui | Next.js | storefront/** | npm run dev -w storefront (http://localhost:3000) | npm run -s typecheck -w storefront | npm run -s lint -w storefront | node --dir storefront + playwright --dir storefront |
-```
-
-Project detection proposes `+ playwright` when `@playwright/test` is a dependency.
-
-**Generic recipes.** For other stacks, set the cell to `generic` and put the command in a
-`### <surface>` block under `## Generic commands`. `{ids_regex}` becomes
-`AC[-_]01[-_]001|AC[-_]01[-_]002`; `{ids_underscored}` becomes `AC_01_001 AC_01_002`. The
-block runs with `bash -c` from the repo root. A generic command proves only its exit
-code, not that each ID has a test, and the adapter says so on stderr. Name your tests
-after the IDs (`AC_01_001`) so the filters below match. These recipes are documentation,
-not shipped scripts. Each filter flag was checked against the tool's current docs in
-October 2026. The Rust and Swift docs don't spell out repeated filters, so run a recipe
-once against a failing test before you rely on it.
-
-Rust (`cargo test`: libtest takes substring filters after `--`, case-sensitive, so the
-IDs are lowercased; name tests `ac_01_001_...`). `cargo test` and `dotnet test` exit 0
-when nothing matches, so these two recipes also require at least one passed test:
-
-````markdown
-### library
-```
-out=$(cargo test -- $(echo '{ids_underscored}' | tr 'A-Z' 'a-z') 2>&1); rc=$?; echo "$out"
-[ $rc -eq 0 ] && grep -qE 'test result: ok\. [1-9][0-9]* passed' <<<"$out"
-```
-````
-
-.NET (`dotnet test --filter`: `~` means contains, `|` means or, matching ignores case):
-
-````markdown
-### api
-```
-out=$(dotnet test --filter "$(echo '{ids_underscored}' | sed 's/^/FullyQualifiedName~/; s/ /|FullyQualifiedName~/g')" 2>&1); rc=$?; echo "$out"
-[ $rc -eq 0 ] && grep -qE 'Passed: *[1-9]' <<<"$out"
-```
-````
-
-Gradle (`--tests` can repeat and takes `*` wildcards):
-
-````markdown
-### service
-```
-args=(); for id in {ids_underscored}; do args+=(--tests "*$id*"); done
-./gradlew test "${args[@]}"
-```
-````
-
-Flutter (`flutter test --name` takes a regular expression):
-
-````markdown
-### mobile-ui
-```
-flutter test --name '{ids_regex}'
-```
-````
-
-Swift (`swift test --filter` takes a regular expression):
-
-````markdown
-### mobile-ui
-```
-swift test --filter '{ids_regex}'
-```
-````
-
-## How it works (Full)
-
-This is the whole process, used for Full work or when you start it by hand with
-`/plumbline:kickoff`. Standard keeps a slim version of it; Quick skips the folder.
-
-```mermaid
-flowchart LR
-    K(["/plumbline:kickoff"]) --> D["Discover<br/>interview → spec"]
-    D --> UX["UI text<br/>product: journeys, screens"]
-    UX --> P["Dev plan<br/>per engineer: tests, done-when, effort"]
-    P -->|"you approve → READY"| B["Build<br/>agent team, TDD, gates enforced"]
-    B --> V["Test<br/>QA engineer checks each journey"]
-    V --> S(["/plumbline:signoff<br/>gap check → PR"])
-    S --> N(["/plumbline:phase-next<br/>what to build next"])
-
-    classDef cmd fill:#18213a,color:#fff,stroke:#18213a;
-    classDef gate fill:#e9c46a,color:#18213a,stroke:#c9a54a;
-    class K,S,N cmd;
-    class B gate;
-```
-
-1. **`/plumbline:kickoff <module> <feature-slug>`** (or `/plumbline:build`, for Full work) creates
-   the feature's docs from templates and a branch.
-2. **`/plumbline:discover`** interviews you, then drafts `spec.md` from your answers.
-3. The **product engineer** writes the criteria and `ux.md`: the user journeys and a text
-   description of each screen. There are no prototypes or mockups.
-4. The **lead** splits the work along file-ownership seams, lands shared contracts first,
-   and writes a plan per engineer: AC-tagged tasks, the failing unit test, the e2e test,
-   a done-when and an effort. **You approve the plan**, and it flips to `Status: READY`.
-5. The **build** runs as an agent team. Engineers work TDD. From READY on, hooks enforce
-   ownership, task tagging, test gates and clean hand-offs. The lead reviews against the
-   plan; a reviewer reads the diff.
-6. The **QA engineer** tests the built feature: does each journey and criterion work. It
-   fills the functional test record (`test-plan.md`) and the evidence row. Product verifies.
-7. **`/plumbline:signoff`** runs a deterministic gap check and opens the PR. **You merge.**
-
-## The team
-
-| Role | Agent | Model | Owns |
-| --- | --- | --- | --- |
-| 🧭 Product engineer | `plumbline:product-engineer` | opus · high effort | *What* is built: research, spec, use cases, acceptance criteria, decisions, and the UI text (`ux.md`) |
-| 🏗️ Lead engineer | `plumbline:lead-engineer` | opus · high effort | *How* it's built: dev plan per engineer, contracts, task order, review against the plan. Never writes code |
-| 🛠️ Senior engineers | `plumbline:senior-engineer` | sonnet · effort set by the lead | One workstream each: TDD, unit and e2e tests, the UI built from `ux.md` |
-| 🔎 QA engineer | `plumbline:qa-engineer` | sonnet · medium effort | Tests the built feature after the build: each journey and criterion works. Functional only |
-| 🧪 Code reviewer | `plumbline:code-reviewer` | sonnet, or opus for HIGH work | Read-only, fresh-eyes review of every workstream |
-
-Five role definitions. The lead and product use Opus because their judgement carries the
-risk. Implementing a planned task and testing a built feature run on Sonnet.
-
-## Security by attack plan
-
-Triage adds a `Security:` line to the block it prints before any work starts, chosen from
-the request, the project profile, the size and the surfaces:
-
-| Level | Meaning |
-| --- | --- |
-| `none` | Routine work. The reviewer's usual security checklist is all there is |
-| `attacks` | The floor for anything security-relevant: the lead plans attacks, the authors write them as tests, signoff runs them |
-| `independent` | High risk only: `attacks`, plus a separate attack round by a different engineer. Makes the size at least Standard |
-
-The lead can raise the level from its plan. Only you can lower it, in a line no agent can
-write.
-
-- **Attack plan.** At `attacks` or above the lead writes `## Attack plan` in `dev-plan.md`
-  from a built-in catalogue of attacks per risk signal (authentication, tenancy, public
-  input, money, sensitive data, `ai`, `infra`). Each row has an ID (`SEC-03-001`), a surface
-  and what must happen. The plan also names `Attack surface:` and `Attack fixtures:`, and a
-  `Skipped:` line for each catalogue item that doesn't apply.
-- **Attacks are tests first.** The engineer who builds the feature writes each attack as a
-  failing test (a hostile caller doing what the row says), then makes it pass. The SEC ID
-  goes in the test title.
-- **Reviewer's security lens.** The reviewer reads each attack test against its plan row
-  (`matches` or `mismatch`) and flags any catalogue item with neither a row nor a `Skipped:`.
-- **Independent attack round.** Only at `independent`: after the build, a different Sonnet
-  engineer, scoped to the attack surface, runs the plan's attacks, tries what it missed and
-  logs findings in `security.md`. It never edits the code it attacks. The authors fix; it
-  re-runs, for up to three rounds.
-- **Signoff.** Signoff runs every `SEC-` test through `ac-check`, scans the
-  branch's diff for committed secrets, and at `independent` needs no open Critical or High
-  finding.
-- **Only you can waive.** `Security waived:` and `Risk accepted:` lines are user-only, like
-  evidence waivers.
-
-What it costs:
-
-| Level | Cost |
-| --- | --- |
-| `none` | Nothing: no attack plan, no extra pass, no new file, no test run at signoff |
-| `attacks` | A few hundred Opus output tokens for the plan, the author's attack tests, a longer reviewer report, and a handful of tests plus a grep at signoff |
-| `independent` | One scoped Sonnet run; fix rounds only when it finds something |
-
-## Quality gates
-
-Gates are plain **bash + jq hooks**, not model judgement. They switch on once the dev
-plan says `Status: READY`, so discovery and planning run freely.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant E as eng-a (teammate)
-    participant H as Plumbline hooks
-    participant L as Lead
-    E->>H: Write src/b/from-a.txt
-    H-->>E: ⛔ Ownership guard: eng-a does not own src/b/from-a.txt
-    L->>H: TaskCreate "Polish the rooms page"
-    H-->>L: ⛔ Task gate: names no AC IDs
-    E->>H: TaskUpdate "[AC-01-001] …" → completed
-    H->>H: typecheck · lint · tests named AC-01-001
-    H-->>E: ✅ allowed
-    E->>H: goes idle with uncommitted src/a/draft.txt
-    H-->>E: ↩️ reminder 1, reminder 2 ("SendMessage the lead")
-    H->>L: ESCALATED row in questions.md (signoff blocks on it)
-```
-
-The messages your agents actually see, quoted from the live team test:
-
-| Hook | Fires on | Example |
-| --- | --- | --- |
-| **Ownership guard** | `PreToolUse` Edit/Write | `Ownership guard: eng-a does not own src/b/from-a.txt (owns: src/a/**). Message the owner or the lead.` |
-| **Task-created gate** | `TaskCreated` | `Task gate: "Untagged task" names no AC IDs. Start the subject with the ACs it delivers, e.g. "[AC-03-004 AC-03-005] Reschedule API", or with "[chore]" for coordination work that delivers no AC.` |
-| **Task-completed gate** | `TaskCompleted` | Runs typecheck, lint and `test:ac "<AC IDs>"`. Refuses with `Task gate: tests for AC-01-002 failed or none exist. Name tests after their AC IDs.` |
-| **Idle gate** | `TeammateIdle` | `Idle gate: uncommitted changes in files you own: src/a/draft.txt.` The second reminder adds `If you can't fix this, SendMessage the lead now with this exact list: src/a/draft.txt`, then it escalates |
-| **Phase context** | `SessionStart`, `SubagentStart` | Gives every agent its phase, ownership, brief and open questions (below) |
-
-<details>
-<summary><b>What a teammate is told at start-up</b> (real <code>context.sh</code> output)</summary>
-
-```text
-Plumbline phase: docs/product/clinic/phases/phase-01 (dev plan: READY).
-Plumbline scripts: <plugin>/plugins/plumbline/scripts
-You are eng-api. You own: apps/api/**
-Your brief: docs/product/clinic/phases/phase-01/briefs/eng-api.md. Read it before anything else; open the full docs only when it isn't enough.
-Questions in docs/product/clinic/phases/phase-01/questions.md: 1 open, 0 escalated to the user.
-```
-
-Each engineer works from a **generated brief**: its files, its tasks, only the acceptance
-criteria those tasks cite, the spec's business rules and permissions, its screens and
-contracts. It doesn't re-read every document, and it doesn't miss the rules.
+Each surface has one kind of evidence QA must record (web-ui `journeys`, api `transcripts`,
+cli `golden-output`, ai `eval-set`…), and signoff checks it.
 </details>
 
-### Signoff can't be talked past
-
-`/plumbline:signoff` starts with `signoff-check.sh`, a script that lists every gap. This is
-real output on a feature that isn't ready:
-
-```text
-$ bash scripts/signoff-check.sh
-Signoff check: 9 gap(s) in docs/product/clinic/phases/phase-01:
-- AC-01-004 has no passing test in test-plan.md
-- AC-01-005 has no passing test in test-plan.md
-- QA verdict is PENDING, not PASS (qa-report.md)
-- open bug BUG-01-001 (high): Clinic B's rooms appear in clinic A's list (qa-report.md)
-- no passing journeys evidence for web-ui: record it in qa-report.md's Evidence table, or ask the user to waive it; the build skill writes the line (qa-report.md)
-- OPEN question #1: Grey out inactive rooms, or hide them? (questions.md)
-- unticked sign-off box: Product verification: every journey walked (product engineer) (signoff.md)
-- unticked sign-off box: Integration review complete (lead engineer) (signoff.md)
-- unticked sign-off box: QA verdict PASS (QA engineer) (signoff.md)
-```
-
-And the at-a-glance view any time, with `/plumbline:status`:
-
-```text
-Phase docs/product/clinic/phases/phase-01 · dev plan: READY
-ACs: 5 · with a test: 3 · without: AC-01-004 AC-01-005
-Open bugs: critical 0 · high 1 · medium 0 · low 0
-QA verdict: PENDING
-Questions: 1 open · 0 escalated
-Uncommitted files: 1 total (by owner: eng-api 1)
-```
-
-## Proof, not promises
-
-Plumbline is measured with **Claude Code's plugin eval suite**: 14 realistic cases, one or
-more per role and skill, graded by regex, tool-use and LLM-judge checks. The baseline is
-recorded **before** any change, and a release ships only if no case drops below it.
-
-| Eval case | v0.1.2 | v0.2 | v0.3 |
-| --- | :---: | :---: | :---: |
-| Senior engineer refuses to skip a failing test under deadline pressure | 0.22 | **1.00** | 1.00 |
-| Product spec has Non-Goals, P0/P1/P2 priorities and success metrics | 0.25 | **1.00** | 1.00 |
-| UX: design directions and a self-contained prototype (removed in v0.4b) | 0.92 | **1.00** | 1.00 |
-| Product escalates an undecided rule instead of guessing | 1.00 | 1.00 | 1.00 |
-| Lead writes a dev plan with clean ownership and AC-tagged tasks | 1.00 | 1.00 | 1.00 |
-| QA test plan traces every AC, plus negative, tenant and UI-state cases | 1.00 | 1.00 | 1.00 |
-| Reviewer flags a tenant-isolation leak as Critical | 1.00 | 1.00 | 1.00 |
-| Engineer won't edit the shared contract; asks the lead | 1.00 | 1.00 | 1.00 |
-| Signoff stops and names every gap | 1.00 | 1.00 | 1.00 |
-| Kickoff creates the feature docs | 1.00 | 1.00 | 1.00 |
-| **Overall (the 10 original cases)** | **0.84** | **1.00** | **1.00** |
-| Product memory: a recorded decision survives a teammate's suggestion | — | 0.89 | **1.00** |
-| `phase-next` proposes from evidence and asks before editing the roadmap | — | — | 1.00 |
-| QA runner records scans as not run instead of inventing results (removed in v0.4b) | — | — | 1.00 |
-
-The table is the history through v0.3. The visual comparison and accessibility scan it
-mentions were removed in v0.4b ("lean roles"), and some of these cases went with them.
-Details and the honest costs of each release are in [`docs/evals/`](docs/evals).
-
-Every release is also checked by:
-
-- **1007 self-tests** (`bash tests/run-all.sh`, each suite counted once): 282 for the hooks
-  (run in two Windows path modes); 132 for the shared helpers and gates; 176 for kickoff and
-  the layouts; 146 for the scripts; 145 for project detection and the profile; 126 for the
-  test adapters, run against the real node:test, jest, vitest, pytest and Go runners and
-  recorded Playwright output.
-- **A live agent-team test** with real teammates. v0.2 passed **11/11**: ownership block,
-  creation gate, `[chore]` tasks, idle escalation, injected context, status and signoff.
-
-## Quick start
-
-```bash
-# 1. Install
-claude plugin marketplace add safiullah7/plumbline
-claude plugin install plumbline@plumbline --scope project
-
-# 2. Start Claude Code (agent teams are needed only for Full-size work)
-CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
-```
-
-```text
-# 3. Inside Claude Code: describe the work, Plumbline sizes it and runs the matching process
-/plumbline:build make the double-booking check ignore cancelled bookings
-```
-
-`/plumbline:build` shows its triage block, asks only what it must, and ends with a PR
-you merge. The step-by-step skills are the manual path, for when you want to drive a
-Full feature yourself:
-
-```text
-/plumbline:kickoff clinic scheduling    # module form: docs from templates, a branch, the current feature
-/plumbline:discover                     # interview → spec.md
-…                                       # product, the lead and QA fill in the docs
-/plumbline:status                       # where things stand
-/plumbline:signoff                      # gap check → PR (you merge)
-/plumbline:phase-next                   # what to build next, from evidence
-```
-
-(`/plumbline:kickoff clinic phase-01` still creates the legacy phase layout.)
-
-**Requirements:**
-- Claude Code, with agent teams for Full-size work;
-- `jq`;
-- Git Bash on Windows;
-- for the task gate, your repo's `typecheck`, `lint` and `test:ac` npm scripts.
-  `test:ac "<AC IDs separated by |>"` must fail when any ID has no passing test named
-  after it. Many runners pass when a name filter matches nothing; see
-  [`tests/e2e/setup.sh`](tests/e2e/setup.sh) for a node:test example.
-
 <details>
-<summary><b>All commands</b></summary>
+<summary><b>What a feature looks like on disk</b></summary>
 
-| Command | What it does |
-| --- | --- |
-| `/plumbline:build <request>` | Sizes the request (Quick, Standard or Full), shows the triage, runs the matching process to a PR |
-| `/plumbline:kickoff <module> <feature-slug> [--profile standard/full] [--no-ux]` | Creates the feature's docs from templates, marks it current, branches. `/plumbline:kickoff <area> phase-NN` creates the legacy layout |
-| `/plumbline:discover [idea]` | Interviews you, then drafts `spec.md` from your answers |
-| `/plumbline:status` | Plan status, AC test coverage, open bugs, questions, uncommitted work per owner |
-| `/plumbline:handoff` | Records progress, commits the docs, prints a prompt to resume in a fresh session |
-| `/plumbline:signoff` | Runs the gap check, then opens or updates the PR |
-| `/plumbline:phase-next` | Proposes the next feature from evidence: missed metrics, shipped bugs, open findings, deferred scope |
+```text
+docs/product/patient-portal/
+├── vision.md               who it's for, the problem, principles, the roadmap
+├── decisions.md            decisions later features must respect
+├── changes.md              one row per Quick change
+└── 01-own-records/
+    ├── spec.md             goal, research, rules, permissions, non-goals, metrics
+    ├── acceptance-criteria.md   AC-01-001 … observable and prioritised
+    ├── ux.md               journeys and a text description of each screen
+    ├── dev-plan.md         team, ownership, contracts, tasks, attack plan, Status: READY
+    ├── security.md         attack results and findings (when the level needs it)
+    ├── test-plan.md        QA's functional test record
+    ├── qa-report.md        verdict, bugs, evidence
+    ├── questions.md        every question and answer
+    └── signoff.md          verification and success metrics
+```
 </details>
 
 <details>
@@ -529,94 +341,55 @@ Full feature yourself:
 | --- | --- | --- |
 | `PLUMBLINE_TYPECHECK` | `npm run -s typecheck` | Typecheck command for the task gate (`""` skips it) |
 | `PLUMBLINE_LINT` | `npm run -s lint` | Lint command for the task gate |
-| `PLUMBLINE_TEST_AC` | `npm run -s test:ac --` | Runs the tests for the given AC IDs |
-| `PLUMBLINE_TEST_GLOBS` | `*.test.* *.spec.* …` | Which files count as tests for `/plumbline:status` coverage |
-| `PLUMBLINE_CONFIRM` | `auto` | `always` makes `/plumbline:build` confirm its triage block even when it is clear |
-| `PLUMBLINE_HOOK_TIMING` | off | Print how long each gate check took |
+| `PLUMBLINE_TEST_AC` | `npm run -s test:ac --` | Runs the tests for given IDs (when set, it overrides the profile's AC tests cell) |
+| `PLUMBLINE_CONFIRM` | `auto` | `always` confirms every triage |
 | `PLUMBLINE_HOOK_DEBUG` | off | Log every hook payload to `$TMPDIR/plumbline-hooks.jsonl` |
 
-Set them in the `env` block of `.claude/settings.json`. For long builds,
-`"subagentPromptCacheTtl": "1h"` lets teammates reuse cached prompts.
+Set them in the `env` block of `.claude/settings.json`.
 </details>
 
-<details>
-<summary><b>What a feature looks like on disk</b></summary>
+## 📊 Proof, not promises
 
-Docs are organised by **module** (a product area such as `clinic`), then by feature.
-Feature numbers are one sequence across the whole repo, so `AC-<nn>-<nnn>` IDs never
-collide between modules.
+- **Evals.** Every release runs Claude Code's plugin eval suite (realistic cases per role
+  and skill, 3 runs each) against the previous release's scores, and ships only with **no
+  regressions**. v0.5: 29 cases, every rerun at or above its v0.4b score, eight new
+  security cases at 0.92–1.00. Reports, including the costs, are in [`docs/evals/`](docs/evals).
+- **1,846 self-tests** (`bash tests/run-all.sh`): hooks, gates, kickoff, signoff, project
+  detection, the security rules, and every test adapter run against the real node:test,
+  jest, vitest, pytest, Go and Playwright runners.
+- **Independent reviews** of every release's diff before it merges; each finding is fixed
+  with a test.
 
-```text
-docs/product/clinic/
-├── vision.md               who it's for, problem, principles, and the Features table (the roadmap)
-├── design-principles.md    short UI guide written by product: component library, spacing, type, tone
-├── decisions.md            decisions later features must respect
-├── changes.md              one row per Quick change: date, request, ACs, PR
-└── 01-scheduling/          <nn>-<feature-slug>/
-    ├── .plumbline          metadata written by kickoff.sh: module, number, profile, ux
-    ├── spec.md             goal, research, P0/P1/P2, rules, permissions, Non-Goals, metrics
-    ├── acceptance-criteria.md   AC-01-001 … observable, exact, prioritised
-    ├── ux.md               journeys, screen inventory, a text description of each screen (product)
-    ├── test-plan.md        functional test record: QA fills it while testing; every AC traced
-    ├── dev-plan.md         team, ownership, contracts, AC-tagged tasks, Status: READY
-    ├── questions.md        every question and answer; ESCALATED blocks signoff
-    ├── progress.md         hand-off notes, newest first
-    ├── qa-report.md        verdict, bugs, evidence
-    ├── signoff.md          verification, findings, success metrics results
-    ├── contracts/  briefs/  qa/
-```
+## 🗺️ Roadmap
 
-A Standard feature gets the same folder with a slimmer `spec.md` and `test-plan.md`, and
-no `ux.md` when no screen changes. Quick changes get no folder.
+| Release | Highlights |
+| --- | --- |
+| ✅ **v0.1–v0.3** | The agent team, ownership and task gates, kickoff and signoff, briefs, product memory, the eval suite (0.84 → 1.00) |
+| ✅ **v0.4a** | One `/plumbline:build`: work sized as Quick, Standard or Full, docs by module and feature |
+| ✅ **v0.4b** | Project profile, ten surfaces, test adapters, lean roles (product writes the UI text, one QA agent, TDD with unit and e2e), model routing by complexity |
+| ✅ **v0.5** | Security by attack plan: triage levels, the lead's attack catalogue, attacks as tests first, independent attack rounds, signoff runs the attack tests and a secrets scan |
 
-Repos from v0.3 keep working: the older `docs/product/<area>/phases/phase-NN/` layout is
-still read by every script, nothing is moved, and new features in such an area go into its
-`phases/` folder.
-</details>
+Dev plans for each release are in [`docs/`](docs).
 
-## Roadmap
-
-| Release | Status | Highlights |
-| --- | --- | --- |
-| **v0.1** | ✅ shipped | The agent team, ownership and task gates, kickoff and signoff |
-| **v0.1.2** | ✅ shipped | Windows path fix, visible escalations, QA ownership |
-| **v0.2** | ✅ shipped | A method for every role, the creation gate, injected context, briefs, the eval suite (0.84 → 1.00) |
-| **v0.3** | ✅ shipped | Visual comparison, accessibility gate, `/plumbline:phase-next`, product memory |
-| **v0.4a** | ✅ shipped | **Adaptive delivery:** one `/plumbline:build <request>`; the product engineer sizes the work (Quick, Standard or Full) and the plugin picks the roles, team size and docs; docs organised by module and feature |
-| **v0.4b** | 🔍 in review | **Project awareness:** a confirmed project profile, ten surfaces, test adapters (node, pytest, go, Playwright, generic), one QA evidence kind per surface checked at signoff, and agents that adapt to each surface. **Lean roles:** no UX engineer (product writes the UI text), one QA agent that checks the feature works, TDD with unit and e2e tests, effort set by the lead; the visual comparison and accessibility scan are removed. Live smoke test pending |
-
-The full plan, with every task and its acceptance check, is in [`docs/dev-plan.md`](docs/dev-plan.md).
-
-## Repository layout
-
-```text
-.claude-plugin/marketplace.json      marketplace entry
-plugins/plumbline/
-├── agents/                          five role definitions
-├── skills/                          build, kickoff, discover, status, handoff, signoff, phase-next (+ templates, surface overlays)
-├── hooks/hooks.json                 gates and context injection
-├── scripts/                         the gates and tools (bash + jq)
-└── evals/                           plugin eval cases and their shared fixture
-tests/                               hook and script self-tests, the live smoke test, the end-to-end benchmark
-docs/                                the roadmap and eval results
-```
-
-## Contributing and testing
+## 🧑‍💻 Contributing
 
 ```bash
-bash tests/run-all.sh                 # every self-test suite, one summary line each
-bash tests/hooks-selftest.sh          # hook gates
-bash tests/scripts-selftest.sh        # status, signoff, briefs, evidence
-bash tests/kickoff-selftest.sh        # kickoff.sh in both layouts
-bash tests/lib-selftest.sh            # shared helpers, ac-check
-bash tests/profile-selftest.sh        # project detection and the profile
-bash tests/adapters-selftest.sh       # node, pytest, go, playwright, combined and generic test adapters
-claude plugin validate ./plugins/plumbline --strict
+bash tests/run-all.sh                                   # every self-test suite
+claude plugin validate ./plugins/plumbline --strict     # plugin validation
 claude plugin eval ./plugins/plumbline --scaffold --allow-tools Write Edit --ablation none --no-publish
 ```
 
-The live team test is in [`tests/smoke/README.md`](tests/smoke/README.md), and the
-end-to-end benchmark in [`tests/e2e/README.md`](tests/e2e/README.md).
+```text
+.claude-plugin/marketplace.json   marketplace entry
+plugins/plumbline/
+├── agents/     the roles
+├── skills/     build, kickoff, discover, status, handoff, signoff, phase-next (+ templates)
+├── hooks/      gates and context injection
+├── scripts/    the gates and tools (bash + jq)
+└── evals/      eval cases and fixtures
+tests/          self-tests, the live smoke test, the end-to-end benchmark
+docs/           dev plans, eval reports, assets
+```
 
 ## License
 

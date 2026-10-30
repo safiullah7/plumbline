@@ -1,0 +1,87 @@
+<!doctype html>
+<html
+  lang="en"
+  data-resolution="landscape"
+  data-composition-variables='[
+    {"id":"color-ground","type":"color","label":"Terminal navy","default":"#1A2238"},
+    {"id":"color-ink","type":"color","label":"Ink","default":"#1E2433"},
+    {"id":"color-accent","type":"color","label":"Request and PR gold","default":"#E8C26A"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root { --color-ground: #1A2238; --color-ink: #1E2433; --color-accent: #E8C26A; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--color-ground); }
+      #root { position: relative; width: 100%; height: 100%; background: var(--color-ground); font-family: "Nunito", sans-serif; }
+      .beat { position: absolute; left: 0; top: 0; width: 1px; height: 1px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="99.742" data-width="1920" data-height="1080">
+      <div id="s1" data-composition-id="s1" data-composition-src="compositions/s1.html" data-start="0.000" data-duration="6.000" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:1"></div>
+      <div id="s2" data-composition-id="s2" data-composition-src="compositions/s2.html" data-start="6.000" data-duration="12.900" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:2"></div>
+      <div id="s3" data-composition-id="s3" data-composition-src="compositions/s3.html" data-start="18.900" data-duration="10.758" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:3"></div>
+      <div id="s4" data-composition-id="s4" data-composition-src="compositions/s4.html" data-start="29.658" data-duration="8.970" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:4"></div>
+      <div id="s5" data-composition-id="s5" data-composition-src="compositions/s5.html" data-start="38.628" data-duration="13.500" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:5"></div>
+      <div id="s6" data-composition-id="s6" data-composition-src="compositions/s6.html" data-start="52.128" data-duration="11.914" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:6"></div>
+      <div id="s7" data-composition-id="s7" data-composition-src="compositions/s7.html" data-start="64.042" data-duration="10.300" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:7"></div>
+      <div id="s8" data-composition-id="s8" data-composition-src="compositions/s8.html" data-start="74.342" data-duration="11.000" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:8"></div>
+      <div id="s9" data-composition-id="s9" data-composition-src="compositions/s9.html" data-start="85.342" data-duration="7.100" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:9"></div>
+      <div id="s10" data-composition-id="s10" data-composition-src="compositions/s10.html" data-start="92.442" data-duration="4.300" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:10"></div>
+      <div id="s11" data-composition-id="s11" data-composition-src="compositions/s11.html" data-start="96.742" data-duration="3.000" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080" style="z-index:11"></div>
+      <div id="beat-1" class="beat clip" data-beat data-start="0.00" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-2" class="beat clip" data-beat data-start="2.90" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-3" class="beat clip" data-beat data-start="5.40" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-4" class="beat clip" data-beat data-start="7.90" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-5" class="beat clip" data-beat data-start="9.90" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-6" class="beat clip" data-beat data-start="12.15" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-7" class="beat clip" data-beat data-start="14.40" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-8" class="beat clip" data-beat data-start="17.90" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-9" class="beat clip" data-beat data-start="20.50" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-10" class="beat clip" data-beat data-start="23.56" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-11" class="beat clip" data-beat data-start="24.26" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-12" class="beat clip" data-beat data-start="26.56" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-13" class="beat clip" data-beat data-start="27.96" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-14" class="beat clip" data-beat data-start="29.26" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-15" class="beat clip" data-beat data-start="31.81" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-16" class="beat clip" data-beat data-start="33.53" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-17" class="beat clip" data-beat data-start="35.63" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-18" class="beat clip" data-beat data-start="37.23" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-19" class="beat clip" data-beat data-start="41.53" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-20" class="beat clip" data-beat data-start="42.43" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-21" class="beat clip" data-beat data-start="44.88" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-22" class="beat clip" data-beat data-start="46.23" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-23" class="beat clip" data-beat data-start="47.13" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-24" class="beat clip" data-beat data-start="49.53" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-25" class="beat clip" data-beat data-start="51.33" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-26" class="beat clip" data-beat data-start="54.03" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-27" class="beat clip" data-beat data-start="54.63" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-28" class="beat clip" data-beat data-start="61.89" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-29" class="beat clip" data-beat data-start="63.19" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-30" class="beat clip" data-beat data-start="68.04" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-31" class="beat clip" data-beat data-start="69.14" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-32" class="beat clip" data-beat data-start="71.94" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-33" class="beat clip" data-beat data-start="74.44" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-34" class="beat clip" data-beat data-start="76.94" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-35" class="beat clip" data-beat data-start="77.94" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-36" class="beat clip" data-beat data-start="80.84" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-37" class="beat clip" data-beat data-start="82.84" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-38" class="beat clip" data-beat data-start="85.24" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-39" class="beat clip" data-beat data-start="87.84" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-40" class="beat clip" data-beat data-start="88.84" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-41" class="beat clip" data-beat data-start="91.94" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-42" class="beat clip" data-beat data-start="93.44" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-43" class="beat clip" data-beat data-start="95.44" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-44" class="beat clip" data-beat data-start="96.44" data-duration="0.1" data-track-index="9"></div>
+      <div id="beat-45" class="beat clip" data-beat data-start="99.34" data-duration="0.1" data-track-index="9"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["main"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>
