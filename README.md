@@ -30,9 +30,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/plumbline-team.webp" width="100%" alt="Animated tour: a user asks their Plumbline team for a patient portal. Product asks clarifying questions, the lead plans at the whiteboard while engineers watch, engineers build test-first, the lead reviews and a security engineer tries to break it, QA files a bug that gets fixed, and a PR arrives for the user to merge.">
+  <img src="docs/assets/plumbline-team.gif" width="100%" alt="Animated tour: a user asks their Plumbline team for a patient portal. Product asks clarifying questions, the lead plans at the whiteboard while engineers watch, engineers build test-first, the lead reviews and a security engineer tries to break it, QA files a bug that gets fixed, and a PR arrives for the user to merge.">
 </p>
-<p align="center"><sub>A feature build, start to finish (1.5× speed, 30 fps). <a href="docs/assets/plumbline-team.mp4">Watch the full film (MP4, 100 s)</a>.</sub></p>
+<p align="center"><sub>A feature build, start to finish (1.5× speed, 25 fps). <a href="docs/assets/plumbline-team.mp4">Watch the full film (MP4, 100 s)</a>.</sub></p>
 
 ---
 
