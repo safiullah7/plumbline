@@ -12,7 +12,7 @@
 
 <p align="center">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-10182B?style=for-the-badge">
-  <img alt="Version 0.5.0" src="https://img.shields.io/badge/version-0.5.0-34D399?style=for-the-badge">
+  <img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-34D399?style=for-the-badge">
   <img alt="1846 self-tests passing" src="https://img.shields.io/badge/self--tests-1%2C846%20passing-34D399?style=for-the-badge">
   <img alt="Evals: no regressions" src="https://img.shields.io/badge/evals-no%20regressions-34D399?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=for-the-badge">
@@ -88,7 +88,7 @@ its decision before anything is created.
 | --- | --- | --- | --- |
 | **Ask for** | A small change in one place | A feature in an existing module | A new module, auth, billing, migrations, or ~10+ criteria |
 | **Example** | `/plumbline:build make the double-booking check ignore cancelled bookings` | `/plumbline:build add CSV export to the invoices page` | `/plumbline:build patient portal: patients sign in and see their own X-rays, treatment plans and invoices` |
-| **Who works** | 1 engineer + reviewer | Product, lead, 1-2 engineers, QA | The whole team, in parallel |
+| **Who works** | 1 engineer + reviewer | Product, lead, engineers by load (usually 1-2), QA | The whole team, in parallel |
 | **You do** | Merge the PR | Approve the plan once, merge | Answer the interview, approve the plan, merge |
 | **You get** | A branch, tests named after 1-3 criteria, a review, a PR | A feature folder with spec, criteria, plan and test record, plus the PR | Everything, with an agent team and the full quality pipeline |
 
@@ -108,6 +108,8 @@ Engineers: 4
 Team: yes
 Why: new sign-in and per-practice patient data (tenancy, sensitive data)
 ```
+
+A request that would run past about 30 criteria or 6 screens gets a `Split:` line instead, such as `Split: 1 of 3 — 02 sign-in and order queue (this) · 03 order detail and status changes · 04 refresh and switching`: slice 1 is built now and the rest wait on the roadmap, each shipping as its own PR. `/plumbline:status` also prints a `team:` line, so you can see who is working and who is stuck.
 
 Then the product engineer clarifies, like a real PM would (example):
 
@@ -208,6 +210,16 @@ flowchart LR
 5. **Test.** QA uses the built feature like a real user, files bugs, and re-tests the fixes.
 6. **Ship.** A deterministic gap check runs, the PR opens, docs and memory are updated.
    **You merge.** Plumbline never merges or deploys for you.
+
+## ⚡ Built for speed
+
+- **No stalls.** Every engineer has a task list, the idle gate keeps them moving and a watchdog checks every 5 minutes and flags anyone stuck. Engineers go straight to their next task; reports go to the lead.
+- **Right-sized features.** About 30 criteria per feature; bigger requests are split into slices.
+- **Parallel by design.** The team is sized by load, work is mock-first and contracts land during planning, so nobody waits on another workstream.
+- **Lean checks.** A task runs only its own tests. Typecheck, lint and the full suite run once per workstream and at signoff; e2e runs when the build is green.
+- **Small context.** A core brief plus one file per task.
+
+The first live v0.5 run spent 40% of its time idle, 21% on docs before code and 35-45% of engineer time on checks. The v0.6 target is a ~25-criteria feature in about 1.5-2 hours. That is a target until it is measured.
 
 ## 🔒 Quality gates that can't be talked past
 
@@ -339,9 +351,11 @@ docs/product/patient-portal/
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `PLUMBLINE_TYPECHECK` | `npm run -s typecheck` | Typecheck command for the task gate (`""` skips it) |
-| `PLUMBLINE_LINT` | `npm run -s lint` | Lint command for the task gate |
+| `PLUMBLINE_TYPECHECK` | `npm run -s typecheck` | Typecheck command for `ac-check` full runs (workstream acceptance and signoff), and for each task only when `PLUMBLINE_TASK_CHECKS=full` (`""` skips it) |
+| `PLUMBLINE_LINT` | `npm run -s lint` | Lint command, run where the typecheck runs |
 | `PLUMBLINE_TEST_AC` | `npm run -s test:ac --` | Runs the tests for given IDs (when set, it overrides the profile's AC tests cell) |
+| `PLUMBLINE_TASK_CHECKS` | `tests-only` | A task runs only its tests; `full` runs typecheck and lint on every task as before |
+| `PLUMBLINE_TEAM` | auto | Which team the status command and watchdog read, when several share a folder |
 | `PLUMBLINE_CONFIRM` | `auto` | `always` confirms every triage |
 | `PLUMBLINE_HOOK_DEBUG` | off | Log every hook payload to `$TMPDIR/plumbline-hooks.jsonl` |
 
@@ -368,6 +382,7 @@ Set them in the `env` block of `.claude/settings.json`.
 | ✅ **v0.4a** | One `/plumbline:build`: work sized as Quick, Standard or Full, docs by module and feature |
 | ✅ **v0.4b** | Project profile, ten surfaces, test adapters, lean roles (product writes the UI text, one QA agent, TDD with unit and e2e), model routing by complexity |
 | ✅ **v0.5** | Security by attack plan: triage levels, the lead's attack catalogue, attacks as tests first, independent attack rounds, signoff runs the attack tests and a secrets scan |
+| 🚧 **v0.6** | Fast builds (current): no stalls, right-sized features, parallel work, lean per-task checks, small context |
 
 Dev plans for each release are in [`docs/`](docs).
 
