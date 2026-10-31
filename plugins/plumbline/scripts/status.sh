@@ -3,7 +3,9 @@
 # and escalated questions, and uncommitted files per owner. Read-only. An AC
 # counts as covered when its ID appears in a test file (PLUMBLINE_TEST_GLOBS).
 # A feature with a security level above none gets one more line (attacks planned
-# and own, open critical and high findings, the independent pass).
+# and own, open critical and high findings, the independent pass). When the team
+# has a shared task list (found by matching the team configs' cwd to this
+# project, or PLUMBLINE_TEAM), one more line counts the open tasks per owner.
 source "$(dirname "${0//\\//}")/lib.sh"
 dir=$(phase_dir) || { echo "No active phase: .claude/current-phase is missing."; exit 1; }
 cd "$PROJECT_DIR" || exit 1
@@ -47,6 +49,27 @@ if [[ "$lvl" != none ]]; then
     if ((s == "critical" || s == "high") && t != "verified") c++ } END { print c + 0 }')
   state=$(security_independent_state)
   echo "security: $lvl · $planned planned attacks, $own own · open high $openhigh · independent pass ${state:-none}"
+fi
+
+# The team's task list (v0.6): open tasks per owner and how many of them are ready,
+# so a stall shows in one call. The lead's open tasks are chores.
+if team=$(team_for_project) && tdir=$(team_dir_for "$team"); then
+  tasks=$(team_tasks "$tdir")
+  if [[ -n "$tasks" ]]; then
+    line=""
+    while IFS= read -r owner; do
+      n=$(awk -F'\t' -v o="$owner" '$2 == o && $3 != "completed"' <<<"$tasks" | grep -c .)
+      (( n > 0 )) || continue
+      if [[ "$owner" == lead || "$owner" == team-lead ]]; then
+        line+="${line:+ · }$owner $n chores"
+      else
+        r=$(ready_tasks "$tdir" "$owner" | grep -c .)
+        line+="${line:+ · }${owner:-unassigned} $n open"
+        (( r > 0 )) && line+=" ($r ready)"
+      fi
+    done < <(awk -F'\t' '!seen[$2]++ { print $2 }' <<<"$tasks" | sort | awk '$0 == "lead" || $0 == "team-lead" { l = l $0 "\n"; next } { print } END { printf "%s", l }')
+    echo "team: ${line:-every task done ($(count "$tasks") tasks)}"
+  fi
 fi
 
 dirty=$(dirty_files)

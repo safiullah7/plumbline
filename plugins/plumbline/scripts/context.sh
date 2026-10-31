@@ -65,7 +65,11 @@ fi
 ctx+=$'\n'"Plumbline scripts: $PLUMBLINE_SCRIPTS"
 if [[ -n "$who" ]]; then
   ctx+=$'\n'"You are $who. You own: $globs"
-  [[ -f "$dir/briefs/$who.md" ]] && ctx+=$'\n'"Your brief: $rel/briefs/$who.md. Read it before anything else; open the full docs only when it isn't enough."
+  if [[ -d "$dir/briefs/$who" ]]; then
+    ctx+=$'\n'"Your brief: $rel/briefs/$who.md (core); your tasks: $rel/briefs/$who/. Read the core once and the current task's file when you start it; open the full docs only when they aren't enough."
+  elif [[ -f "$dir/briefs/$who.md" ]]; then
+    ctx+=$'\n'"Your brief: $rel/briefs/$who.md. Read it before anything else; open the full docs only when it isn't enough."
+  fi
 fi
 if [[ -f "$q" ]]; then
   open=$(md_table "$q" | awk -F'\t' 'toupper($6) == "OPEN"' | grep -c .)

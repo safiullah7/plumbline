@@ -346,16 +346,27 @@ out=$(bash "$G/status.sh")
 assert "status: AC IDs in _test.go and test_*.py files count as covered" has "$out" "ACs: 5 · every one has a test"
 rm -rf apps/api/svc
 
-# make-briefs: one brief per engineer, holding only its own ACs.
+# make-briefs: a core brief per engineer and one file per task, holding only its own ACs.
 out=$(bash "$G/make-briefs.sh")
 api="$P/briefs/eng-api.md" web="$P/briefs/eng-web.md"
-assert "make-briefs: one brief per engineer" test -f "$api" -a -f "$web"
+assert "make-briefs: one core brief per engineer" test -f "$api" -a -f "$web"
+assert "make-briefs: ...and the output names just those two" test "$(grep -c . <<<"$out")" = 2
 assert "make-briefs: brief lists its globs" grep -qF 'apps/api/**' "$api"
-assert "make-briefs: brief holds its own AC rows" grep -q '^| AC-01-002 |' "$api"
-assert "make-briefs: brief leaves out other workstreams' ACs" test -z "$(grep '^| AC-01-005 |' "$api")"
-assert "make-briefs: web brief holds AC-01-005" grep -q '^| AC-01-005 |' "$web"
+assert "make-briefs: a file per task, named by its plan-wide T<n> label" \
+  test -f "$P/briefs/eng-api/T1.md" -a -f "$P/briefs/eng-api/T2.md" -a -f "$P/briefs/eng-api/T3.md" -a -f "$P/briefs/eng-web/T4.md"
+assert "make-briefs: the core lists a task per line with its file" \
+  grep -qxF -- "- T2 [AC-01-002] Reject duplicate room names (NORMAL): $P/briefs/eng-api/T2.md" "$api"
+assert "make-briefs: the core holds no AC rows" test -z "$(grep '^| AC-' "$api" "$web")"
+assert "make-briefs: a task file holds its own AC rows" grep -q '^| AC-01-002 |' "$P/briefs/eng-api/T2.md"
+assert "make-briefs: ...and not another task's" test -z "$(grep -E '^\| AC-01-00[134] \|' "$P/briefs/eng-api/T2.md")"
+assert "make-briefs: ...a task citing two criteria holds both rows" \
+  test "$(grep -cE '^\| AC-01-00[13] \|' "$P/briefs/eng-api/T1.md")" = 2
+assert "make-briefs: brief leaves out other workstreams' ACs" test -z "$(grep -rl '^| AC-01-005 |' "$P/briefs/eng-api" "$api")"
+assert "make-briefs: web task holds AC-01-005" grep -q '^| AC-01-005 |' "$P/briefs/eng-web/T4.md"
 assert "make-briefs: brief links the full docs" grep -q "^$P/spec.md" "$api"
-assert "make-briefs: brief carries the spec's business rules" grep -qF "Room names are unique within a clinic" "$api"
+assert "make-briefs: the core points at the business rules instead of copying them" \
+  grep -qF "$P/spec.md, section \"Business rules\"" "$api"
+assert "make-briefs: ...no copy of the rules anywhere in the briefs" test -z "$(grep -rF 'Room names are unique within a clinic' "$P/briefs")"
 assert "make-briefs: brief carries data and permissions" grep -qF "Only clinic admins can add" "$api"
 
 # A Status that only mentions "pass" doesn't count (a failed row noting a retry).
@@ -428,27 +439,30 @@ Layout: a plain table.
 EOF
 echo "# spec" > "$BF/spec.md"
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-bw="$BF/briefs/eng-web.md" ba="$BF/briefs/eng-api.md"
-assert "make-briefs: a task keeps its indented detail lines (Files)" grep -qF 'Files: storefront/app/page.tsx' "$bw"
-assert "make-briefs: ...the failing unit test" grep -qF 'Red (unit): AC-01-001 renders every item' "$bw"
-assert "make-briefs: ...the e2e test and the done-when" grep -qF 'E2E: AC-01-001 customer sees the menu' "$bw"
-assert "make-briefs: ...and done-when" grep -qF 'Done when: unit and e2e tests for AC-01-001 pass' "$bw"
-assert "make-briefs: another engineer's task detail stays out" test -z "$(grep -F 'backend/src/menu.js' "$bw")"
-assert "make-briefs: the brief carries its screen's description" grep -qF 'a grid of cards' "$bw"
-assert "make-briefs: ...and not another screen's" test -z "$(grep -F 'a plain table' "$bw")"
-assert "make-briefs: the api brief gets the other screen's text" grep -qF 'a plain table' "$ba"
-assert "make-briefs: no prototypes link any more" test -z "$(grep -F 'prototypes' "$bw")"
-bb="$BF/briefs/eng-batch.md"
-assert "make-briefs: an engineer whose use case has no screen gets no screen text" test -z "$(grep -E 'a grid of cards|a plain table|Screen descriptions' "$bb")"
-assert "make-briefs: no attack plan and no SEC IDs, no attacks section" test -z "$(grep -l 'Attacks to withstand' "$BF"/briefs/*.md)"
+bw="$BF/briefs/eng-web.md" ba="$BF/briefs/eng-api.md" bb="$BF/briefs/eng-batch.md"
+tw="$BF/briefs/eng-web/T1.md" ta="$BF/briefs/eng-api/T2.md" tb="$BF/briefs/eng-batch/T3.md"
+assert "make-briefs: a task file keeps the task's indented detail lines (Files)" grep -qF 'Files: storefront/app/page.tsx' "$tw"
+assert "make-briefs: ...the failing unit test" grep -qF 'Red (unit): AC-01-001 renders every item' "$tw"
+assert "make-briefs: ...the e2e test and the done-when" grep -qF 'E2E: AC-01-001 customer sees the menu' "$tw"
+assert "make-briefs: ...and done-when" grep -qF 'Done when: unit and e2e tests for AC-01-001 pass' "$tw"
+assert "make-briefs: the core has the task line but not its detail lines" \
+  test -n "$(grep -F 'T1 [AC-01-001] Show the menu (NORMAL)' "$bw")" -a -z "$(grep -E 'Files:|Red \(unit\)|Done when' "$bw")"
+assert "make-briefs: another engineer's task detail stays out" test -z "$(grep -F 'backend/src/menu.js' "$tw" "$bw")"
+assert "make-briefs: the task file carries its screen's description" grep -qF 'a grid of cards' "$tw"
+assert "make-briefs: ...and not another screen's" test -z "$(grep -F 'a plain table' "$tw")"
+assert "make-briefs: the core carries no screens" test -z "$(grep -E 'a grid of cards|a plain table|^## Screens' "$bw" "$ba")"
+assert "make-briefs: the api task gets the other screen's text" grep -qF 'a plain table' "$ta"
+assert "make-briefs: no prototypes link any more" test -z "$(grep -rF 'prototypes' "$BF/briefs")"
+assert "make-briefs: an engineer whose use case has no screen gets no screen text" test -z "$(grep -E 'a grid of cards|a plain table|Screen descriptions' "$tb")"
+assert "make-briefs: no attack plan and no SEC IDs, no attacks section" test -z "$(grep -rl 'Attacks to withstand' "$BF/briefs")"
 
 # make-briefs: attacks. Keep the briefs above, then give eng-api SEC IDs.
-mkdir -p "$BT/before"; cp "$BF"/briefs/*.md "$BT/before/"
+mkdir -p "$BT/before"; cp -r "$BF/briefs" "$BT/before/briefs"
 cp "$BF/dev-plan.md" "$BT/plain-plan.md"
 sed -i -e 's/^- \[AC-01-002\] Menu endpoint/- [AC-01-002 SEC-01-001 SEC-01-002] Menu endpoint/' \
        -e 's/^  Done when: AC-01-002 tests pass/&\n  Attacks: SEC-01-001 SEC-01-002/' "$BF/dev-plan.md"
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: SEC IDs without an attack plan add no section" test -z "$(grep -l 'Attacks to withstand' "$BF"/briefs/*.md)"
+assert "make-briefs: SEC IDs without an attack plan add no section" test -z "$(grep -rl 'Attacks to withstand' "$BF/briefs")"
 cat >> "$BF/dev-plan.md" <<'EOF'
 
 ## Attack plan
@@ -464,25 +478,27 @@ Skipped: "foreign keys": none in this feature
 | SEC-01-003 | web | Another engineer's attack | 403 | |
 EOF
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: an engineer with SEC IDs gets the attacks section" grep -qx '## Attacks to withstand' "$ba"
-assert "make-briefs: ...with the Attack fixtures line" grep -qF 'Attack fixtures: backend/test/attack/fixtures.js (second clinic' "$ba"
-assert "make-briefs: ...with the table header" grep -q '^| SEC ID | Surface | Attack | Must happen | Checked |$' "$ba"
-assert "make-briefs: ...and its own rows" test "$(grep -c '^| SEC-01-00[12] |' "$ba")" = 2
-assert "make-briefs: ...but not another engineer's row" test -z "$(grep 'SEC-01-003' "$ba")"
-assert "make-briefs: ...nor the plan's Signals, Surface or Skipped lines" test -z "$(grep -E '^(Signals|Attack surface|Skipped):' "$ba")"
+assert "make-briefs: a task with SEC IDs gets the attacks section" grep -qx '## Attacks to withstand' "$ta"
+assert "make-briefs: ...with the Attack fixtures line" grep -qF 'Attack fixtures: backend/test/attack/fixtures.js (second clinic' "$ta"
+assert "make-briefs: ...with the table header" grep -q '^| SEC ID | Surface | Attack | Must happen | Checked |$' "$ta"
+assert "make-briefs: ...and its own rows" test "$(grep -c '^| SEC-01-00[12] |' "$ta")" = 2
+assert "make-briefs: ...but not another engineer's row" test -z "$(grep -r 'SEC-01-003' "$BF/briefs")"
+assert "make-briefs: ...nor the plan's Signals, Surface or Skipped lines" test -z "$(grep -E '^(Signals|Attack surface|Skipped):' "$ta")"
+assert "make-briefs: the core has no attacks section" test -z "$(grep -l 'Attacks to withstand' "$ba")"
 assert "make-briefs: the section follows the acceptance criteria" \
-  test "$(grep '^## ' "$ba" | grep -A1 '^## Acceptance criteria' | tail -n1)" = "## Attacks to withstand"
+  test "$(grep '^## ' "$ta" | grep -A1 '^## Acceptance criteria' | tail -n1)" = "## Attacks to withstand"
 assert "make-briefs: SEC rows stay out of the acceptance criteria section" \
-  test -z "$(awk '/^## /{s=($0 ~ /^## Acceptance criteria/)} s' "$ba" | grep 'SEC-')"
-assert "make-briefs: engineers without SEC IDs get no section" test -z "$(grep -l 'Attacks to withstand' "$bw" "$bb")"
-assert "make-briefs: ...and eng-web's brief is byte-identical to before" cmp -s "$bw" "$BT/before/eng-web.md"
-assert "make-briefs: ...and eng-batch's too" cmp -s "$bb" "$BT/before/eng-batch.md"
+  test -z "$(awk '/^## /{s=($0 ~ /^## Acceptance criteria/)} s' "$ta" | grep 'SEC-')"
+assert "make-briefs: engineers without SEC IDs get no section" test -z "$(grep -rl 'Attacks to withstand' "$BF/briefs/eng-web" "$BF/briefs/eng-batch")"
+assert "make-briefs: ...and their core and task files are byte-identical to before" \
+  bash -c 'cmp -s "$1" "$2/briefs/eng-web.md" && cmp -s "$3" "$2/briefs/eng-web/T1.md" && cmp -s "$4" "$2/briefs/eng-batch.md" && cmp -s "$5" "$2/briefs/eng-batch/T3.md"' _ "$bw" "$BT/before" "$tw" "$bb" "$tb"
 cp "$BT/plain-plan.md" "$BF/dev-plan.md"
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: back to a plan without SEC IDs, eng-api's brief is as before" cmp -s "$ba" "$BT/before/eng-api.md"
+assert "make-briefs: back to a plan without SEC IDs, eng-api's files are as before" \
+  bash -c 'cmp -s "$1" "$3/briefs/eng-api.md" && cmp -s "$2" "$3/briefs/eng-api/T2.md"' _ "$ba" "$ta" "$BT/before"
 
-# make-briefs: the literal ac-check command names the engineer's SEC IDs too, and shows
-# for an engineer with only SEC IDs. It needs a profile row for the engineer's surface.
+# make-briefs: the workstream's ac-check line names the engineer's SEC IDs too, as does a task's
+# tests-only line, and they show for a task with only SEC IDs. They need a profile row for the surface.
 mkdir -p "$BT/docs/product"
 cat > "$BT/docs/product/project.md" <<'EOF'
 # Project profile
@@ -493,18 +509,23 @@ cat > "$BT/docs/product/project.md" <<'EOF'
 | api | Node | backend/** | | | | node |
 EOF
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: no SEC IDs, the ac-check command lists the AC IDs only (as before)" grep -qF 'ac-check.sh" "AC-01-002" --surface api' "$ba"
-cp "$ba" "$BT/before/eng-api.profile.md"
+assert "make-briefs: no SEC IDs, the core's ac-check command lists the AC IDs only" grep -qF 'ac-check.sh" "AC-01-002" --surface api' "$ba"
+assert "make-briefs: ...and the task file's line is tests-only with the same IDs" grep -qF 'ac-check.sh" --tests-only "AC-01-002" --surface api' "$ta"
+cp -r "$BF/briefs" "$BT/before/profile"
 sed -i -e 's/^- \[AC-01-002\] Menu endpoint/- [AC-01-002 SEC-01-001 SEC-01-002] Menu endpoint/' "$BF/dev-plan.md"
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: with SEC IDs, the ac-check command lists AC then SEC IDs" grep -qF 'ac-check.sh" "AC-01-002|SEC-01-001|SEC-01-002" --surface api' "$ba"
+assert "make-briefs: with SEC IDs, the core's ac-check command lists AC then SEC IDs" grep -qF 'ac-check.sh" "AC-01-002|SEC-01-001|SEC-01-002" --surface api' "$ba"
+assert "make-briefs: ...and so does the task file's tests-only line" \
+  grep -qF 'ac-check.sh" --tests-only "AC-01-002|SEC-01-001|SEC-01-002" --surface api' "$ta"
 cp "$BT/plain-plan.md" "$BF/dev-plan.md"
 sed -i -e 's/AC-01-002/SEC-01-009/g' "$BF/dev-plan.md"
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: an engineer with only SEC IDs still gets the ac-check command" grep -qF 'ac-check.sh" "SEC-01-009" --surface api' "$ba"
+assert "make-briefs: an engineer with only SEC IDs still gets the ac-check commands" \
+  bash -c 'grep -qF "ac-check.sh\" \"SEC-01-009\" --surface api" "$1" && grep -qF "ac-check.sh\" --tests-only \"SEC-01-009\" --surface api" "$2"' _ "$ba" "$ta"
 cp "$BT/plain-plan.md" "$BF/dev-plan.md"
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: back to no SEC IDs, the brief is byte-identical to the earlier one" cmp -s "$ba" "$BT/before/eng-api.profile.md"
+assert "make-briefs: back to no SEC IDs, the briefs are byte-identical to the earlier ones" \
+  bash -c 'cmp -s "$1" "$3/profile/eng-api.md" && cmp -s "$2" "$3/profile/eng-api/T2.md"' _ "$ba" "$ta" "$BT/before"
 # ### headings inside ## Attack plan keep the section open for the brief's rows too.
 sed -i -e 's/^- \[AC-01-002\] Menu endpoint/- [AC-01-002 SEC-01-001] Menu endpoint/' "$BF/dev-plan.md"
 cat >> "$BF/dev-plan.md" <<'EOF'
@@ -518,8 +539,278 @@ Attack fixtures: backend/test/attack/fixtures.js
 | SEC-01-001 | api | Staff of clinic B calls GET /menu for clinic A | 404 | |
 EOF
 CLAUDE_PROJECT_DIR="$BT" bash "$G/make-briefs.sh" >/dev/null
-assert "make-briefs: an attack plan row under a ### heading reaches the brief" grep -q '^| SEC-01-001 |' "$ba"
+assert "make-briefs: an attack plan row under a ### heading reaches the task file" grep -q '^| SEC-01-001 |' "$ta"
 rm -rf "$BT"
+
+
+# plan-tasks.sh: the tasks of a dev plan as owner / subject / blocked-by / done-when lines.
+PT=$(mktemp -d); mkdir -p "$PT/.claude" "$PT/docs/f1"
+echo "docs/f1" > "$PT/.claude/current-phase"
+PTD="$PT/docs/f1"
+ptplan() { # the lines of a ## Tasks section, as an LF plan
+  { printf '# Feature 01 dev plan\n\nStatus: READY\n\n## Team\n| Teammate | Model |\n| --- | --- |\n| eng-api | sonnet |\n\n## Tasks\n'
+    printf '%s\n' "$@"; printf '\n## Briefs\nnothing here\n- [AC-09-009] not a task, it is under Briefs (LOW)\n'; } > "$PTD/dev-plan.md"
+}
+ptrun() { PT_OUT=$(CLAUDE_PROJECT_DIR="$PT" bash "$G/plan-tasks.sh" "$@" 2>"$PT/err"); PT_RC=$?; PT_ERR=$(cat "$PT/err"); }
+TAB=$'\t'
+ptplan '### lead' \
+  '- [chore] L0: Land contracts and the migration' \
+  '  Done when: contracts are committed' \
+  '### eng-api' \
+  '- [AC-02-030 SEC-02-007] B4: Status changes (HIGH)' \
+  '  Files: apps/api/status.js' \
+  '  Blocked by: B1, L0' \
+  '  Done when: the unit and e2e tests for AC-02-030 pass' \
+  '- [AC-02-031] B1: Order list (NORMAL)' \
+  '  Files: apps/api/list.js' \
+  '  Done when: AC-02-031 tests pass'
+ptrun
+want="lead${TAB}[chore] L0: Land contracts and the migration${TAB}${TAB}contracts are committed${TAB}L0
+eng-api${TAB}[AC-02-030 SEC-02-007] B4: Status changes${TAB}B1,L0${TAB}the unit and e2e tests for AC-02-030 pass${TAB}B4
+eng-api${TAB}[AC-02-031] B1: Order list${TAB}${TAB}AC-02-031 tests pass${TAB}B1"
+assert "plan-tasks: one line per task in plan order: owner, subject without the rating, blocked-by, done-when, label" test "$PT_RC/$PT_OUT" = "0/$want"
+assert "plan-tasks: the lead's [chore] lines are included, a task under another heading is not" test "$(grep -c . <<<"$PT_OUT")" = 3
+assert "plan-tasks: nothing is written to stderr on success" test -z "$PT_ERR"
+ptrun --dir "$PTD"
+assert "plan-tasks: --dir names the feature folder" test "$PT_RC/$PT_OUT" = "0/$want"
+ptrun --dir="$PTD"
+assert "plan-tasks: --dir=value works too" test "$PT_RC/$PT_OUT" = "0/$want"
+sed 's/$/\r/' "$PTD/dev-plan.md" > "$PT/crlf.md"; cp "$PTD/dev-plan.md" "$PT/lf.md"; cp "$PT/crlf.md" "$PTD/dev-plan.md"
+ptrun
+assert "plan-tasks: a CRLF plan gives the same lines, with no carriage returns" test "$PT_RC/$PT_OUT" = "0/$want" -a "$PT_OUT" = "${PT_OUT//$'\r'/}"
+cp "$PT/lf.md" "$PTD/dev-plan.md"
+
+# T<n> labels are plan-global; a title starting "S3 bucket" has no colon, so it is not a label.
+ptplan '### eng-api' \
+  '- [AC-01-001] Create endpoint (NORMAL)' \
+  '  Done when: AC-01-001 passes' \
+  '- [AC-01-002] S3 bucket for uploads (LOW)' \
+  '  Blocked by: T1' \
+  '### eng-web' \
+  '- [AC-01-003] Upload dialog (NORMAL)' \
+  '  Blocked by: T2, T1' \
+  '- [AC-01-004] Q2: Quarterly view (LOW)' \
+  '  Blocked by: T3'
+ptrun
+assert "plan-tasks: tasks with no label get T<n> counted across the whole plan, so T3 is in eng-web" \
+  test "$PT_RC/$(cut -f3 <<<"$PT_OUT" | paste -sd';' -)" = "0/;T1;T2,T1;T3"
+assert "plan-tasks: ...a title that starts with a word and digit but no colon keeps its text" \
+  test "$(sed -n 2p <<<"$PT_OUT" | cut -f2)" = "[AC-01-002] S3 bucket for uploads"
+assert "plan-tasks: ...an explicit label stays in the subject" test "$(sed -n 4p <<<"$PT_OUT" | cut -f2)" = "[AC-01-004] Q2: Quarterly view"
+assert "plan-tasks: a task with no Done when line has an empty fourth field, then its label" \
+  test "$(sed -n 2p <<<"$PT_OUT" | awk -F'\t' '{ print NF "/" $4 "/" $5 }')" = "5//T2"
+assert "plan-tasks: the fifth field is the label (explicit, or T<n>)" \
+  test "$(cut -f5 <<<"$PT_OUT" | paste -sd';' -)" = "T1;T2;T3;Q2"
+ptplan '### eng-api' '- [AC-01-001] First (NORMAL)' '- [AC-01-002] Second (NORMAL)'
+ptrun
+assert "plan-tasks: a plan with no Blocked by lines leaves the third field empty" \
+  test "$PT_RC/$(cut -f3 <<<"$PT_OUT" | paste -sd';' -)" = "0/;"
+
+# Bad plans: exit 1, the reason on stderr, nothing on stdout.
+ptplan '### eng-api' '- [AC-01-001] B1: First (NORMAL)' '  Blocked by: B7' '- [AC-01-002] B2: Second (NORMAL)'
+ptrun
+assert "plan-tasks: an unknown Blocked by label exits 1 and names it" test "$PT_RC" = 1 -a -z "$PT_OUT" -a -n "$(grep -F 'Blocked by B7' <<<"$PT_ERR")"
+ptplan '### eng-api' '- [AC-01-001] B1: First (NORMAL)' '- [AC-01-002] B1: Second (NORMAL)'
+ptrun
+assert "plan-tasks: a duplicate label exits 1 and names it" test "$PT_RC" = 1 -a -z "$PT_OUT" -a -n "$(grep -F 'duplicate label B1' <<<"$PT_ERR")"
+ptplan '### eng-api' '- [AC-01-001] T2: First (NORMAL)' '- [AC-01-002] Second (NORMAL)'
+ptrun
+assert "plan-tasks: an explicit label that collides with a later T<n> is a duplicate" test "$PT_RC" = 1 -a -n "$(grep -F 'duplicate label T2' <<<"$PT_ERR")"
+ptplan '### eng-api' '- [AC-01-001] B1: First (NORMAL)' '  Blocked by: B1'
+ptrun
+assert "plan-tasks: a task blocked by itself exits 1" test "$PT_RC" = 1 -a -n "$(grep -F 'blocked by itself' <<<"$PT_ERR")"
+ptplan '### eng-api' '- [AC-01-001] B1: First (NORMAL)' '  Blocked by: the API task'
+ptrun
+assert "plan-tasks: a Blocked by entry that is not a label exits 1" test "$PT_RC" = 1 -a -n "$(grep -F 'is not a label' <<<"$PT_ERR")"
+ptplan '### eng-api' '- Write the readme (LOW)'
+ptrun
+assert "plan-tasks: a subject the task gate would refuse exits 1" test "$PT_RC" = 1 -a -z "$PT_OUT" -a -n "$(grep -F 'names no AC or SEC IDs' <<<"$PT_ERR")"
+ptplan '### eng-api' 'No tasks yet.'
+ptrun
+assert "plan-tasks: a plan with no tasks exits 1" test "$PT_RC" = 1 -a -n "$(grep -F 'no tasks' <<<"$PT_ERR")"
+ptrun --dir "$PT/nowhere"
+assert "plan-tasks: a missing plan exits 1" test "$PT_RC" = 1 -a -n "$(grep -F 'dev-plan.md is missing' <<<"$PT_ERR")"
+ptrun --bogus
+assert "plan-tasks: an unknown flag is a usage error" test "$PT_RC" = 2
+
+# Every subject it prints passes the task-created gate (the main fixture repo's plan is READY).
+ptplan '### lead' '- [chore] L0: Land contracts' '- [CHORE] Tidy' '### eng-api' '- [AC-01-001 SEC-01-002] B1: First (NORMAL)' '- [SEC-01-003] Second (LOW)' '- [AC-01-004] S3 bucket for uploads (LOW)'
+ptrun
+gate_ok=0
+while IFS= read -r line; do
+  subj=$(cut -f2 <<<"$line")
+  jq -n --arg s "$subj" '{task_subject: $s}' | bash "$G/task-created-gate.sh" >/dev/null 2>&1 && gate_ok=$((gate_ok + 1))
+done <<<"$PT_OUT"
+assert "plan-tasks: all five printed subjects are accepted by the task-created gate" test "$PT_RC/$gate_ok" = "0/5"
+rm -rf "$PT"
+
+# make-briefs: per-task slices (the core, one file per task, its own criteria, screens and contracts).
+SL=$(mktemp -d); mkdir -p "$SL/.claude" "$SL/docs/product/shop/01-menu"; SF="$SL/docs/product/shop/01-menu"
+echo "docs/product/shop/01-menu" > "$SL/.claude/current-phase"
+slplan() { # extra lines for the end of the plan
+  cat > "$SF/dev-plan.md" <<'EOF'
+# Feature 01 dev plan
+
+Status: READY
+
+## Team
+| Teammate | Model | Workstream | Surface | Effort |
+| --- | --- | --- | --- | --- |
+| eng-web | sonnet | Menu page | web-ui | medium |
+| eng-api | sonnet | Menu API | api | high |
+| eng-solo | sonnet | Notes | | low |
+
+## Ownership
+| Teammate | Owned globs |
+| --- | --- |
+| eng-web | storefront/** |
+| eng-api | backend/** |
+| eng-solo | notes/** |
+
+## Contracts
+| Contract | Path | Consumers |
+| --- | --- | --- |
+| MenuItem type | contracts/menu.ts | eng-web, eng-api |
+| Cart type | contracts/cart.ts | eng-web |
+| Audit log | contracts/audit.ts | eng-api |
+
+## Tasks
+### lead
+- [chore] L0: Land contracts
+  Done when: committed
+### eng-web
+- [AC-01-001] B1: Show the menu (NORMAL)
+  Files: storefront/app/page.tsx
+  Change: render MenuItem lists from contracts/menu.ts
+  Done when: AC-01-001 tests pass
+- [AC-01-004] B2: Admin table (HIGH)
+  Files: storefront/app/admin.tsx
+  Blocked by: B1, L0
+  Done when: AC-01-004 tests pass
+- [chore] B3: Wire the config
+  Files: storefront/config.ts
+  Done when: the config loads
+### eng-api
+- [AC-01-002] Menu endpoint (HIGH)
+  Files: backend/src/menu.js
+  Done when: AC-01-002 tests pass
+EOF
+}
+slplan
+cat > "$SF/acceptance-criteria.md" <<'EOF'
+# ACs
+| ID | Use case | Given | When | Then | Priority |
+| --- | --- | --- | --- | --- | --- |
+| AC-01-001 | UC-01-01 | a customer | opens the menu | sees items | P0 |
+| AC-01-002 | UC-01-02 | a client | GETs /menu | gets items | P0 |
+| AC-01-004 | UC-01-02 | an admin | opens the table | sees rows | P1 |
+EOF
+cat > "$SF/ux.md" <<'EOF'
+# Feature 01 UX
+## Screen inventory
+| Screen | Use cases | Purpose | Entered from | Leads to |
+| --- | --- | --- | --- | --- |
+| Menu | UC-01-01 | Browse | Home | Cart |
+| Admin | UC-01-02 | Manage | Login | - |
+## Screens
+### Menu
+Layout: a grid of cards.
+### Admin
+Layout: a plain table.
+EOF
+cat > "$SF/spec.md" <<'EOF'
+# spec
+
+## Business rules
+Rule: items are priced in cents.
+
+| Rule | Cases |
+| --- | --- |
+| R1 | UC-01-02: hidden items show to admins (AC-01-004) |
+| R2 | UC-01-01: sold-out items are greyed out |
+
+## Data and permissions
+Only admins edit.
+EOF
+sl() { CLAUDE_PROJECT_DIR="$SL" bash "$G/make-briefs.sh" 2>"$SL/err"; SL_RC=$?; SL_ERR=$(cat "$SL/err"); }
+sl >/dev/null
+B1="$SF/briefs/eng-web/B1.md" B2="$SF/briefs/eng-web/B2.md" B3="$SF/briefs/eng-web/B3.md" core="$SF/briefs/eng-web.md"
+assert "make-briefs: files are named by the explicit labels, T<n> for a task without one (plan-wide)" \
+  test -f "$B1" -a -f "$B2" -a -f "$B3" -a -f "$SF/briefs/eng-api/T5.md" -a ! -e "$SF/briefs/eng-solo"
+assert "make-briefs: the core's task list is in plan order, one line per task, with IDs, rating, blockers and file" \
+  test "$(grep -E '^- (B1|B2|B3) ' "$core" | sed "s|docs/product/shop/01-menu/||")" = "- B1 [AC-01-001] Show the menu (NORMAL): briefs/eng-web/B1.md
+- B2 [AC-01-004] Admin table (HIGH), after B1, L0: briefs/eng-web/B2.md
+- B3 [chore] Wire the config: briefs/eng-web/B3.md"
+assert "make-briefs: a task file holds only its own criteria" \
+  test -n "$(grep '^| AC-01-001 |' "$B1")" -a -z "$(grep '^| AC-01-004 |' "$B1")" -a -n "$(grep '^| AC-01-004 |' "$B2")" -a -z "$(grep '^| AC-01-001 |' "$B2")"
+assert "make-briefs: ...and only the screens its use cases cite" \
+  test -n "$(grep 'a grid of cards' "$B1")" -a -z "$(grep 'a plain table' "$B1")" -a -n "$(grep 'a plain table' "$B2")" -a -z "$(grep 'a grid of cards' "$B2")"
+assert "make-briefs: ...the screen inventory is cut to those rows too" \
+  test -n "$(grep '^| Menu |' "$B1")" -a -z "$(grep '^| Admin |' "$B1")"
+assert "make-briefs: a [chore] task gets no screens and no criteria" \
+  test -z "$(grep -E 'a grid of cards|a plain table|^## Screens|^\| AC-' "$B3")" -a -n "$(grep -F 'Files: storefront/config.ts' "$B3")"
+assert "make-briefs: ...and no ac-check line (nothing to test)" test -z "$(grep ac-check "$B3")"
+assert "make-briefs: a task file holds its whole block, with its Blocked by line" grep -qF 'Blocked by: B1, L0' "$B2"
+assert "make-briefs: a task's contracts are the ones its block mentions" \
+  test -n "$(grep 'contracts/menu.ts' "$B1")" -a -z "$(grep -E 'contracts/(cart|audit)' "$B1")" -a -z "$(grep '^| MenuItem' "$B2")"
+assert "make-briefs: the core lists the contracts for its consumer" \
+  test -n "$(grep '^| MenuItem type' "$core")" -a -n "$(grep '^| Cart type' "$core")" -a -z "$(grep '^| Audit log' "$core")"
+assert "make-briefs: the core points at the business rules instead of copying them" \
+  test -n "$(grep -F 'section "Business rules"' "$core")" -a -z "$(grep -rF 'priced in cents' "$SF/briefs")"
+assert "make-briefs: ...and keeps data and permissions" grep -qF 'Only admins edit.' "$core"
+RULES_TAIL="All rules: spec.md, '## Business rules' (read it if a case isn't covered above)."
+assert "make-briefs: every task file has a Rules section ending with the pointer to all rules" \
+  test "$(grep -c '^## Rules$' "$B1")" = 1 -a "$(grep -c '^## Rules$' "$B3")" = 1 -a "$(grep -cF "$RULES_TAIL" "$B1")" = 1 -a "$(grep -cF "$RULES_TAIL" "$B3")" = 1 \
+    -a "$(grep -cF "$RULES_TAIL" "$SF/briefs/eng-api/T5.md")" = 1
+assert "make-briefs: a task's Rules hold the rows citing its use cases or criteria, under the table header" \
+  test -n "$(grep -F '| R2 |' "$B1")" -a -z "$(grep -F '| R1 |' "$B1")" -a -n "$(grep -F '| R1 |' "$B2")" -a -z "$(grep -F '| R2 |' "$B2")" \
+    -a "$(grep -cF '| Rule | Cases |' "$B1")" = 1
+assert "make-briefs: a [chore] cites nothing, so its Rules are just the pointer" \
+  test -z "$(grep -F '| R' "$B3")" -a "$(sed -n '/^## Rules$/,$p' "$B3" | grep -c .)" = 2
+assert "make-briefs: an engineer with no tasks gets a core with an empty task list and no folder" \
+  test -n "$(grep -F '(none listed in dev-plan.md)' "$SF/briefs/eng-solo.md")"
+assert "make-briefs: no warning for small task files" test -z "$SL_ERR"
+
+# Stale task files go; a renamed label leaves only the new file; a long task warns.
+touch "$SF/briefs/eng-web/OLD.md"
+sed -i 's/ B2: Admin table/ B9: Admin table/' "$SF/dev-plan.md"
+sl >/dev/null
+assert "make-briefs: the engineer's folder is cleared before it is written again" \
+  test ! -e "$SF/briefs/eng-web/OLD.md" -a ! -e "$B2" -a -f "$SF/briefs/eng-web/B9.md"
+sed -i 's/ B9: Admin table/ B2: Admin table/' "$SF/dev-plan.md"
+{ printf '  Change: '; head -c 21000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$SL/long.txt"
+sed -i "/^  Files: storefront\/app\/page.tsx\$/r $SL/long.txt" "$SF/dev-plan.md"
+sl >/dev/null
+assert "make-briefs: a task file over 20 KB warns on stderr, naming the file" \
+  test "$SL_RC" = 0 -a -n "$(grep -F "warning: " <<<"$SL_ERR" | grep -F "briefs/eng-web/B1.md")" -a -n "$(grep -F '(over 20 KB)' <<<"$SL_ERR")"
+assert "make-briefs: ...and only that file" test "$(grep -c warning <<<"$SL_ERR")" = 1
+assert "make-briefs: ...and the core stays small" test "$(wc -c < "$core")" -lt 4000
+
+# Plans with labels that don't work stop the run before any brief is written.
+rm -rf "$SF/briefs"
+slplan
+sed -i 's/ B2: Admin table/ B1: Admin table/' "$SF/dev-plan.md"
+sl >/dev/null
+assert "make-briefs: a duplicate label exits 1 and writes nothing" \
+  test "$SL_RC" = 1 -a -n "$(grep -F 'duplicate label B1' <<<"$SL_ERR")" -a -z "$(ls "$SF/briefs" 2>/dev/null)"
+slplan
+sed -i 's/Blocked by: B1, L0/Blocked by: B8/' "$SF/dev-plan.md"
+sl >/dev/null
+assert "make-briefs: an unknown Blocked by label exits 1" test "$SL_RC" = 1 -a -n "$(grep -F 'Blocked by B8' <<<"$SL_ERR")"
+slplan
+sed 's/$/\r/' "$SF/dev-plan.md" > "$SL/crlf.md"; cp "$SL/crlf.md" "$SF/dev-plan.md"
+sl >/dev/null
+assert "make-briefs: a CRLF plan makes the same task files" \
+  test "$SL_RC" = 0 -a -f "$B1" -a -f "$B2" -a -n "$(grep '^| AC-01-004 |' "$B2")"
+rm -rf "$SL"
+
+# context.sh points an engineer at its core brief and its task folder.
+cj() { jq -r '.hookSpecificOutput.additionalContext' <<<"$(echo '{"hook_event_name":"SubagentStart","agent_id":"aeng-api-0123456789abcdef","agent_type":"general-purpose"}' | bash "$G/context.sh" 2>/dev/null)"; }
+ctxout=$(cj)
+assert "context: names the core brief and the task folder" has "$ctxout" "Your brief: $P/briefs/eng-api.md (core); your tasks: $P/briefs/eng-api/."
+assert "context: ...and says to read the core once and a task's file when starting it" has "$ctxout" "Read the core once and the current task's file when you start it"
+rm -rf "$P/briefs/eng-api"
+assert "context: without a task folder it keeps the old one-file pointer" has "$(cj)" "Your brief: $P/briefs/eng-api.md. Read it before anything else"
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]
