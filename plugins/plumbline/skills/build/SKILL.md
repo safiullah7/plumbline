@@ -58,6 +58,7 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    Plumbline triage
    Size: Quick | Standard | Full
    Module: <name> (existing | new) | none
+   Split: 1 of <n> — <nn> <slice> (this) · <nn+1> <slice> · ...
    Folder: none | docs/product/<module>/<nn>-<feature-slug>/
    Surfaces: <comma-separated>
    Roles: <e.g. product, lead, 2 engineers, reviewer, QA>
@@ -70,6 +71,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    Why: <one line>
    ```
 
+   The `Split:` line is there only when triage split the request (a feature
+   is at most ~30 criteria and ~6 screens); never add one yourself.
    The evidence kinds: web-ui and desktop-ui journeys, mobile-ui flow-tests,
    api transcripts, service job-tests, cli golden-output, library
    doc-examples, data sample-run, ai eval-set, infra plan-output.
@@ -78,6 +81,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    - the request is too vague for observable criteria (ask what's missing);
    - triage couldn't decide the size or the module;
    - the size is Full (confirm the commitment, and that teams are on);
+   - the block has a `Split:` line (confirm building slice 1 now, the other
+     slices becoming planned features in vision.md; with Full, in the same
+     question);
    - there's no project.md yet (step 1 asks this, once);
    - Confirm is `always` (confirm the block as a whole).
    Otherwise go straight on. If an answer changes the module, size, surfaces
@@ -86,7 +92,10 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    `independent` is never Quick: a Quick block raised to it is re-triaged as
    Standard (re-run step 2 with that added).
    From here on, dispatch only the roles the Roles line lists. `UX: yes`
-   means the feature has UI: product writes ux.md. Give no model to the lead,
+   means the feature has UI: product writes ux.md. With a `Split:` line,
+   build slice 1 only, and give the line to every product dispatch: product
+   writes slice 1 and adds the other slices to the module's vision.md
+   Features table. Give no model to the lead,
    or to product after triage: both run on opus. Engineers run on sonnet with
    the effort the lead sets; the reviewer's model is the lead's call.
    Never start Full work without the user's yes. If the size is Full and teams
@@ -98,7 +107,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       that project.md out), continue on top, or stop.
    2. Tell the user, in one short list, the commands the agents will run:
       `git checkout -b`, `git add`, `git commit`, `git push`, `gh pr create`,
-      `bash <plugin>/scripts/ac-check.sh`, and the test commands for each of
+      `bash <plugin>/scripts/ac-check.sh` (with a team also `plan-tasks.sh`
+      and `watch-build.sh` there), and the test commands for each of
       the block's surfaces: PLUMBLINE_TYPECHECK, PLUMBLINE_LINT and
       PLUMBLINE_TEST_AC if set; else that surface's Typecheck, Lint and AC
       tests cells in project.md (an adapter name runs
@@ -150,8 +160,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       ux.md: the journeys, the screen inventory and each screen in words
       (layout, components, every state, exact copy).
    3. Dispatch plumbline:lead-engineer to write dev-plan.md (Status: DRAFT,
-      1-2 engineers): per engineer, ordered tasks with the failing unit test
-      first, the e2e test and a done-when, and the Team table with each
+      engineers by load, usually 1-2 (up to 4)): per engineer, ordered tasks
+      with the failing unit test first, the e2e test and a done-when, and the Team table with each
       engineer's Effort. Before the question, show the plan itself, read from
       dev-plan.md (not only the lead's prose), as a short review in this order:
       the file path; the Team table (engineer, workstream, surface, effort);
@@ -162,8 +172,11 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       for the user. If the Team table has a row that isn't a senior engineer
       (qa, qa-runner, product), or the plan names a model or QA tool the
       current roles don't have, send it back to the lead before asking. Then
-      ask one question: approve the plan, or change it (say what). Relay
-      changes to the lead until approved.
+      ask once: approve the plan, or change it (say what); in the same call,
+      batch product's open questions (questions.md rows still OPEN) and the
+      plan's open items for the user, so the user answers everything at
+      once. Pass each answer to its owner. Relay changes to the lead until
+      approved.
       When the Security line isn't `none`, the dispatch also gives the level
       and the signals from the block's Why line; the lead adds the `## Attack
       plan`. Before the question, if dev-plan.md has a `Security level:` line, run
@@ -181,12 +194,46 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       builds, dispatching each engineer as a subagent on sonnet with that
       engineer's Effort, reviewing each workstream against the plan,
       dispatching a reviewer per workstream and checking each with
-      `ac-check.sh "<its IDs>" --surface <its surface>`. With 2 engineers and
-      teams on, spawn the team yourself instead: the lead and each engineer (pointed at its brief) as teammates,
-      each with the Agent tool, its agent type and its name from the plan's Team
-      table, each engineer with model sonnet and the effort in its Effort
-      column (call TeamCreate first if your Claude Code has it). Teammates can't
-      spawn teammates, so you spawn them all. When every workstream is reviewed and the full
+      `ac-check.sh "<its IDs>" --surface <its surface>`. With 2 or more engineers
+      and teams on (and always for Full), spawn the team yourself instead, each
+      teammate with the Agent tool, its agent type and its name (call
+      TeamCreate first if your Claude Code has it). Teammates can't spawn
+      teammates, so you spawn them all, in this order:
+      1. The lead first, agent type plumbline:lead-engineer, name `lead` (you
+         are `team-lead`): "The plan is approved. Setup: set READY, run
+         make-briefs.sh, commit the docs and contracts/ (L0), run
+         plan-tasks.sh and create every task it prints (owner, blockedBy),
+         then report "ready" to team-lead. Then run the build; engineers
+         report to you." Then run
+         `bash <plugin>/scripts/watch-build.sh --sleep 60` in the foreground
+         and run it again until it stops printing `NO-TASKS` (the lead has
+         created the tasks) or the lead reports "ready". Spawn no engineer
+         before that.
+      2. Then each engineer in the plan's Team table: agent type
+         plumbline:senior-engineer, its name, model sonnet and `effort` from
+         its Effort column, with this prompt filled in:
+         ```
+         You are <name>, a senior engineer on <folder>. Effort: <effort>. Surface: <surface>.
+         Your brief: <folder>/briefs/<name>.md (read it once). Your tasks: <folder>/briefs/<name>/ (read each task's <label>.md when you start it).
+         Report to `lead`, never to team-lead.
+         Claim (TaskUpdate in_progress) and complete tasks in the shared list, in order; keep going through your ready tasks without waiting for a verdict.
+         After a report, start your next ready task in the same turn; never end a turn on an announcement.
+         ```
+      3. Watchdog: never wait passively for notifications; hooks wake no one
+         (a hook's `systemMessage` reaches only the user). Run
+         `bash <plugin>/scripts/watch-build.sh --sleep 300` in the foreground
+         (Bash timeout 600000; it flags a teammate after 5 minutes without
+         progress), act on its output, and run it again, until it prints
+         `DONE` (every task, the lead's chores included, is completed) and the
+         lead has reported the build done (acceptance, reviews and, at
+         `independent`, the attack round). For each
+         `STALLED: <name> (<task>)` line, SendMessage that teammate
+         `Continue: <task>`. For `STALLED: lead`, or a `LEAD: <chores>` line
+         while the lead shows no activity, message `lead` to run each finished
+         workstream's acceptance check and review. Never relay reports: one
+         that reaches you is forwarded to `lead` once, and you tell its sender
+         to report to `lead`.
+      When every workstream is reviewed and the full
       suite passes, the lead ticks "Integration review" in signoff.md.
       At `independent`, the lead then runs the attack round, before QA. A
       `Security level:` raise during the build is handled as in 6.3. When the
@@ -213,8 +260,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
    discovery (follow <plugin>/skills/discover/SKILL.md yourself, since it asks
    the user; product writes the journeys into ux.md) → spec, criteria and
    ux.md (product, as in 6.2) → lead's plan (as in 6.3) → the user approves →
-   READY and make-briefs.sh → team build (teammates from the plan's Team
-   table, spawned as in 6.4) → QA, product verification and signoff as in 6.5
+   the lead's setup (READY, make-briefs.sh, the task list) → team build
+   (teammates from the plan's Team table, spawned as in 6.4, with the
+   watchdog) → QA, product verification and signoff as in 6.5
    (give QA the same brief, with "Full:" in place of "Standard:").
 8. **Questions, waivers and cleanup** (any size).
    - When an agent returns a question only the user can answer, ask it, then

@@ -23,10 +23,13 @@ Dev plan (dev-plan.md):
 - Read spec.md, acceptance-criteria.md and, with a UI, ux.md (journeys and
   screens) and design-principles.md: the engineers build from them.
 - Split the feature into workstreams along file-ownership seams. One engineer
-  per seam, maximum 4. Fewer seams = fewer engineers. Each workstream sits on
-  one surface: its globs lie inside that surface's Paths. Standard size: 1-2
-  engineers, run as subagents you dispatch one after another, unless there are 2
-  and the build skill says agent teams are on.
+  per seam, maximum 4. Fewer seams = fewer engineers. Then size by load: a
+  surface with more than ~5 tasks gets two engineers with disjoint globs
+  (feature subfolders), still maximum 4. Each workstream sits on
+  one surface: its globs lie inside that surface's Paths. Standard size:
+  engineers by load, usually 1-2 (up to 4), run as subagents you dispatch one
+  after another, unless there are 2 or more and the build skill says agent
+  teams are on.
 - Rate every task LOW, NORMAL or HIGH. HIGH: what By surface lists, and
   auth/permissions, data separation between customer accounts, billing, data
   migrations, concurrency and cross-module refactors. LOW: a small change in
@@ -53,7 +56,8 @@ Dev plan (dev-plan.md):
 - Under Tasks, write the plan per engineer: a `### <teammate>` section with its
   tasks in order, each in this format (make-briefs.sh copies it into the brief):
   ```
-  - [AC-03-004 AC-03-005] Report export API (NORMAL)
+  - [AC-03-004 AC-03-005] A2: Report export API (NORMAL)
+    Blocked by: A1
     Files: the files to create or change
     Red (unit): the failing unit test to write first, named after its AC ID
     E2E: the e2e test for the journey through the real UI, API or CLI, its name starting with the AC ID
@@ -65,12 +69,37 @@ Dev plan (dev-plan.md):
   Every task is TDD: red (write the failing unit test, run it, see it fail),
   green (the smallest change that passes), refactor (tests still green). A
   [chore] task names what it leaves in place instead of AC tests.
+- Every task line carries a label after the `]`: one or two capital letters
+  for its workstream and a number (A1, A2 for eng-api; W1 for eng-web),
+  unique in the plan. A task that needs another task done first gets a
+  `Blocked by:` line with those labels; dependencies are labels, never
+  prose. Your own work is a `### lead` section of `[chore]` tasks, starting
+  with `- [chore] L0: Setup commit: docs and contracts`.
+- At most 12 tasks in the plan (your chores included), each block about
+  1.5 KB at most: name files, tests and edge cases; don't copy criteria or
+  screens (make-briefs.sh adds them).
+- Mock-first: a task that needs another workstream's unfinished output (an
+  API the UI calls) is planned against the contract with a mock (MSW, a
+  fixture server, a stub module), not blocked on it; that engineer gets one
+  final "switch to the real API" task, `Blocked by:` the API task.
 - Leave the plan at "Status: DRAFT". Change it to "Status: READY" only after the
   user approves the plan. From then on the hooks enforce ownership and task gates.
-- When it says READY, run `bash <scripts>/make-briefs.sh` (<scripts> is the
-  "Plumbline scripts" folder in your context) to write briefs/<teammate>.md, and
-  point each engineer at its brief in the spawn prompt. Re-run it whenever the
-  plan changes.
+- Setup, once the user approves (in a team your teammate name is `lead`; the
+  main session is `team-lead`): set READY; run `bash <scripts>/make-briefs.sh`
+  (<scripts> is the "Plumbline scripts" folder in your context) to write
+  each engineer's core brief, briefs/<teammate>.md, and one file per task,
+  briefs/<teammate>/<label>.md; commit the docs and contracts/ (and
+  migrations) by path: that is L0. In a team, then run
+  `bash <scripts>/plan-tasks.sh` (exit 1: fix the labels it names and re-run)
+  and create every task it prints, in order, with TaskCreate. Each line has
+  five columns: owner, subject, blocked-by labels, done-when, label. Use the
+  subject, the owner, the done-when as its description, and addBlockedBy
+  mapping each blocked-by label to the id the task with that label (5th
+  column) got (TaskUpdate if TaskCreate doesn't take them). Keep that
+  label-to-id map: you need it to route unblocked work.
+  Complete L0, then report "ready" to the main session; it spawns the
+  engineers, each pointed at its brief and task folder. Re-run make-briefs.sh
+  whenever the plan changes.
 
 Attack plan (only at `attacks` or above: the `security=` line in the
 feature's .plumbline, or the level in your dispatch; at `none` or with no
@@ -100,7 +129,7 @@ level, skip this):
 - IDs are SEC-<nn>-<nnn>, <nn> as in the AC IDs. A task that builds attacked
   code carries its SEC IDs in its subject, an `Attacks:` line right under
   it, and those tests in its Done when, e.g.
-  `- [AC-02-004 SEC-02-001] Order list API (HIGH)` with `Attacks: SEC-02-001`.
+  `- [AC-02-004 SEC-02-001] A3: Order list API (HIGH)` with `Attacks: SEC-02-001`.
 - Raise, never lower: if your plan shows a signal triage's level doesn't
   cover (every signal below is `independent`, except a by-ID read or list on
   a tenant-scoped store that follows the existing pattern, or a small fix
@@ -120,9 +149,11 @@ Attack catalogue (each item is one row when it applies):
 | `ai` | prompt injection through user data; a tool call with another user's or tenant's ID; model output acted on without validation; a refusal or timeout that leaves state half-written |
 | `infra` | a secret in state, output or logs; a port, bucket or queue exposed publicly; a destructive step with no plan review |
 
-Contracts first: before any engineer starts, land what By surface lists as
-"lands first" (shared types, API schemas, the database schema and migrations)
-in one commit. Only you edit contracts/, the database schema and migrations.
+Contracts during planning: write what By surface lists as "lands first"
+(shared types, API schemas, the database schema and migrations) while you
+plan, so the user approves them with the plan; your L0 setup commit lands
+them before any engineer starts. Only tasks that touch migrations are
+`Blocked by: L0`. Only you edit contracts/, the database schema and migrations.
 For an api surface you also review the API design: resource names, errors,
 versioning and pagination.
 
@@ -135,18 +166,33 @@ During build:
 - Dispatch or spawn each engineer as plumbline:senior-engineer with model
   sonnet and `effort` set to its Team row's Effort; say the effort in the
   prompt too. When the build skill spawns the team, it reads the same column.
-- Create 5-6 tasks per engineer in the shared task list; every task subject
-  starts with its AC IDs, e.g. "[AC-03-004 AC-03-005] Report export API".
-  Coordination work with no AC starts with "[chore]". The hooks refuse anything
-  else.
-- Set task dependencies so order is enforced, not hoped for: contracts before
-  producers, an API before the UI or CLI that calls it.
+- The shared task list is the one plan-tasks.sh gave you at setup. A task
+  added later (a review gap, a finding) goes into the plan with a label and
+  into the list with TaskCreate; every task subject starts with its AC IDs,
+  e.g. "[AC-03-004 AC-03-005] A2: Report export API". Coordination work with
+  no AC starts with "[chore]". The hooks refuse anything else.
+- Dependencies are the plan's `Blocked by:` labels, set as blockedBy when you
+  create the tasks; a UI or CLI that calls an unfinished API isn't blocked on
+  it (mock-first), only its "switch to the real API" task is.
+- Answer every engineer report at once with accept or reject (and what's
+  missing) and that engineer's next task, so nobody waits on you. Hooks wake
+  no one (a hook's `systemMessage` reaches only the user): after every task
+  completion you see, in a report or the task list, SendMessage each engineer
+  whose task was Blocked by it: "<label> is done: start <their label>". A
+  quiet engineer with ready tasks is a stall: message it with its next task.
+- An engineer waiting on an answer unassigns its task (owner "") and
+  messages you: answer it (or get product's answer), then give the task back
+  with TaskUpdate (owner: that engineer) and the answer in your message.
+- Keep the Tasks list in mind; to look something up, read only that section
+  of dev-plan.md, not the whole plan again.
 - Route behavior and UI questions to product; never answer product questions
   yourself.
 - Whenever a teammate goes idle, compare the task list with git log: a task
   marked done needs its commits, and a commit needs its task marked done.
-- Before accepting a workstream, run
-  `bash <scripts>/ac-check.sh "<its IDs>" --surface <its surface>`; with no
+- Don't run ac-check per task: the TaskCompleted hook runs each task's tests.
+  Once per workstream, when its last task is done and before the reviewer, run
+  `bash <scripts>/ac-check.sh "<its IDs>" --surface <its surface>` (full:
+  typecheck, lint and its AC tests); with no
   project.md, drop `--surface`. At `attacks` or above, its IDs include the SEC
   IDs of its tasks (without a team nothing else runs them).
 - Before you ask the user to approve the plan, check each workstream's
@@ -183,8 +229,9 @@ During build:
   High rows still open, stop and return "Needs user" with those rows; the
   build skill asks the user and dispatches you again.
 - Wait for teammates to finish. Do not declare the build done until every task is
-  complete and the full test suite passes. /plumbline:status shows coverage and
-  uncommitted work.
+  complete and the full test suite passes; then report it done to the main
+  session. /plumbline:status shows coverage, uncommitted work and, in a team,
+  each teammate's open and ready tasks.
 - Work on the branch kickoff or the build skill created (e.g.
   feature/03-report-export). Open the PR; never merge it.
 
