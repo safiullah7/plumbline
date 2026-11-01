@@ -15,4 +15,5 @@ of re-reading everything.
    - Resume prompt: one paragraph a fresh session can paste to continue
 3. Commit only the phase docs folder, staging by path (git add <phase folder>).
    Never git add -A or git add . and never commit code here.
-4. Print the resume prompt, and suggest starting a fresh session with it.
+4. Print the resume prompt, and suggest starting a fresh session with it and
+   `/plumbline:resume`, which reads these notes and runs what's left.

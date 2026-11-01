@@ -12,7 +12,7 @@
 
 <p align="center">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-10182B?style=for-the-badge">
-  <img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-34D399?style=for-the-badge">
+  <img alt="Version 0.6.1" src="https://img.shields.io/badge/version-0.6.1-34D399?style=for-the-badge">
   <img alt="1846 self-tests passing" src="https://img.shields.io/badge/self--tests-1%2C846%20passing-34D399?style=for-the-badge">
   <img alt="Evals: no regressions" src="https://img.shields.io/badge/evals-no%20regressions-34D399?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=for-the-badge">
@@ -140,6 +140,7 @@ review → attack round → QA → signoff → **PR #42, ready for your review.*
 | --- | --- |
 | `/plumbline:build <request>` | Get anything built: sized, planned, built, tested, PR'd |
 | `/plumbline:status` | See where a feature stands: plan, test coverage, bugs, questions, uncommitted work |
+| `/plumbline:resume` | Pick up an interrupted feature where it stopped: it reads the docs and git, shows what's left and runs the rest to the PR |
 | `/plumbline:handoff` | Save progress and get a prompt to resume in a fresh session |
 | `/plumbline:signoff` | Run the gap check and open or update the PR |
 | `/plumbline:phase-next` | Get the next feature proposed from evidence: missed metrics, shipped bugs, open findings |
@@ -382,7 +383,7 @@ Set them in the `env` block of `.claude/settings.json`.
 | ✅ **v0.4a** | One `/plumbline:build`: work sized as Quick, Standard or Full, docs by module and feature |
 | ✅ **v0.4b** | Project profile, ten surfaces, test adapters, lean roles (product writes the UI text, one QA agent, TDD with unit and e2e), model routing by complexity |
 | ✅ **v0.5** | Security by attack plan: triage levels, the lead's attack catalogue, attacks as tests first, independent attack rounds, signoff runs the attack tests and a secrets scan |
-| 🚧 **v0.6** | Fast builds (current): no stalls, right-sized features, parallel work, lean per-task checks, small context |
+| 🚧 **v0.6** | Fast builds (current): no stalls, right-sized features, parallel work, lean per-task checks, small context; `/plumbline:resume` for interrupted features (0.6.1) |
 
 Dev plans for each release are in [`docs/`](docs).
 
