@@ -167,7 +167,7 @@ section of the new dev-plan.md, and the signoff check output.
 PART 7 - Report. Show one table: check, expected, actual, PASS or FAIL.
 - Part 1, state: CLEAN; MATCHES REMOTE; NO INSTALLED COPY; the version matches
   the branch name (branch v0.3 means version 0.3.x; branch v0.4a means 0.4.0-alpha; branch v0.4b
-  means 0.4.0; branch v0.5 means 0.5.0);
+  means 0.4.0; branch v0.5 means 0.5.0; branch v0.6 means 0.6.0);
   show the tree hash
 - Part 1, checks: "Validation passed" for the plugin and for the marketplace;
   every self-test run ends "0 failed" (hooks twice, scripts, lib, kickoff,

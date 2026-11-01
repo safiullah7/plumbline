@@ -13,6 +13,7 @@ mkdir -p "$T/repo/.claude" "$T/bin" "$T/tmp" && cd "$T/repo"
 export HOME="$T" CLAUDE_PROJECT_DIR="$T/repo" TMPDIR="$T/tmp"
 unset CLAUDE_CONFIG_DIR CLAUDE_PLUGIN_DATA PLUMBLINE_HOOK_TIMING
 unset PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC
+export PLUMBLINE_TASK_CHECKS=full   # the task gate's default is tests-only; these cases assert its typecheck and lint
 source "$G/lib.sh"
 R="$PROJECT_DIR"   # the repo root as lib.sh spells it
 
@@ -213,6 +214,21 @@ checks "" "" 'f(){ [ "$1" = "AC-01-001" ]; }; f'
 out=$(ac AC-01-001 2>&1); rc=$?
 eq "ac-check: empty typecheck and lint may still be skipped" "$rc" 0
 assert "ac-check: ...and the timing names only the tests" grep -qE '^ac-check: pass \(tests [0-9]+s\)$' <<<"$out"
+# --tests-only: no typecheck, no lint, even ones the caller set (it empties both).
+checks 'echo ran-typecheck >&2; false' 'echo ran-lint >&2; false' 'f(){ [ "$1" = "AC-01-001" ]; }; f'
+out=$(ac AC-01-001 2>&1); rc=$?
+eq "ac-check: a failing typecheck fails the run without --tests-only" "$rc" 1
+out=$(ac --tests-only AC-01-001 2>&1); rc=$?
+eq "ac-check: --tests-only skips a failing typecheck and lint" "$rc" 0
+assert "ac-check: ...and the timing names only the tests" grep -qE '^ac-check: pass \(tests [0-9]+s\)$' <<<"$out"
+assert "ac-check: ...and neither command ran" test -z "$(grep ran- <<<"$out")"
+out=$(ac AC-01-001 --surface api --tests-only 2>&1); rc=$?
+eq "ac-check: --tests-only after the IDs and --surface" "$rc" 0
+checks true true 'echo ran-tests "$@" >&2; false'
+out=$(ac --tests-only "AC-01-001|SEC-01-002" 2>&1); rc=$?
+eq "ac-check: --tests-only still fails when the tests fail" "$rc" 1
+assert "ac-check: ...naming the tests, with the IDs passed through" has "$out" "ac-check: tests for AC-01-001|SEC-01-002 failed"
+eq "ac-check: --tests-only alone is a usage error" "$(ac --tests-only >/dev/null 2>&1; echo $?)" 2
 unset PLUMBLINE_TEST_AC
 out=$(PLUMBLINE_TYPECHECK="" PLUMBLINE_LINT="" ac AC-01-001 2>&1 >/dev/null); rc=$?
 assert "ac-check: unset AC test command falls back to the npm default (runs, not refused)" test -z "$(grep 'no AC test command' <<<"$out")"
@@ -350,7 +366,10 @@ gate_as eng-x "[AC-07-001] x"
 eq "gate: a surface the profile doesn't list is refused, nothing run" "$GATE_RC/$(trace)/$(npm_first)/$GATE_ERR" \
   "2///Task gate: eng-x's Surface \"mobile\" in the dev plan's Team table isn't a surface in docs/product/project.md, which lists: api, web-ui, worker; ask the lead to fix one of them"
 gate_as nobody "[AC-07-001] x"
-eq "gate: a teammate with no Team row is refused the same way" "$GATE_RC/$GATE_ERR" "2/Task gate: nobody $several"
+eq "gate: another name with no Team row is checked as before (refused here: no surface)" \
+  "$GATE_RC/$(trace)/$(npm_first)/$GATE_ERR" "2///Task gate: nobody $several"
+gate_as lead "land contracts"
+eq "gate: ...even with no AC IDs and no [chore] tag" "$GATE_RC/$(trace)/$(npm_first)/$GATE_ERR" "0///"
 gate_as eng-none "[chore] land contracts"
 eq "gate: a [chore] with no surface runs every surface's typecheck and lint" "$GATE_RC/$(trace)/$(npm_first)" \
   "0/api-typecheck;api-lint;web-typecheck;web-lint;worker-typecheck;worker-lint/"
@@ -470,7 +489,13 @@ assert "make-briefs: ...and the ac-check line with its task IDs and surface" \
   has "$b" 'ac-check.sh" "AC-07-001|AC-07-002" --surface api'
 assert "make-briefs: ...from the scripts folder named in context, not a machine path" has "$b" 'bash "<scripts>/ac-check.sh"'
 assert "make-briefs: the other surface's commands stay out" test -z "$(grep web- <<<"$b")"
-assert "make-briefs: the AC rows are still there" has "$b" "| AC-07-002 |"
+assert "make-briefs: the core lists the tasks, one line each, with label, IDs, rating and file" \
+  has "$b" "- T2 [AC-07-002] two (NORMAL): $P/briefs/eng-api/T2.md"
+assert "make-briefs: the AC rows moved to the task's file" \
+  test -z "$(grep '| AC-07-002 |' <<<"$b")" -a -n "$(grep '| AC-07-002 |' "$P/briefs/eng-api/T2.md")"
+assert "make-briefs: ...which has only that task's rows" test -z "$(grep '| AC-07-001 |' "$P/briefs/eng-api/T2.md")"
+assert "make-briefs: ...and the tests-only ac-check line with the task's IDs and surface" \
+  has "$(cat "$P/briefs/eng-api/T2.md")" 'ac-check.sh" --tests-only "AC-07-002" --surface api'
 assert "make-briefs: the second brief has its own surface" has "$(cat "$P/briefs/eng-web.md")" "--surface web-ui"
 b=$(cat "$P/briefs/eng-ghost.md")
 assert "make-briefs: a surface with no profile row is named, without commands" \
@@ -479,7 +504,9 @@ out=$(mkbriefs '| Teammate | Model | Workstream |' '| --- | --- | --- |' '| eng-
 b=$(cat "$P/briefs/eng-api.md")
 eq "make-briefs: a 3-column plan still works" "$rc/$(grep -c 'briefs/' <<<"$out")" "0/1"
 assert "make-briefs: ...with no surface section" test -z "$(grep -E 'Your surface|ac-check' <<<"$b")"
-assert "make-briefs: ...and its tasks" has "$b" "- [AC-07-002] two (NORMAL)"
+assert "make-briefs: ...and its tasks" has "$b" "- T2 [AC-07-002] two (NORMAL)"
+assert "make-briefs: ...whose files have no ac-check line either" \
+  test -f "$P/briefs/eng-api/T2.md" -a -z "$(grep ac-check "$P"/briefs/eng-api/*.md)"
 out=$(mkbriefs '| Teammate | Model | Workstream | Surface |' '| --- | --- | --- | --- |' '| eng-api | sonnet | API |  |'); rc=$?
 assert "make-briefs: an empty Surface cell gives no surface section" \
   test "$rc" = 0 -a -z "$(grep 'Your surface' "$P/briefs/eng-api.md")"

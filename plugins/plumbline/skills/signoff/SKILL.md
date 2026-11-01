@@ -45,6 +45,10 @@ disable-model-invocation: true
      accepted:` line; at `independent`, unless waived, `Independent pass:`
      not `complete (...)`. `Security waived:` and `Risk accepted:` lines are
      the user's, written only after their yes, never by an agent.
-2. With no gaps, run the full test suite. If it passes, push the branch and open
+2. With no gaps, run `ac-check` full per surface (typecheck, lint and the
+   tests; never `--tests-only`):
+   `bash <plugin>/scripts/ac-check.sh "<the feature's AC and SEC IDs on that surface>" --surface <s>`
+   (drop `--surface` with no project.md), then the full test suite. If they
+   pass, push the branch and open
    (or update) the phase PR with a summary from qa-report.md and signoff.md in
    the body, and add the PR link to signoff.md. Never merge it; the user merges.

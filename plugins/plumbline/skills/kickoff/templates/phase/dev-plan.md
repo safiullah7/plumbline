@@ -36,21 +36,26 @@ engineers start. Consumers are teammate names, or "all".
 ## Tasks
 Every task subject starts with the AC IDs it delivers. Coordination work that
 delivers no AC starts with [chore]. Complexity is LOW, NORMAL or HIGH. The lead
-writes one section per engineer, tasks in order, in this format:
+writes one section per engineer (### lead for its own chores), tasks in order, in
+this format. A label like B1: after the brackets names the task (unlabeled tasks
+are T<position in the plan>); the optional Blocked by: line lists the labels that
+must finish first:
 ### eng-api
-- [AC-<phase>-001] <title> (LOW|NORMAL|HIGH)
+- [AC-<phase>-001 AC-<phase>-002] B1: <title> (LOW|NORMAL|HIGH)
   Files: the files to create or change
   Red (unit): the failing unit test to write first
   E2E: the e2e test for the journey
   Change: what to change
   Edge cases: what must also hold
   Check: how to check it
+  Blocked by: B2, L0
   Done when: the unit and e2e tests for these AC IDs pass (via ac-check)
 
 ## Briefs
 When this plan is READY, the lead runs make-briefs.sh, which writes
-briefs/<teammate>.md for each engineer from this plan and the phase docs.
-Engineers read their brief first.
+briefs/<teammate>.md (the core) and briefs/<teammate>/<label>.md (one file per
+task) for each engineer from this plan and the phase docs.
+Engineers read the core first and each task's file as they start it.
 
 ## Decisions (ADR)
 | Decision | Options considered | Chosen | Why |

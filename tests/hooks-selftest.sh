@@ -33,6 +33,9 @@ export HOME="$T/home" CLAUDE_PROJECT_DIR="$T/repo" TMPDIR="$T/tmp"
 unset CLAUDE_CONFIG_DIR CLAUDE_PLUGIN_DATA
 export PLUMBLINE_TYPECHECK="true" PLUMBLINE_LINT="true"
 export PLUMBLINE_TEST_AC='f(){ [ "$1" = "AC-01-001" ]; }; f'
+# The task gate checks tests only by default (v0.6); the typecheck and lint cases below
+# are about the full behaviour, and a case further down covers the default.
+export PLUMBLINE_TASK_CHECKS=full
 
 # Agent IDs in the format Claude Code gives teammates: a + name + - + 16 hex.
 ENG=aeng-api-e0e49e4975cf862f
@@ -225,6 +228,19 @@ export PLUMBLINE_TEST_AC=$AC_STUB
 check "ready: [chore] task completes without AC tests" 0 task-completed-gate.sh '{"task_subject":"[chore] Land contracts","teammate_name":"eng-api"}'
 assert "ready: gate timing hidden by default" \
   test -z "$(echo '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}' | bash "$G/task-completed-gate.sh" 2>&1)"
+# Tests-only default (PLUMBLINE_TASK_CHECKS unset): a task with IDs skips typecheck and
+# lint, a [chore] keeps them, and PLUMBLINE_TASK_CHECKS=full brings them back.
+TASK_IDS='{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}'
+TASK_CHORE='{"task_subject":"[chore] Land contracts","teammate_name":"eng-api"}'
+for step in TYPECHECK LINT; do
+  export PLUMBLINE_$step=false PLUMBLINE_TASK_CHECKS=
+  check "ready: tests-only default skips a failing ${step,,} for a task with IDs" 0 task-completed-gate.sh "$TASK_IDS"
+  check "ready: tests-only default, a [chore] still runs ${step,,}" 2 task-completed-gate.sh "$TASK_CHORE"
+  check "ready: tests-only default still fails on failing tests" 2 task-completed-gate.sh '{"task_subject":"[AC-01-002] x","teammate_name":"eng-api"}'
+  export PLUMBLINE_TASK_CHECKS=full
+  check "ready: PLUMBLINE_TASK_CHECKS=full runs a failing ${step,,} for a task with IDs" 2 task-completed-gate.sh "$TASK_IDS"
+  export PLUMBLINE_$step=true
+done
 export PLUMBLINE_HOOK_TIMING=1
 check_out "ready: gate timing shown when asked" 0 task-completed-gate.sh '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}' "Task gate passed: typecheck"
 unset PLUMBLINE_HOOK_TIMING

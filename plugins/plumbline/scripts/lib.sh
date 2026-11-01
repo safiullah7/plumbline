@@ -872,6 +872,115 @@ security_gaps() { # [--no-run]
   return 0
 }
 
+# --- Shared task list (v0.6) ---
+# Claude Code keeps a team's tasks at <config dir>/tasks/<team_name>/<id>.json
+# ({id, subject, owner (only when assigned), status pending|in_progress|completed,
+# blockedBy[]}) next to a .lock and a .highwatermark. A hook can read them to know
+# what a teammate still has to do. Every reader fails soft: no dir, no jq or bad
+# JSON means no tasks.
+
+# The task folder of a team (printed only if it exists).
+team_dir_for() { # team_name
+  local d
+  [[ -n "${1:-}" && "$1" != *[/\\]* && "$1" != *..* ]] || return 1
+  d="$(norm_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/tasks/$1"
+  [[ -d "$d" ]] && printf '%s\n' "$d"
+}
+
+# The names of a team's members, one per line, from teams/<team_name>/config.json
+# (nothing when the file is missing or unreadable).
+team_members() { # team_name
+  local f
+  [[ -n "${1:-}" && "$1" != *[/\\]* && "$1" != *..* ]] || return 0
+  f="$(norm_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/teams/$1/config.json"
+  [[ -f "$f" ]] && command -v jq >/dev/null 2>&1 || return 0
+  jqr '.members[]?.name | strings' "$f" 2>/dev/null
+}
+
+# The team of this project, for scripts that get no hook payload: $PLUMBLINE_TEAM,
+# else the newest teams/*/config.json with a member (or the lead) whose cwd is the
+# project folder or inside it. A config counts only while it is under 24 hours old
+# (the newer of its createdAt and its file's mtime), and a team whose tasks are all
+# completed (an earlier build) is passed over for any team still at work; with no
+# such team, the newest finished one answers, so a build that just ended still reads
+# as done. Prints the team name.
+team_for_project() {
+  if [[ -n "${PLUMBLINE_TEAM:-}" ]]; then printf '%s\n' "$PLUMBLINE_TEAM"; return 0; fi
+  local base c cwd name now m created finished="" td hit
+  base="$(norm_path "${CLAUDE_CONFIG_DIR:-$HOME/.claude}")/teams"
+  [[ -d "$base" ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  now=$(date +%s)
+  while IFS= read -r c; do
+    [[ -f "$c" ]] || continue
+    m=$(stat -c %Y "$c" 2>/dev/null || stat -f %m "$c" 2>/dev/null)
+    created=$(jqr '.createdAt | numbers' "$c" 2>/dev/null)
+    [[ "$m" =~ ^[0-9]+$ ]] || m=0
+    created=${created%%.*}
+    if [[ "$created" =~ ^[0-9]+$ ]]; then
+      (( created > 99999999999 )) && created=$((created / 1000))   # milliseconds
+      (( created > m )) && m=$created
+    fi
+    (( now - m > 86400 )) && continue
+    hit=""
+    while IFS= read -r cwd; do
+      [[ -n "$cwd" ]] || continue
+      cwd=$(norm_path "$cwd")
+      if [[ "$cwd" == "$PROJECT_DIR" || "$cwd" == "$PROJECT_DIR"/* ]]; then hit=1; break; fi
+    done < <(jqr '[.members[]?.cwd, .cwd, .leadCwd] | map(select(type == "string")) | .[]' "$c" 2>/dev/null)
+    [[ -n "$hit" ]] || continue
+    name=$(basename "$(dirname "$c")")
+    if td=$(team_dir_for "$name") && team_tasks "$td" \
+        | awk -F'\t' '{ n++; if ($3 != "completed") open++ } END { exit !(n > 0 && open == 0) }'; then
+      [[ -n "$finished" ]] || finished=$name
+      continue
+    fi
+    printf '%s\n' "$name"; return 0
+  done < <(ls -1t "$base"/*/config.json 2>/dev/null)
+  [[ -n "$finished" ]] && { printf '%s\n' "$finished"; return 0; }
+  return 1
+}
+
+# One line per task, in id order, tab-separated: id, owner (empty when unassigned),
+# status, blockedBy ids joined with commas, subject. Skips files that aren't JSON.
+# Each file is read on its own, so a half-written one can't repeat or drop the rows
+# of the others.
+team_tasks() { # tasks dir
+  local d="$1" f
+  [[ -d "$d" ]] && command -v jq >/dev/null 2>&1 || return 0
+  compgen -G "$d/*.json" >/dev/null || return 0
+  local prog='[(.id // empty | tostring), (.owner // ""), (.status // "pending"),
+    ((.blockedBy // []) | map(tostring) | join(",")), (.subject // "")] | @tsv'
+  for f in "$d"/*.json; do jq -r "$prog" "$f" 2>/dev/null; done \
+    | tr -d '\r' | sort -t$'\t' -k1,1n -s
+}
+
+# The tasks an owner can work on now, in team_tasks' format: in progress, or
+# pending with every blocker completed (a blocker with no file counts as completed,
+# and so does the optional done_id, a task whose completion is being reported).
+ready_tasks() { # tasks dir, owner [done_id]
+  team_tasks "$1" | awk -F'\t' -v o="$2" -v d="${3:-}" '
+    { row[NR] = $0; ow[NR] = $2; st[NR] = $3; bl[NR] = $4; status[$1] = $3 }
+    END {
+      if (d != "") status[d] = "completed"
+      for (i = 1; i <= NR; i++) {
+        if (ow[i] != o) continue
+        if (st[i] == "in_progress") { print row[i]; continue }
+        if (st[i] != "pending") continue
+        n = split(bl[i], b, ","); ok = 1
+        for (j = 1; j <= n; j++) if (b[j] != "" && (b[j] in status) && status[b[j]] != "completed") ok = 0
+        if (ok) print row[i]
+      }
+    }'
+}
+
+# The plan label of a task subject ("[AC-02-030] B4: Status changes" -> B4), else
+# the whole subject.
+task_label() { # subject
+  local re='^(\[[^]]*\])?[[:space:]]*([A-Z]{1,2}[0-9]{1,3}):'
+  if [[ "$1" =~ $re ]]; then printf '%s\n' "${BASH_REMATCH[2]}"; else printf '%s\n' "$1"; fi
+}
+
 debug_log() {
   [[ -n "${PLUMBLINE_HOOK_DEBUG:-}" ]] && echo "$1" >> "${TMPDIR:-/tmp}/plumbline-hooks.jsonl"
   return 0

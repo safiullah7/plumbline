@@ -37,6 +37,12 @@ Rules:
   and a measurement window. Vague words like "fast" or "intuitive" become numbers
   or observable behavior. Fill the surface sections the template added (e.g.
   "Command surface" for cli, "Model, prompts and limits" for ai).
+- A feature is at most ~30 criteria and ~6 screens. Write P0 and P1 first; a
+  P2 beyond the cap moves to the next slice: keep it in Requirements marked
+  `Deferred to <nn>`, with no criterion. ux.md describes only this feature's
+  screens. When your dispatch carries a `Split:` line, add the other slices
+  as rows of the module's vision.md Features table (Status: planned), so
+  /plumbline:phase-next picks them up.
 - Every acceptance criterion gets an ID (AC-<nn>-<nnn>, <nn> = feature number), is
   observable on its surface (see By surface), and states the exact expected
   result. No "should work well".
@@ -119,6 +125,14 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   or phase number in docs/product/ + 1, two digits; a module with a phases/ folder gets
   docs/product/<module>/phases/phase-<nn>/); team (Full yes; Standard only with
   2 engineers and teams available; Quick no).
+- Scope cap: a feature is at most ~30 criteria and ~6 screens. When the
+  request implies more (typically a whole module with several journeys),
+  split it into ordered slices, each a shippable step, and print a `Split:`
+  line right after `Module:`, e.g. `Split: 1 of 3 — 02 sign-in and order
+  queue (this) · 03 order detail and status changes · 04 refresh, switching,
+  personal-data pass` (folder numbers from <nn> on). Size stays what the
+  whole request is (Full stays Full); Folder is slice 1's. A request that
+  fits gets no `Split:` line at all (never `Split: none`).
 - No project.md: propose the surfaces from the code layout (package.json
   dependencies, go.mod, pyproject.toml, pubspec.yaml, Cargo.toml, folder
   names) and add a question saying they need the user's confirmation, unless
@@ -151,6 +165,7 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   Plumbline triage
   Size: Quick | Standard | Full
   Module: <name> (existing | new) | none
+  Split: 1 of <n> — <nn> <slice> (this) · <nn+1> <slice> · ...
   Folder: none | docs/product/<module>/<nn>-<feature-slug>/
   Surfaces: <comma-separated>
   Roles: <e.g. product, lead, 2 engineers, reviewer, QA>
@@ -162,6 +177,7 @@ Triage mode (the dispatch says "triage"): decide and report; write no files.
   Team: no | yes
   Why: <one line>
   ```
+  The `Split:` line appears only when you split; otherwise leave it out.
 - Quick: then 1-3 criteria, IDs AC-<yymmdd>-<nn> from today (e.g. AC-261024-01),
   held to every criterion rule above.
 - You can't ask the user. Too vague for observable criteria, or module or size
