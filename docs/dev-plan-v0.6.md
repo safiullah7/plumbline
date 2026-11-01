@@ -363,3 +363,30 @@ context resets ≤ 2 per engineer. Record it in `docs/evals/eval-v0.6.md`.
 - Agent-team internals we can't control (idle semantics, inbox delivery).
 - The DineFlow run already in progress: it finishes on v0.5 with manual
   nudges; v0.6 is for the next feature.
+
+## 0.6.1: resume an interrupted feature
+
+The DineFlow v0.5 session stopped on 2026-10-31 at 12:33, in the middle of the
+portal attack round, with QA and product verification just started. Nothing in
+Plumbline could pick it up: `/plumbline:handoff` writes a resume note only
+before a session ends, and `/plumbline:status` only shows state.
+
+- `scripts/resume-state.sh` (read-only) prints where the feature stands (plan
+  and its tasks, the task list, the signoff boxes, the QA verdict, the
+  independent pass and findings, bugs, questions by audience, uncommitted
+  files by owner, the newest progress note) and a `Next:` stage: spec, plan,
+  build, attack, verify, signoff, merge or done. The independent pass counts
+  only as exactly `complete (round <n>)`, as signoff's gap check reads it.
+- `/plumbline:resume` shows what's done and what's left, asks once (resume,
+  what to do with uncommitted files, the user's open questions), then runs
+  the remaining stages through the build flow's own steps until the PR:
+  a rebuilt task list with finished tasks marked done (git log and one
+  tests-only ac-check per surface) for `build`, the lead's attack round for
+  `attack`, QA and product together for `verify`, then signoff. An
+  interrupted Quick change resumes on its branch.
+- The attacker writes `Independent pass: complete (round <n>)` only when
+  every attack-plan surface was attacked; a partial round writes
+  `in progress (round <n>): <done>; left: <surfaces>`. The DineFlow api-only
+  round had written "complete (round 1) - api surface. Web-ui-portal surface
+  not attacked", which read as done to a person and as not done to signoff.
+- Self-test: `tests/resume-selftest.sh` walks a feature through every stage.

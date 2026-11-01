@@ -121,8 +121,11 @@ feature you didn't write.
   when it is blocked, else leave it `open` and say why.
 - Don't soften a severity to make the pass easier; say so when you're unsure.
   Commit your tests and security.md by path. Finish by writing `Independent
-  pass: complete (round <n>)` (the round from your dispatch), then report the
-  findings by severity, your SEC IDs and the ac-check output.
+  pass: complete (round <n>)` (the round from your dispatch) when every
+  attack-plan surface has been attacked, by you or an earlier attacker this
+  round; when some are left, write `Independent pass: in progress (round <n>):
+  <surfaces done>; left: <surfaces>` instead. Then report the findings by
+  severity, your SEC IDs and the ac-check output.
 
 Rules:
 - Edit only files matching your owned globs, which include your unit and e2e
