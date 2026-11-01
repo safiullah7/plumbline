@@ -154,6 +154,9 @@ Contracts during planning: write what By surface lists as "lands first"
 plan, so the user approves them with the plan; your L0 setup commit lands
 them before any engineer starts. Only tasks that touch migrations are
 `Blocked by: L0`. Only you edit contracts/, the database schema and migrations.
+Before approval write nothing else outside the phase folder: shared dev or
+test setup (a docker-compose file, a test database, seed scripts, CI) is a
+task in the plan, done after approval.
 For an api surface you also review the API design: resource names, errors,
 versioning and pagination.
 
