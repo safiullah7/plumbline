@@ -12,8 +12,8 @@
 
 <p align="center">
   <img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-10182B?style=for-the-badge">
-  <img alt="Version 0.6.1" src="https://img.shields.io/badge/version-0.6.1-34D399?style=for-the-badge">
-  <img alt="1846 self-tests passing" src="https://img.shields.io/badge/self--tests-1%2C846%20passing-34D399?style=for-the-badge">
+  <img alt="Version 0.6.2" src="https://img.shields.io/badge/version-0.6.2-34D399?style=for-the-badge">
+  <img alt="2554 self-tests passing" src="https://img.shields.io/badge/self--tests-2%2C554%20passing-34D399?style=for-the-badge">
   <img alt="Evals: no regressions" src="https://img.shields.io/badge/evals-no%20regressions-34D399?style=for-the-badge">
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b6478?style=for-the-badge">
 </p>
@@ -167,7 +167,7 @@ Flags: `/plumbline:kickoff <module> <feature-slug> [--profile standard|full] [--
 | 🧭 | **Product engineer** | *What* gets built: research, clarifying questions, spec, acceptance criteria (`AC-01-004`), user journeys and screen text, decisions | Opus · high effort |
 | 🏗️ | **Lead engineer** | *How* it gets built: a step-by-step plan per engineer, contracts, the attack plan, reviews every workstream. **Never writes code** | Opus · high effort |
 | 🛠️ | **Senior engineers** | One workstream each: test-first (red → green → refactor), unit + e2e tests, attack tests | Sonnet · effort set by the lead per task |
-| 🛡️ | **Security (attack round)** | A senior engineer who didn't write the code tries to break it, logs findings, verifies the fixes | Sonnet · high effort |
+| 🛡️ | **Security (attack round)** | A senior engineer who didn't write the code tries to break it and logs findings; critical and high ones are fixed and verified, medium and low are deferred | Sonnet · high effort |
 | 🔎 | **QA engineer** | Tests the working feature like a real user, files bugs, re-tests fixes | Sonnet · medium effort |
 | 🧪 | **Code reviewer** | Fresh-eyes review of every diff: authorization, contracts, tests, performance, security lens | Sonnet, Opus for HIGH work |
 
@@ -187,7 +187,7 @@ flowchart LR
     P --> L["🏗️ Lead<br/>plan per engineer, attack plan"]
     L -->|"you approve"| B["🛠️ Engineers<br/>TDD: unit + e2e + attack tests"]
     B --> R["Lead review + 🧪 reviewer<br/>comments → fixes"]
-    R --> A["🛡️ Attack round<br/>findings → fixes → verified"]
+    R --> A["🛡️ Attack round<br/>critical/high fixed and verified,<br/>medium/low deferred"]
     A --> Q["🔎 QA<br/>journeys, bugs → fixes"]
     Q --> S(["✅ Signoff gap check → PR"])
     S --> M(["You merge"])
@@ -207,7 +207,8 @@ flowchart LR
 3. **Build.** Engineers work test-first in parallel. Hooks enforce ownership and won't let a
    task close until its tests pass.
 4. **Review and attack.** The lead reviews each workstream with the code reviewer; comments
-   go back and get fixed. For risky work, a security engineer tries to break it.
+   go back and get fixed. For risky work, a security engineer tries to break it; critical and
+   high findings are fixed, medium and low are deferred to the next feature.
 5. **Test.** QA uses the built feature like a real user, files bugs, and re-tests the fixes.
 6. **Ship.** A deterministic gap check runs, the PR opens, docs and memory are updated.
    **You merge.** Plumbline never merges or deploys for you.
@@ -217,10 +218,15 @@ flowchart LR
 - **No stalls.** Every engineer has a task list, the idle gate keeps them moving and a watchdog checks every 5 minutes and flags anyone stuck. Engineers go straight to their next task; reports go to the lead.
 - **Right-sized features.** About 30 criteria per feature; bigger requests are split into slices.
 - **Parallel by design.** The team is sized by load, work is mock-first and contracts land during planning, so nobody waits on another workstream.
-- **Lean checks.** A task runs only its own tests. Typecheck, lint and the full suite run once per workstream and at signoff; e2e runs when the build is green.
+- **Lean checks.** A task runs only its own tests. Each workstream gets typecheck and lint when it is accepted. The full suite runs once, after the attack round, and again at signoff.
+- **A short security loop.** Only critical and high findings are fixed in the feature. Medium and low are deferred: their attack tests stay in the suite as expected failures, and `/plumbline:phase-next` proposes them.
+- **One full suite run.** `ac-check --all` runs once after the attack round. Signoff reuses that run when only Plumbline's own documents changed since. Gates never reuse a run, and a failure is never reused.
+- **Long runs agents can stop.** `run-bg.sh` starts servers and long test runs detached and stops exactly what it started (by recorded process and its children, never by name), so nothing is left holding ports at signoff.
 - **Small context.** A core brief plus one file per task.
 
 The first live v0.5 run spent 40% of its time idle, 21% on docs before code and 35-45% of engineer time on checks. The v0.6 target is a ~25-criteria feature in about 1.5-2 hours. That is a target until it is measured.
+
+The DineFlow feature-02 resume on v0.6.1 took 14.8 hours, about 10 of them fixing 11 medium and low findings inside the feature. v0.6.2 targets about 4 hours for the same work. That is a target until it is measured.
 
 ## 🔒 Quality gates that can't be talked past
 
@@ -233,6 +239,7 @@ Gates are plain **bash + jq hooks**, not model judgement. They switch on when th
 | **Task-created gate** | Work that isn't tied to a criterion | `Task gate: "Untagged task" names no AC IDs.` |
 | **Task-completed gate** | "Done" without proof | Runs typecheck, lint and the tests named after the task's IDs; refuses until they pass |
 | **Idle gate** | Uncommitted work left behind | Reminds twice, then escalates to the lead |
+| **Expected-failure check** | A test marked as an expected failure hiding a real problem | Fails the check unless it is an attack test under a deferred or accepted finding |
 | **Waiver lock** | An agent lowering its own bar | `Evidence waived:`, `Security waived:` and `Risk accepted:` lines are **user-only** |
 
 Signoff starts with a script that lists every gap. Example output on a feature that isn't
@@ -273,7 +280,7 @@ use, infrastructure.
 | --- | --- | --- |
 | `none` | Routine work: the reviewer's security checklist | Nothing |
 | `attacks` | The lead plans concrete attacks from a catalogue; engineers write each as a **failing test first**; signoff **runs** them and scans the diff for committed secrets | A few hundred tokens for the plan, a handful of tests |
-| `independent` | All of the above, plus a **separate attack round**: a different engineer, scoped to the attack surface, tries what the plan missed. Findings are fixed and re-verified | One scoped run, fix rounds only when it finds something |
+| `independent` | All of the above, plus a **separate attack round**: a different engineer, scoped to the attack surface, tries what the plan missed. Critical and high findings are fixed and re-verified (or you accept the risk); medium and low are deferred | One scoped run, fix rounds only for critical or high findings |
 
 An attack plan row looks like this:
 
@@ -355,6 +362,7 @@ docs/product/patient-portal/
 | `PLUMBLINE_TYPECHECK` | `npm run -s typecheck` | Typecheck command for `ac-check` full runs (workstream acceptance and signoff), and for each task only when `PLUMBLINE_TASK_CHECKS=full` (`""` skips it) |
 | `PLUMBLINE_LINT` | `npm run -s lint` | Lint command, run where the typecheck runs |
 | `PLUMBLINE_TEST_AC` | `npm run -s test:ac --` | Runs the tests for given IDs (when set, it overrides the profile's AC tests cell) |
+| `PLUMBLINE_REUSE` | on | Set to `0` to stop `ac-check --all` reusing an earlier full pass; `--fresh` does the same for one run |
 | `PLUMBLINE_TASK_CHECKS` | `tests-only` | A task runs only its tests; `full` runs typecheck and lint on every task as before |
 | `PLUMBLINE_TEAM` | auto | Which team the status command and watchdog read, when several share a folder |
 | `PLUMBLINE_CONFIRM` | `auto` | `always` confirms every triage |
@@ -383,7 +391,7 @@ Set them in the `env` block of `.claude/settings.json`.
 | ✅ **v0.4a** | One `/plumbline:build`: work sized as Quick, Standard or Full, docs by module and feature |
 | ✅ **v0.4b** | Project profile, ten surfaces, test adapters, lean roles (product writes the UI text, one QA agent, TDD with unit and e2e), model routing by complexity |
 | ✅ **v0.5** | Security by attack plan: triage levels, the lead's attack catalogue, attacks as tests first, independent attack rounds, signoff runs the attack tests and a secrets scan |
-| 🚧 **v0.6** | Fast builds (current): no stalls, right-sized features, parallel work, lean per-task checks, small context; `/plumbline:resume` for interrupted features (0.6.1) |
+| 🚧 **v0.6** | Fast builds (current): no stalls, right-sized features, parallel work, lean per-task checks, small context; `/plumbline:resume` for interrupted features (0.6.1); a short security loop, one full test run and `run-bg.sh` for processes agents can stop (0.6.2) |
 
 Dev plans for each release are in [`docs/`](docs).
 

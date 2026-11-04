@@ -35,7 +35,7 @@ export PLUMBLINE_TYPECHECK="true" PLUMBLINE_LINT="true"
 export PLUMBLINE_TEST_AC='f(){ [ "$1" = "AC-01-001" ]; }; f'
 # The task gate checks tests only by default (v0.6); the typecheck and lint cases below
 # are about the full behaviour, and a case further down covers the default.
-export PLUMBLINE_TASK_CHECKS=full
+export PLUMBLINE_TASK_CHECKS=full PLUMBLINE_REUSE=0
 
 # Agent IDs in the format Claude Code gives teammates: a + name + - + 16 hex.
 ENG=aeng-api-e0e49e4975cf862f
@@ -151,6 +151,23 @@ lock_cases() {
   check "$1: project.md Bash read with grep and pipe allowed" 0 ownership-guard.sh "$(mkb "$SUBAGENT" "grep -n api docs/product/project.md | head")"
   check "$1: project.md Bash write allowed in the main session" 0 ownership-guard.sh "$(mkb "" "echo x > docs/product/project.md")"
   check "$1: another project.md-like file allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/apps/api/project.md.bak" 'x')")"
+  # .git/plumbline/ is the check record that lets a full test run be reused (v0.6.2).
+  for a in "$ENG" "$SUBAGENT"; do
+    k=teammate; [[ "$a" == "$SUBAGENT" ]] && k=subagent
+    check "$1: .git/plumbline Write blocked, $k"  2 ownership-guard.sh "$(mk "$a" "$(ti_write_at "$T/repo/.git/plumbline/checks.tsv" 'x')")"
+    check "$1: .git/plumbline Edit blocked, $k"   2 ownership-guard.sh "$(mk "$a" "$(ti_edit_at "$T/repo/.git/plumbline/checks.tsv" a b)")"
+    check "$1: .git/plumbline relative path blocked, $k" 2 ownership-guard.sh "$(mk "$a" "$(ti_write_at '.git/plumbline/checks.tsv' 'x')")"
+    check "$1: .git/plumbline Bash redirect blocked, $k" 2 ownership-guard.sh "$(mkb "$a" "echo x >> .git/plumbline/checks.tsv")"
+    check "$1: .git/plumbline Bash read blocked too, $k" 2 ownership-guard.sh "$(mkb "$a" "cat .git/plumbline/checks.tsv")"
+    check "$1: .git/./plumbline blocked, $k" 2 ownership-guard.sh "$(mkb "$a" "echo x >> .git/./plumbline/checks.tsv")"
+    check "$1: the record named through git rev-parse blocked, $k" 2 ownership-guard.sh "$(mkb "$a" 'echo x >> "$(git rev-parse --git-dir)/plumbline/checks.tsv"')"
+    check "$1: run-bg's procs folder named through git rev-parse blocked, $k" 2 ownership-guard.sh "$(mkb "$a" 'rm -rf "$(git rev-parse --git-dir)/plumbline/procs"')"
+    check "$1: a run-bg.sh call is allowed, $k" 0 ownership-guard.sh "$(mkb "$a" 'bash plugins/plumbline/scripts/run-bg.sh log api')"
+  done
+  check "$1: .git/plumbline Windows path blocked" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at 'C:\repo\.git\plumbline\procs\x' 'x')")"
+  check_out "$1: .git/plumbline refusal says only its scripts write it" 2 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/.git/plumbline/checks.tsv" 'x')")" "only its scripts write it"
+  check "$1: .git/plumbline Write allowed in the main session" 0 ownership-guard.sh "$(mk "" "$(ti_write_at "$T/repo/.git/plumbline/checks.tsv" 'x')")"
+  check "$1: a path merely containing plumbline allowed" 0 ownership-guard.sh "$(mk "$ENG" "$(ti_write_at "$T/repo/apps/api/plumbline/x.js" 'x')")"
   # Other spellings of the same file on NTFS and APFS.
   local f
   for f in .Plumbline ".plumbline " .plumbline. '.plumbline::$DATA' ".PLUMBLINE. ."; do
@@ -225,6 +242,15 @@ check "ready: SEC-only task with a passing test" 0 task-completed-gate.sh '{"tas
 check "ready: AC and SEC task, the SEC test passing" 0 task-completed-gate.sh '{"task_subject":"[AC-01-001 SEC-01-001] x","teammate_name":"eng-api"}'
 check "ready: SEC-only task with a failing test" 2 task-completed-gate.sh '{"task_subject":"[SEC-01-002] x","teammate_name":"eng-api"}'
 export PLUMBLINE_TEST_AC=$AC_STUB
+# An expected failure (the adapters' xfail-only trailer) passes the gate only for an own
+# attack a deferred or accepted finding names; run_checks decides, as ac-check does.
+printf '# Feature 01 security\n\nIndependent pass: not needed\n\n## Own attacks\n| SEC ID | Surface | Attack | Must happen |\n| --- | --- | --- | --- |\n| SEC-01-005 | api | replay | 401 |\n| SEC-01-006 | api | other | 403 |\n\n## Findings\n| # | Severity | Finding | Status | Evidence |\n| --- | --- | --- | --- | --- |\n| 1 | medium | Replay accepted | deferred | SEC-01-005 |\n| 2 | low | Other | verified | SEC-01-006 |\n' > "$P/security.md"
+export PLUMBLINE_TEST_AC='f(){ for i in ${1//|/ }; do echo "$i: xfail"; done; echo "ac-tests: xfail only: ${1//|/ }"; exit 1; }; f'
+check "ready: a task whose only problem is a covered xfail passes" 0 task-completed-gate.sh '{"task_subject":"[SEC-01-005] x","teammate_name":"eng-api"}'
+check_out "ready: an xfail under a verified finding is refused" 2 task-completed-gate.sh '{"task_subject":"[SEC-01-006] x","teammate_name":"eng-api"}' "only an own attack under a deferred or accepted finding may be an expected failure: SEC-01-006"
+check "ready: an xfail on an AC ID is refused" 2 task-completed-gate.sh '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}'
+check "ready: ...and so is one covered ID beside an uncovered one" 2 task-completed-gate.sh '{"task_subject":"[SEC-01-005 SEC-01-006] x","teammate_name":"eng-api"}'
+export PLUMBLINE_TEST_AC=$AC_STUB; rm -f "$P/security.md"
 check "ready: [chore] task completes without AC tests" 0 task-completed-gate.sh '{"task_subject":"[chore] Land contracts","teammate_name":"eng-api"}'
 assert "ready: gate timing hidden by default" \
   test -z "$(echo '{"task_subject":"[AC-01-001] x","teammate_name":"eng-api"}' | bash "$G/task-completed-gate.sh" 2>&1)"

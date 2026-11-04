@@ -12,7 +12,11 @@
 # Rules: an ID counts when it appears anywhere in the test's full title
 # (describe titles included, the file name isn't part of it). Skipped tests
 # (test.skip, test.fixme, a skip in the body, not run after a serial failure),
-# interrupted tests and tests marked test.fail never count as passes. Failed and
+# interrupted tests and tests marked test.fail never count as passes. A test.fail
+# test that failed as expected is "xfail" when its "fail" annotation (the reason)
+# or its title names a finding ("finding #8"); without one it stays missing. A
+# test.fail test that passed is "unexpected", so a fail. PLUMBLINE_AC_ALL=1
+# (all-tests mode) drops --grep; IDs are then optional. Failed and
 # timed-out tests are fails. --retries=0 overrides the config's retries, so a
 # flaky test (one that passed only on a retry) fails here instead of passing.
 # Each project of a multi-project config runs the test, and each run is counted.
@@ -64,7 +68,9 @@ else
   echo "$NAME: not installed"; exit 1
 fi
 
-PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT" "${runner[@]}" test --grep "$re" --reporter=json --retries=0 2>&1 \
+grep_args=(--grep "$re")
+[[ "$ALL" == 1 ]] && grep_args=()   # all-tests mode: no filter
+PLAYWRIGHT_JSON_OUTPUT_NAME="$OUT" "${runner[@]}" test "${grep_args[@]}" --reporter=json --retries=0 2>&1 \
   | tr -d '\r' > "$LOG"
 # One "status<TAB>full name" line per test. An older Playwright prints the JSON
 # to stdout instead, so the log is the fallback when the file is empty.
@@ -76,17 +82,31 @@ node -e '
   }
   if (!j) process.exit(0);
   const clean = (s) => String(s).replace(/\s+/g, " ").trim();
-  function status(t) {
+  const finding = /finding\s*#\d+/i;
+  // An expected failure that failed is xfail only when its "fail" annotation (the
+  // test.fail reason) or its title names a finding; otherwise it is skipped.
+  function names(t, name) {
+    if (finding.test(name)) return true;
+    return (t.annotations || []).some((a) => a && a.type === "fail" && finding.test(String(a.description || "")));
+  }
+  function status(t, name) {
     const last = (t.results || []).slice(-1)[0] || {};
-    if (t.status === "expected") return t.expectedStatus === "passed" ? "pass" : "skip";
-    if (t.status === "unexpected") return last.status === "interrupted" ? "skip" : "fail";
+    if (t.status === "expected") {
+      if (t.expectedStatus === "passed") return "pass";
+      return t.expectedStatus === "failed" && names(t, name) ? "xfail" : "skip";
+    }
+    if (t.status === "unexpected") {
+      if (last.status === "interrupted") return "skip";
+      // A test.fail naming a finding that passed: its hole looks closed.
+      return t.expectedStatus === "failed" && last.status === "passed" && names(t, name) ? "xpass" : "fail";
+    }
     if (t.status === "flaky") return "fail";
     return "skip";
   }
   function walk(s, titles) {
     for (const sp of s.specs || []) {
       const name = clean(titles.concat(sp.title).join(" "));
-      for (const t of sp.tests || []) console.log(status(t) + "\t" + name);
+      for (const t of sp.tests || []) console.log(status(t, name) + "\t" + name);
     }
     for (const c of s.suites || []) walk(c, titles.concat(c.title));
   }

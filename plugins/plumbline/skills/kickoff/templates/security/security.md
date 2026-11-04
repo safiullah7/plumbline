@@ -7,5 +7,9 @@ Independent pass: not started
 | --- | --- | --- | --- |
 
 ## Findings
+Status is open, fixed or verified; deferred for a medium or low finding (not
+fixed in this feature; its attack test is an expected failure naming the
+finding).
+
 | # | Severity | Finding | Status | Evidence |
 | --- | --- | --- | --- | --- |

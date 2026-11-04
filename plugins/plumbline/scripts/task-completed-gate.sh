@@ -9,8 +9,13 @@
 # workstream acceptance. On a pass, a payload with team_name also names the
 # teammates this completion unblocked, in a systemMessage. Note that a systemMessage
 # is shown to the user, not to an agent: it cannot wake anyone itself.
+# A test run whose only problem is an expected failure (the adapters' "ac-tests: xfail
+# only:" trailer) passes when run_checks finds every such ID covered by a deferred or
+# accepted finding (an own attack, security_covered_ids); otherwise it is refused.
 source "$(dirname "${0//\\//}")/lib.sh"
 input=$(cat); debug_log "$input"
+# A task is checked by its own IDs, never as an all-tests run, whatever the env says.
+unset PLUMBLINE_AC_ALL
 
 build_active || exit 0
 require_jq

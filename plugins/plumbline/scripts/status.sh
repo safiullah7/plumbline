@@ -3,7 +3,7 @@
 # and escalated questions, and uncommitted files per owner. Read-only. An AC
 # counts as covered when its ID appears in a test file (PLUMBLINE_TEST_GLOBS).
 # A feature with a security level above none gets one more line (attacks planned
-# and own, open critical and high findings, the independent pass). When the team
+# and own, open critical and high findings, deferred findings, the independent pass). When the team
 # has a shared task list (found by matching the team configs' cwd to this
 # project, or PLUMBLINE_TEAM), one more line counts the open tasks per owner.
 source "$(dirname "${0//\\//}")/lib.sh"
@@ -47,8 +47,9 @@ if [[ "$lvl" != none ]]; then
   own=$(security_rows own 2>/dev/null | grep -c '^row')
   openhigh=$(security_rows findings 2>/dev/null | awk -F"$US" '$1 == "row" { s = tolower($3); t = tolower($5)
     if ((s == "critical" || s == "high") && t != "verified") c++ } END { print c + 0 }')
+  deferred=$(security_rows findings 2>/dev/null | awk -F"$US" '$1 == "row" && tolower($5) == "deferred" { c++ } END { print c + 0 }')
   state=$(security_independent_state)
-  echo "security: $lvl · $planned planned attacks, $own own · open high $openhigh · independent pass ${state:-none}"
+  echo "security: $lvl · $planned planned attacks, $own own · open high $openhigh · deferred $deferred · independent pass ${state:-none}"
 fi
 
 # The team's task list (v0.6): open tasks per owner and how many of them are ready,

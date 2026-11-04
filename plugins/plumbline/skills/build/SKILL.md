@@ -11,7 +11,9 @@ subagents can't. <plugin> is the folder two levels above this SKILL.md. When a
 step says "ask", use AskUserQuestion with your recommended option first; if
 that tool isn't available, ask in plain text and end your turn until they reply.
 Run every dispatch in the foreground and wait for its result before the next
-step. Dispatch agents without a `name`, except where a step spawns teammates:
+step. Run only the steps below and add none of your own: no extra test run
+(a "clean verification"), no attack round for a deferred finding. Dispatch
+agents without a `name`, except where a step spawns teammates:
 with agent teams on, a named agent joins the team as a teammate, and the hooks
 then hold it to the dev plan's Ownership table. If the user chooses to stop at any point, run step 8's cleanup and stop.
 
@@ -107,8 +109,9 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       that project.md out), continue on top, or stop.
    2. Tell the user, in one short list, the commands the agents will run:
       `git checkout -b`, `git add`, `git commit`, `git push`, `gh pr create`,
-      `bash <plugin>/scripts/ac-check.sh` (with a team also `plan-tasks.sh`
-      and `watch-build.sh` there), and the test commands for each of
+      `bash <plugin>/scripts/ac-check.sh`, `bash <plugin>/scripts/run-bg.sh`
+      (servers and long runs; with a team also `plan-tasks.sh` and
+      `watch-build.sh` there), and the test commands for each of
       the block's surfaces: PLUMBLINE_TYPECHECK, PLUMBLINE_LINT and
       PLUMBLINE_TEST_AC if set; else that surface's Typecheck, Lint and AC
       tests cells in project.md (an adapter name runs
@@ -117,7 +120,7 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       (the dev server QA and the e2e tests use) and the browser tool QA drives.
       When the Security line isn't `none`, add
       `bash <plugin>/scripts/security-check.sh`, and say signoff runs the
-      attack (SEC) tests, so the Run commands must be up then.
+      attack (SEC) tests against the apps, started through run-bg.sh.
       Say that
       Claude Code will ask them to approve any it doesn't already allow, and
       that a denied command stops the change. This is information, not a
@@ -145,7 +148,8 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       stopped before the PR (a SEC ID failed or a Critical or High finding is
       open), relay its report and ask: fix it (dispatch the lead again with
       the report), re-triage as Standard, or stop. Quick has no risk
-      acceptance.
+      acceptance. Medium and low findings don't stop Quick and aren't asked
+      about: report them as follow-up work.
 6. **Standard.**
    1. From the default branch, run
       `bash <plugin>/scripts/kickoff.sh <module> <feature-slug> --profile standard --ux --surfaces <s1,s2>`
@@ -225,19 +229,21 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
          (Bash timeout 600000; it flags a teammate after 5 minutes without
          progress), act on its output, and run it again, until it prints
          `DONE` (every task, the lead's chores included, is completed) and the
-         lead has reported the build done (acceptance, reviews and, at
-         `independent`, the attack round). For each
+         lead has reported the build done (acceptance, reviews, at
+         `independent` the attack round, then its `--all` run). For each
          `STALLED: <name> (<task>)` line, SendMessage that teammate
          `Continue: <task>`. For `STALLED: lead`, or a `LEAD: <chores>` line
          while the lead shows no activity, message `lead` to run each finished
          workstream's acceptance check and review. Never relay reports: one
          that reaches you is forwarded to `lead` once, and you tell its sender
          to report to `lead`.
-      When every workstream is reviewed and the full
-      suite passes, the lead ticks "Integration review" in signoff.md.
-      At `independent`, the lead then runs the attack round, before QA. A
-      `Security level:` raise during the build is handled as in 6.3. When the
-      lead returns "Needs user", handle it as in step 8.
+      When every workstream is accepted and reviewed, the lead ticks
+      "Integration review" in signoff.md (no full suite yet). At
+      `independent`, the lead then runs the attack round, before QA. Last,
+      it runs the whole suite once per surface (`ac-check.sh --all`) and
+      reports the build done. A `Security level:` raise during the build is
+      handled as in 6.3. When the lead returns "Needs user", handle it as in
+      step 8.
    5. Verify. Dispatch plumbline:qa-engineer to test the flows (functional
       only) with: "Standard: check each journey and criterion works, fill
       test-plan.md Traceability, log bugs in qa-report.md, record the Evidence
@@ -245,12 +251,11 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
       verdict box. Required evidence: <the block's Evidence line>." Dispatch
       plumbline:product-engineer to walk the finished journeys against the criteria (Journey results, Product
       findings, Success metrics results in signoff.md) and tick Product
-      verification. At `attacks` or above, make sure each surface's Run
-      command is up (signoff runs the attack tests; it usually still is from
-      QA). Then follow
-      /plumbline:signoff (<plugin>/skills/signoff/SKILL.md): gap check, full
-      suite, push, PR. If the gap check lists gaps, send each to its owner and
-      run it again.
+      verification. Then follow
+      /plumbline:signoff (<plugin>/skills/signoff/SKILL.md): leftover runs
+      stopped, gap check, the whole suite (`ac-check.sh --all`, usually
+      reusing the lead's run), push, PR. If the gap check lists gaps, send
+      each to its owner and run it again.
 7. **Full.** Requires teams (step 3). Run
    `bash <plugin>/scripts/kickoff.sh <module> <feature-slug> --profile full --ux --surfaces <s1,s2>`
    (or `--no-ux`), adding `--new-module` when the block says the module is new
@@ -283,11 +288,22 @@ then hold it to the dev plan's Ownership table. If the user chooses to stop at a
      `Risk accepted: #<n> <severity> <the finding text exactly as in the row> - <reason> (approved by <name>)`;
      `Risk accepted: secret <path> - <reason> (approved by <name>)` for a
      secrets-scan hit. When the lead returns "Needs user" with open rows, or
-     the gap check lists an open finding or a secret, ask per row or path:
-     fix again, accept the risk, or stop; write the lines the user approved,
-     then dispatch the lead again with the answers. Never in Quick:
-     it has no waivers or acceptances.
-   - Cleanup on stop: delete `.claude/plumbline-quick` if you wrote it.
+     the gap check lists an open critical or high finding or a secret, ask
+     per row or path: fix again, accept the risk, or stop. In attack rounds
+     1-3 recommend "fix again"; after three rounds (the lead's "Needs user"),
+     recommend none. Write the lines the user approved, then dispatch the
+     lead again with the answers. Never in Quick: it has no waivers or
+     acceptances.
+   - Medium and low findings are never asked about: the attacker defers them
+     (status `deferred`, the attack test marked as an expected failure). Your
+     final report lists them, and any accepted risk, as follow-up work.
+   - Processes: agents start servers and long runs through
+     `bash <plugin>/scripts/run-bg.sh` and stop them. Never ask the user to
+     stop one: `run-bg.sh list` shows what's running, and
+     `run-bg.sh stop <name>` (or `stop --all`) stops it with its children.
+     Never stop a process by name or pattern.
+   - Cleanup on stop: delete `.claude/plumbline-quick` if you wrote it, and
+     run `bash <plugin>/scripts/run-bg.sh stop --all`.
 9. **No shell** (e.g. eval runs). Do steps 1-3 as usual. Then:
    - Quick: skip step 4, the branch and the marker. Dispatch the lead as in 5.2, adding
      "No shell: no branch, commits, checks or PR. Quick change: no feature

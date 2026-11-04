@@ -108,7 +108,7 @@ Lint: $(cell 6)
 AC tests: $(cell 7)"
     # The workstream-wide command names the engineer's SEC IDs too, so its attack tests run with its AC tests.
     [[ -n "$all_acs$all_secs" ]] && checks="$checks
-Once, when all your tasks are done (full run; per task, use the command in its file): bash \"<scripts>/ac-check.sh\" \"$(printf '%s\n%s\n' "$all_acs" "$all_secs" | sed '/^$/d' | alt)\" --surface $surface
+Once, when all your tasks are done (your workstream's ac-check: typecheck, lint and your AC tests; the whole suite runs once after the attack round, with ac-check --all; per task, use the command in its file): bash \"<scripts>/ac-check.sh\" \"$(printf '%s\n%s\n' "$all_acs" "$all_secs" | sed '/^$/d' | alt)\" --surface $surface
 (<scripts> is the \"Plumbline scripts\" folder in your context; briefs are committed, so they name no machine path.)"
   fi
 

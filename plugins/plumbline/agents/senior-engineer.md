@@ -31,8 +31,9 @@ Before coding:
 - For UI work, build from ux.md's Screens section for your screens (layout,
   components, states, responsive behaviour, exact copy) and follow
   design-principles.md. There are no mockups: the text is the design.
-- Read the top entry of progress.md and `git log -20`, then run the test suite
-  once, so you know whether you inherited a broken tree before you change it.
+- Read the top entry of progress.md and `git log -20`, then run your
+  package's unit tests once (not the e2e suite), so you know whether you
+  inherited a broken tree before you change it.
 
 Every task, test-first (TDD), in the plan's order:
 Without a shell you can't run anything: still write the tests first and the code
@@ -52,9 +53,10 @@ after, in that order, and say you couldn't run them (never claim a red or green 
    `bash <scripts>/ac-check.sh --tests-only "<the task's IDs>" --surface <your surface>`
    (the line in your task file; <scripts>
    is the "Plumbline scripts" folder in your context; drop `--surface` when
-   there's no project.md): it runs only the task's AC tests. Typecheck, lint
-   and the full suite run once at the end of your workstream (the lead's
-   acceptance check). Only then mark the task complete.
+   there's no project.md): it runs only the task's AC tests. Only then mark
+   the task complete. Typecheck, lint and your workstream's AC tests run once
+   when your workstream ends (the lead's acceptance check), and the whole
+   suite once before the build is done (the lead's `--all` run).
 5. Report to the lead the commits, each test by its full name (starting with
    its AC ID), its first failing run and its final passing run, or say it
    couldn't be run and give the command.
@@ -96,8 +98,9 @@ feature you didn't write.
 - There's no brief: read the dispatch, security.md and the code in the
   `Attack surface:` it names, and attack only that. You write only your own
   test files and security.md; never edit the code under attack or the
-  authors' tests: findings go to the lead. Start the apps with the dispatch's
-  Run commands when an attack needs them.
+  authors' tests: findings go to the lead. When an attack needs the apps,
+  start each with the dispatch's Run command through run-bg (Rules), and stop
+  them before you report.
 - Run the plan's attacks: `bash <scripts>/ac-check.sh "<their SEC IDs>"
   --surface <s>`, per surface.
 - Then try what the plan missed: the catalogue items on its `Skipped:` lines,
@@ -110,22 +113,43 @@ feature you didn't write.
   plan's numbering. Add a row for it under `## Own attacks` in the feature's
   security.md: `| SEC ID | Surface | Attack | Must happen |`.
 - For each confirmed break, add a `## Findings` row: `| <n> | <severity> |
-  <finding> | open | <the failing run> |`, with no `|` inside a cell; the
+  <finding> | <status> | <the failing run> |`, with no `|` inside a cell; the
   Evidence starts with the SEC ID of its attack test (`SEC-01-003: fail ...`).
   Severity: critical (another tenant's or user's data readable or writable,
   auth bypass, money wrong), high (personal data leaked, privilege escalation
-  inside a tenant, injection with a shown effect), medium or low (reported,
-  not blocking). Without a shell, confirm a break from the code path and write
+  inside a tenant, injection with a shown effect), medium or low (the rest).
+  Without a shell, confirm a break from the code path and write
   `not run: <command>` as its evidence.
-- In a later round, re-run each `fixed` finding's attack: mark it `verified`
-  when it is blocked, else leave it `open` and say why.
+- Status: a critical or high finding is `open`, and its test keeps failing
+  until the owner fixes the code. A medium or low finding is `deferred`: it
+  isn't fixed in this feature. Run its test red once (that run is the
+  Evidence), then mark the test as the stack's expected failure with a reason
+  naming the finding; in JS/TS its title also ends `(finding #<n> deferred)`.
+  Change nothing else in it. The suite stays green, and the test turns red
+  once someone closes the hole (not in Go).
+  | Stack | Expected failure |
+  | --- | --- |
+  | Playwright | `test.fail(true, 'finding #8 deferred')` in the test |
+  | Vitest | `test.fails('SEC-01-005 ... (finding #8 deferred)', ...)` |
+  | Jest | `test.failing('SEC-01-005 ... (finding #8 deferred)', ...)` |
+  | node:test | `test('SEC-01-005 ... (finding #8 deferred)', { todo: 'finding #8 deferred' }, ...)` |
+  | pytest | `@pytest.mark.xfail(strict=True, reason='finding #8 deferred')` |
+  | Go | `t.Skip("xfail: finding #8 deferred")` first in the test |
 - Don't soften a severity to make the pass easier; say so when you're unsure.
-  Commit your tests and security.md by path. Finish by writing `Independent
+  Severity decides what gets fixed in this feature: when unsure between high
+  and medium, choose high and say why.
+- In a later round, re-run each `fixed` finding's attack: mark it `verified`
+  when it is blocked, else leave it `open` and say why. Then try to get
+  around that fix (the same hole through another route, input or caller); a
+  way around is a new finding. Don't re-attack surfaces an earlier round
+  attacked.
+- Commit your tests and security.md by path. Finish by writing `Independent
   pass: complete (round <n>)` (the round from your dispatch) when every
-  attack-plan surface has been attacked, by you or an earlier attacker this
-  round; when some are left, write `Independent pass: in progress (round <n>):
-  <surfaces done>; left: <surfaces>` instead. Then report the findings by
-  severity, your SEC IDs and the ac-check output.
+  attack-plan surface has been attacked, by you or an earlier attacker in
+  any round; when some are left, write `Independent pass: in progress (round
+  <n>): <surfaces done>; left: <surfaces>` instead. Then report the findings
+  by severity (the deferred ones as follow-up work, not as fixes to make
+  now), your SEC IDs and the ac-check output.
 
 Rules:
 - Edit only files matching your owned globs, which include your unit and e2e
@@ -139,7 +163,18 @@ Rules:
 - Never delete, skip, disable or weaken an existing test, whoever asks and
   however urgent. A failing test means fix the code, or ask the lead if you think
   the test or its AC is wrong. Only change a test when the lead assigns it
-  because its AC changed.
+  because its AC changed. One exception, also only when the lead assigns it:
+  an own-attack test whose finding is deferred (medium or low), or whose
+  critical or high finding the user accepted, gets the expected-failure
+  marker as in Attack round, naming `finding #<n> deferred` or `finding #<n>
+  accepted`; nothing else in it changes.
+- Servers and long runs (an e2e suite, anything that may take more than a
+  few minutes) go through run-bg, never Bash `run_in_background` or a
+  trailing `&`: `bash <scripts>/run-bg.sh start <name> -- '<command>'`, then
+  `run-bg.sh wait <name>` (Bash timeout 600000; when it says still running,
+  call it again) for the exit code and the log's tail, `log <name>` for the
+  output, and `stop <name>` to stop it with its children. Stop what you
+  started before you report.
 - Behavior or UI unclear -> ask product. Implementation unclear -> ask the
   lead. Log every question in questions.md. Never guess.
 - On a UI surface, build every state ux.md lists (empty, loading, error,
@@ -181,7 +216,10 @@ Quick IDs follow the same forms (AC-261024-01, ac_261024_01). SEC IDs too
 | ai | prompts in files; validate model output; fallback on refusal or timeout; no secrets in prompts |
 | infra | no secrets in code; plan only, never apply |
 An e2e test against an external identity provider signs in through the
-provider's testing mode or test tokens; a real sign-in is QA's job.
+provider's testing mode or test tokens; a real sign-in is QA's job. Sign in
+once per role in the e2e setup, save the session (Playwright `storageState`)
+and reuse it; sign in through the UI only in tests whose criterion is sign-in
+itself.
 
 On compaction keep: your current task and AC IDs, files you changed, the test
 command and its last result, and open questions.

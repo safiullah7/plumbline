@@ -18,6 +18,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/repo" && cd "$T/repo"
 export HOME="$T" CLAUDE_PROJECT_DIR="$T/repo"
 unset CLAUDE_CONFIG_DIR CLAUDE_PLUGIN_DATA PLUMBLINE_TEST_GLOBS PLUMBLINE_BASE_REF PLUMBLINE_TEST_AC PLUMBLINE_TYPECHECK PLUMBLINE_LINT
+export PLUMBLINE_REUSE=0   # no run here reuses a recorded pass
 source "$ROOT/plugins/plumbline/evals/_fixture/clinic.sh" >/dev/null
 set +e   # the fixture sets -e; the checks below expect non-zero exits
 source "$G/lib.sh"
@@ -43,21 +44,24 @@ STUB="$T/stub.sh"; export STUB_RULES="$T/stub.rules" STUB_CALLS="$T/stub.calls"
 cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
 # stub.sh <label> "<IDs>": a fake AC tests command. One line per ID from $STUB_RULES
-# ("<ID> pass|fail|none|missing|generic|genericfail", pass when there is no rule),
-# exit 1 unless every ID passes. generic prints the generic adapter's warning and no
-# ID line, exit 0; genericfail the same with exit 1.
+# ("<ID> pass|fail|xfail|none|missing|generic|genericfail", pass when there is no rule),
+# exit 1 unless every ID passes. xfail prints "<ID>: xfail" and, when nothing else went
+# wrong, the adapters' trailer "ac-tests: xfail only: <IDs>" (still exit 1). generic prints
+# the generic adapter's warning and no ID line, exit 0; genericfail the same with exit 1.
 echo "$1 $2" >> "$STUB_CALLS"
-rc=0; g=""
+rc=0; g=""; xf=""; bad=0
 for id in ${2//|/ }; do
   r=$(awk -v id="$id" '$1 == id { print $2 }' "$STUB_RULES" 2>/dev/null); r=${r:-pass}
   case "$r" in
     pass) echo "$id: pass (1)" ;;
-    fail) echo "$id: fail"; rc=1 ;;
-    missing) echo "$id: missing"; rc=1 ;;
+    fail) echo "$id: fail"; rc=1; bad=1 ;;
+    xfail) echo "$id: xfail"; rc=1; xf="$xf${xf:+ }$id" ;;
+    missing) echo "$id: missing"; rc=1; bad=1 ;;
     generic|genericfail) [[ -n "$g" ]] || echo "generic: per-ID presence isn't proven; the command's exit code is the result."; g=1; [[ "$r" == generic ]] || rc=1 ;;
-    *) rc=1 ;;
+    *) rc=1; bad=1 ;;
   esac
 done
+[[ -n "$xf" && $bad == 0 ]] && echo "ac-tests: xfail only: $xf"
 exit $rc
 EOF
 profile() { # api and web-ui run the stub; cli has no AC tests command, data says none
@@ -519,6 +523,88 @@ gap "own vs finding: a failing plan attack is a gap whatever a finding says" "at
 nogap "...with no own-attack hint" "record a finding"
 : > "$STUB_RULES"
 
+# ===== Deferred findings and expected failures (v0.6.2) =====
+# A deferred row of each severity: medium and low are follow-up work, critical and high
+# can only be fixed or accepted by the user.
+DEF=('| 1 | high | deferred-high | deferred | x |' '| 2 | Critical | deferred-critical | DEFERRED | x |'
+     '| 3 | medium | deferred-medium | deferred | x |' '| 4 | low | deferred-low | deferred | x |'
+     '| 5 | high | deferred-accepted | deferred | x |')
+reset attacks; add_plan "${GREEN[@]}"; SEC_IND="not needed" SEC_FIND="$(printf '%s\n' "${DEF[@]}")" \
+  SEC_EXTRA='Risk accepted: #5 high deferred-accepted - the user takes it (approved by Sam)' write_sec
+gp --no-run
+for n in 1 2; do gap "deferred: a deferred critical or high finding (#$n) is a gap" "open $([[ $n == 1 ]] && echo high || echo critical) finding #$n: deferred-"; done
+gap "deferred: ...that says it can't be deferred" "can't be deferred: have it fixed and verified, or ask the user to accept the risk"
+for n in 3 4 5; do nogap "deferred: finding #$n (medium, low, or accepted) is no gap" "finding #$n:"; done
+eq "deferred: only the critical and the high are gaps" "$(count "$gaps")" 2
+out=$(bash "$G/security-check.sh" --no-run)
+has "$out" "Deferred medium and low findings:" && has "$out" "#3 medium: deferred-medium" && has "$out" "#4 low: deferred-low" && ok "security-check: lists the deferred medium and low findings" || fail "security-check: deferred ($out)"
+has "$out" "#1 high (deferred): deferred-high" && ok "security-check: ...and a deferred high one among the open critical and high" || fail "security-check: deferred high"
+
+# xfail: an own attack marked as an expected failure.
+own_xf() { # findings rows (one per line) [acceptance lines]: SEC-01-003 reports xfail
+  green attacks; SEC_IND="not needed" SEC_OWN="$OWN3" SEC_FIND="$1" SEC_EXTRA="${2:-}" write_sec
+  printf 'SEC-01-003 xfail\n' > "$STUB_RULES"; gp
+}
+XFMSG="SEC-01-003 is an expected failure but no deferred or accepted finding names it; only an own attack under a deferred or accepted finding may be an expected failure"
+export SECURITY_RESULTS_FILE="$T/results.txt"
+: > "$SECURITY_RESULTS_FILE"; own_xf '| 1 | medium | Replay accepted | deferred | SEC-01-003 is marked |'
+clean "xfail: an own attack under a deferred medium finding is a note, no gap"
+has "$(cat "$SECURITY_RESULTS_FILE")" "SEC-01-003 expected failure: finding #1 (medium, deferred)" && ok "xfail: ...the note names the finding" || fail "xfail: note ($(cat "$SECURITY_RESULTS_FILE"))"
+has "$(cat "$SECURITY_RESULTS_FILE")" "xfail" && ok "xfail: ...and the result is recorded as xfail" || fail "xfail: result"
+own_xf '| 1 | low | SEC-01-003: replay accepted | deferred | see tests |'
+clean "xfail: ...under a deferred low one, named in the Finding cell"
+own_xf '| 1 | medium | Replay accepted | open | SEC-01-003 |'
+clean "xfail: ...under an open medium one"
+own_xf '| 1 | critical | Replay accepted | open | SEC-01-003 |' 'Risk accepted: #1 critical Replay accepted - demo data (approved by Sam)'
+clean "xfail: ...under an accepted critical one"
+own_xf '| 1 | high | Replay accepted | deferred | SEC-01-003 |' 'Risk accepted: #1 high Replay accepted - demo data (approved by Sam)'
+clean "xfail: ...under an accepted high one, even marked deferred"
+own_xf '| 1 | high | Replay accepted | open | SEC-01-003 |'
+gap "xfail: under an open high finding nobody accepted, the finding is the gap" "open high finding #1: Replay accepted"
+nogap "...and the marked test is not reported again" "expected failure"
+own_xf '| 1 | medium | Replay accepted | verified | SEC-01-003 |'
+gap "xfail: under a verified finding is a gap" "$XFMSG"
+own_xf ''
+gap "xfail: with no finding is a gap" "$XFMSG"
+own_xf '| 1 | medium | Something else | deferred | SEC-01-004 |'
+gap "xfail: under a finding that names another ID is a gap" "$XFMSG"
+green attacks; SEC_IND="not needed" SEC_FIND='| 1 | medium | Plan attack | deferred | SEC-01-001 |' write_sec
+printf 'SEC-01-001 xfail\n' > "$STUB_RULES"; gp
+gap "xfail: on a plan SEC ID is always a gap, whatever a finding says" "SEC-01-001 is an expected failure but no deferred or accepted finding names it"
+# The plain failure of a covered own attack stays a note, and asks for the marker.
+: > "$SECURITY_RESULTS_FILE"; own_find '| 1 | medium | Replay accepted | deferred | SEC-01-003 |'
+clean "fail: a covered own attack that plainly fails is still no gap"
+has "$(cat "$SECURITY_RESULTS_FILE")" "SEC-01-003 fails: finding #1 (medium, deferred); mark it as an expected failure naming the finding so the suite stays green" && ok "fail: ...its note asks for the expected-failure marker" || fail "fail: hint ($(cat "$SECURITY_RESULTS_FILE"))"
+unset SECURITY_RESULTS_FILE
+: > "$STUB_RULES"
+
+# Across features: an earlier feature's deferred own attack stays covered. Its own
+# security.md and dev-plan.md decide, so a plan ID of that feature is never covered.
+OTHER="$PROJECT_DIR/docs/product/clinic/05-earlier"; mkdir -p "$OTHER"
+printf 'module=clinic\nnumber=05\nprofile=full\nux=yes\nsecurity=attacks\n' > "$OTHER/.plumbline"
+other_sec() { # own rows, findings rows (one per line), extra lines
+  { printf '# Feature 05 security\n\nIndependent pass: not needed\n\n## Own attacks\n| SEC ID | Surface | Attack | Must happen |\n| --- | --- | --- | --- |\n%s\n\n' "$1"
+    printf '## Findings\n| # | Severity | Finding | Status | Evidence |\n| --- | --- | --- | --- | --- |\n%s\n\n%s\n' "$2" "${3:-}"; } > "$OTHER/security.md"
+}
+printf '# Feature 05 dev plan\n\nStatus: READY\n\n## Attack plan\n| SEC ID | Surface | Attack | Must happen | Checked |\n| --- | --- | --- | --- | --- |\n| SEC-05-009 | api | plan attack | blocked | matches |\n' > "$OTHER/dev-plan.md"
+green attacks
+other_sec '| SEC-05-001 | api | a | b |'$'\n''| SEC-05-002 | api | a | b |'$'\n''| SEC-05-003 | api | a | b |'$'\n''| SEC-05-009 | api | a | b |' \
+  '| 1 | medium | Late one | deferred | SEC-05-001 |'$'\n''| 2 | low | Verified one | verified | SEC-05-002 |'$'\n''| 3 | high | Not accepted | open | SEC-05-003 |'$'\n''| 4 | medium | Names the plan attack | deferred | SEC-05-009 |'
+eq "covered ids: an earlier feature's deferred own attack, and nothing else of it" "$(security_covered_ids | paste -sd' ' -)" "SEC-05-001"
+eq "feature_dirs: lists both features, the legacy phase folder included" "$(feature_dirs | sed "s#^$PROJECT_DIR/##" | paste -sd' ' -)" "docs/product/clinic/05-earlier docs/product/clinic/phases/phase-01"
+other_sec '| SEC-05-003 | api | a | b |' '| 3 | high | Accepted one | open | SEC-05-003 |' 'Risk accepted: #3 high Accepted one - demo data (approved by Sam)'
+eq "covered ids: ...an accepted high finding of that feature covers it" "$(security_covered_ids | paste -sd' ' -)" "SEC-05-003"
+security_accepted "#3 high Accepted one" 1 && fail "accepted: another feature's acceptance isn't this feature's" || ok "accepted: the optional folder picks the file (not the active feature's)"
+security_accepted "#3 high Accepted one" 1 "$OTHER" && ok "accepted: ...and finds it in that feature's security.md" || fail "accepted: with the folder"
+eq "security_rows: takes a feature folder" "$(security_rows findings "docs/product/clinic/05-earlier" | grep -c '^row')" 1
+# This feature's own attack, named by the other feature's finding: a feature covers
+# only its own SEC IDs, so another feature's security.md can't vouch for it.
+other_sec '| SEC-01-003 | api | a | b |' '| 1 | medium | Late one | deferred | SEC-01-003 |'
+eq "covered ids: another feature's finding can't cover this feature's SEC ID" "$(security_covered_ids | paste -sd' ' -)" ""
+green attacks; SEC_IND="not needed" SEC_OWN="$OWN3" write_sec; printf 'SEC-01-003 xfail\n' > "$STUB_RULES"; gp
+gap "xfail: an own attack only another feature's finding names is a gap" "SEC-01-003 is an expected failure but no deferred or accepted finding names it"
+rm -rf "$OTHER"; : > "$STUB_RULES"
+
 # The generic adapter prints no per-ID lines: a run that exits 0 with its warning passes
 # every ID of the run by exit status; a non-zero exit stays a gap.
 green attacks; printf 'SEC-01-001 generic\n' > "$STUB_RULES"; gp
@@ -694,13 +780,13 @@ sed -i 's/^Verdict: PENDING/Verdict: PASS/' "$P/qa-report.md"; : > "$STUB_RULES"
 # status: one read-only line.
 green attacks; SEC_IND="not needed" SEC_OWN='| SEC-01-003 | api | own | blocked |' SEC_FIND='| 1 | high | Tenant leak | open | x |'$'\n''| 2 | critical | Fixed one | verified | x |'$'\n''| 3 | medium | m | open | x |' write_sec
 : > "$STUB_CALLS"; out=$(bash "$G/status.sh")
-has "$out" "security: attacks · 2 planned attacks, 1 own · open high 1 · independent pass not needed" && ok "status: the security line" || fail "status: the security line ($(grep security <<<"$out"))"
+has "$out" "security: attacks · 2 planned attacks, 1 own · open high 1 · deferred 0 · independent pass not needed" && ok "status: the security line" || fail "status: the security line ($(grep security <<<"$out"))"
 eq "status: ...runs nothing" "$(calls)" ""
 eq "status: ...one line more than at none" "$(wc -l <<<"$out" | tr -d ' ')" 7
 green independent; SEC_IND="not started" write_sec; out=$(bash "$G/status.sh")
-has "$out" "security: independent · 2 planned attacks, 0 own · open high 0 · independent pass not started" && ok "status: independent, pass not started" || fail "status: independent ($(grep security <<<"$out"))"
+has "$out" "security: independent · 2 planned attacks, 0 own · open high 0 · deferred 0 · independent pass not started" && ok "status: independent, pass not started" || fail "status: independent ($(grep security <<<"$out"))"
 rm -f "$SEC"; out=$(bash "$G/status.sh")
-has "$out" "security: independent · 2 planned attacks, 0 own · open high 0 · independent pass none" && ok "status: no security.md reads as none" || fail "status: no security.md ($(grep security <<<"$out"))"
+has "$out" "security: independent · 2 planned attacks, 0 own · open high 0 · deferred 0 · independent pass none" && ok "status: no security.md reads as none" || fail "status: no security.md ($(grep security <<<"$out"))"
 
 # ===== The real node adapter, end to end =====
 if command -v node >/dev/null 2>&1; then

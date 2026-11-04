@@ -13,7 +13,10 @@
 # Rules: the ID is matched in the whole node ID (file, class, test and
 # parameters), as -k matches it. PASSED counts as a pass, FAILED and ERROR as
 # fails. SKIPPED, XFAIL and XPASS count as neither, so an ID whose only tests are
-# skipped or xfail is "missing". A strict xfail that passes is reported FAILED.
+# skipped or xfail is "missing", except when the reason (or node ID) names a
+# finding ("finding #8"): XFAIL is then "xfail" and XPASS is a fail (the hole is
+# closed). A strict xfail that passes is reported FAILED. PLUMBLINE_AC_ALL=1
+# (all-tests mode) drops -k; IDs are then optional.
 # Subtests (unittest's self.subTest, pytest's subtests fixture): a SUBFAILED line
 # is a fail for its test; SUBPASSED, SUBSKIPPED and SUBXFAIL count as neither, as
 # the test's own PASSED or FAILED line already counts it.
@@ -60,7 +63,9 @@ for id in $ids; do
   kexpr="${kexpr:+$kexpr or }$(printf %s "$p" | tr A-Z a-z)_${a}_$b"
 done
 
-COLUMNS=200 NO_COLOR=1 "$py" -m pytest -k "$kexpr" -rA -q -p no:cacheprovider 2>&1 \
+k_args=(-k "$kexpr")
+[[ "$ALL" == 1 ]] && k_args=()   # all-tests mode: no filter
+COLUMNS=200 NO_COLOR=1 "$py" -m pytest "${k_args[@]}" -rA -q -p no:cacheprovider 2>&1 \
   | tr -d '\r' > "$LOG"
 # Summary lines to "status<TAB>node id". A node ID runs to the end of the line, or
 # to " - <message>", since parameters may hold spaces. A SUBFAILED line is a fail
@@ -69,7 +74,25 @@ COLUMNS=200 NO_COLOR=1 "$py" -m pytest -k "$kexpr" -rA -q -p no:cacheprovider 2>
 awk '
   function id_of(s,   p) { p = index(s, " - "); return p ? substr(s, 1, p - 1) : s }
   /^PASSED /         { s = substr($0, 8); known[s] = 1; print "pass\t" s; next }
-  /^(FAILED|ERROR) / { s = id_of(substr($0, index($0, " ") + 1)); known[s] = 1; print "fail\t" s; next }
+  # A strict xfail naming a finding that passed is "FAILED <id> - [XPASS(strict)] <reason>":
+  # a closed hole (xpass, a fail with a hint).
+  /^(FAILED|ERROR) / {
+    s = id_of(substr($0, index($0, " ") + 1)); known[s] = 1
+    print (($0 ~ /\[XPASS\(strict\)\]/ && tolower($0) ~ /finding[ \t]*#[0-9]+/) ? "xpass" : "fail") "\t" s; next
+  }
+  # An XFAIL or XPASS line carries " - reason". One that names a finding (in the
+  # reason or the node ID) is an expected failure (xfail) or a closed hole (xpass).
+  # Others count as neither, as before (skip, so all-tests mode still counts them).
+  /^(XFAIL|XPASS) / {
+    s = id_of(substr($0, index($0, " ") + 1)); named = (tolower($0) ~ /finding[ \t]*#[0-9]+/)
+    print ((named ? ($1 == "XFAIL" ? "xfail" : "xpass") : "skip") "\t" s); next
+  }
+  # "SKIPPED [n] file:line: reason" is n skipped tests whose names pytest does not print.
+  /^SKIPPED / {
+    c = 1; if (match($0, /\[[0-9]+\]/)) c = substr($0, RSTART + 1, RLENGTH - 2) + 0
+    for (k = 0; k < c; k++) print "skip\tskipped test"
+    next
+  }
   /^SUBFAILED/       { sub_[++n] = $0 }
   END {
     for (i = 1; i <= n; i++) {

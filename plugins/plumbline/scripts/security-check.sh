@@ -3,9 +3,10 @@
 # lead: the recorded level (.plumbline security= and the dev plan's Security level:
 # line, the higher wins), the required level (minus what the user waived), the
 # attack plan's rows with their Checked cells, each attack test's result, the
-# secrets scan, the open critical and high findings, the independent-pass state,
-# every gap, and notes that are not gaps (a failing own attack that a finding
-# covers, a generic runner passed by exit status). The rules are security_gaps in lib.sh, the same function
+# secrets scan, the open critical and high findings, the deferred medium and low
+# ones, the independent-pass state, every gap, and notes that are not gaps (a
+# failing or expected-failure (xfail) own attack that a finding covers, a generic
+# runner passed by exit status). The rules are security_gaps in lib.sh, the same function
 # signoff-check.sh calls, so the two never disagree.
 #   security-check.sh [--no-run]
 # It runs the attack tests (ac-check.sh per surface) unless --no-run, which skips
@@ -72,13 +73,16 @@ elif [[ -z "$hits" ]]; then echo "Secrets scan: clean"
 else echo "Secrets scan: $(grep -c . <<<"$hits") hit(s): $(paste -sd' ' - <<<"$hits")"
 fi
 
-open=""
+open="" deferred=""
 while IFS=$US read -r kind a b c d e; do
   [[ "$kind" == row ]] || continue
   sev="$b"; st="$d"
   [[ ("$sev" == critical || "$sev" == high) && "$st" != verified ]] && open="$open  #${a#\#} $sev ($st): $c"$'\n'
+  [[ ("$sev" == medium || "$sev" == low) && "$st" == deferred ]] && deferred="$deferred  #${a#\#} $sev: $c"$'\n'
 done < <(security_rows findings)
 if [[ -n "$open" ]]; then echo "Open critical and high findings:"; printf '%s' "$open"; else echo "Open critical and high findings: none"; fi
+# Follow-up work, not gaps: the attack test of each stays in the suite as an expected failure.
+if [[ -n "$deferred" ]]; then echo "Deferred medium and low findings:"; printf '%s' "$deferred"; else echo "Deferred medium and low findings: none"; fi
 echo "Independent pass: $(security_independent_state || true)"
 
 if [[ -z "$gaps" ]]; then

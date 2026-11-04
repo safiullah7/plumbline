@@ -112,6 +112,18 @@ next_feature_number() {
   printf '%02d\n' $((max + 1))
 }
 
+# Every feature folder in the repo that holds a .plumbline file, absolute, one per
+# line: docs/product/*/<nn>-<slug>/ and the legacy docs/product/*/phases/phase-<nn>/
+# (found as next_feature_number finds them). Security findings and their expected
+# failures are read from all of them, since a deferred test stays in the suite.
+feature_dirs() {
+  local d
+  for d in "$PROJECT_DIR"/docs/product/*/[0-9][0-9]*-*/ "$PROJECT_DIR"/docs/product/*/phases/phase-[0-9]*/; do
+    [[ -d "$d" && -f "${d}.plumbline" ]] || continue   # an unmatched glob stays as written
+    printf '%s\n' "${d%/}"
+  done
+}
+
 # Data rows of a Markdown table, one per line, cells trimmed and tab-separated.
 # With a heading, only tables under the "## <heading>" section; without one, every
 # table in the file. Header and separator rows are skipped.
@@ -384,10 +396,38 @@ run_check() { # label, command
   [[ -n "$2" ]] || return 0
   local t0=$SECONDS
   if ! (cd "$PROJECT_DIR" && eval "$2") >"$RUN_CHECKS_LOG" 2>&1; then
-    RUN_CHECKS_FAILED="$1"
+    RUN_CHECKS_FAILED="$1" RUN_CHECK_SECS=$((SECONDS - t0))
     return 1
   fi
   RUN_CHECKS_TIMING="$RUN_CHECKS_TIMING${RUN_CHECKS_TIMING:+ · }$1 $((SECONDS - t0))s"
+}
+
+# A failed test step whose log ends in the adapters' trailer "ac-tests: xfail only:
+# <IDs>" is a pass when every listed ID is one security_covered_ids allows: an own
+# attack under a deferred or accepted finding. Any other ID fails the step with the
+# reason in RUN_CHECKS_ERROR. Returns 1 when the step stays failed. The one place
+# that decides this, so the task gate, ac-check.sh and security_run agree.
+run_checks_xfail() {
+  local log line listed covered id bad=""
+  log=$(tr -d '\r' < "$RUN_CHECKS_LOG")
+  # Only the adapters' own trailer counts: the last line of the log, with no failed,
+  # missing or failed-test line and no runner output tail before it (a tail is
+  # printed only on a real failure, and a test could print a trailer line into it).
+  line=$(grep -v '^[[:space:]]*$' <<<"$log" | tail -n 1)
+  [[ "$line" == "ac-tests: xfail only: "* ]] || return 1
+  grep -qE '^((AC|SEC)-[0-9]+-[0-9]+: (fail|missing)|ac-tests: failed: |--- .*\(last [0-9]+ lines\) ---$)' <<<"$log" && return 1
+  listed="${line#ac-tests: xfail only: }"
+  covered=$(security_covered_ids)
+  for id in $listed; do
+    grep -qxF -- "$id" <<<"$covered" || bad="$bad${bad:+ }$id"
+  done
+  if [[ -n "$bad" ]]; then
+    RUN_CHECKS_ERROR="only an own attack under a deferred or accepted finding may be an expected failure: $bad"
+    return 1
+  fi
+  RUN_CHECKS_FAILED=""
+  RUN_CHECKS_TIMING="$RUN_CHECKS_TIMING${RUN_CHECKS_TIMING:+ · }tests ${RUN_CHECK_SECS:-0}s"
+  return 0
 }
 
 # Typecheck, lint, then the tests named after the given AC IDs, stopping at the
@@ -404,13 +444,19 @@ run_check() { # label, command
 #                      surface's AC tests cell is empty (ac_command_missing)
 #   RUN_CHECKS_LOG     temp file with the last check's output; the caller removes it
 #   RUN_CHECKS_TIMING  the checks that passed, e.g. "typecheck 12s · lint 4s · tests 9s"
+# With PLUMBLINE_AC_ALL=1 (ac-check.sh --all) the tests are the surface's whole suite:
+# the IDs are optional, and an empty list still runs the tests. An adapter gets the IDs
+# (if any) and the same variable; a raw command (not an adapter in ac-tests/) runs with
+# no IDs, after a warning, and is judged by its exit status; a none cell skips the tests.
+# A test step that fails with only expected failures (see run_checks_xfail) passes.
 run_checks() { # "<IDs separated by |>" [surface]
-  local ids="$1" surface="${2:-}" typecheck lint test_ac="" rc=0
+  local ids="$1" surface="${2:-}" typecheck lint test_ac="" rc=0 all="" cmd
+  [[ "${PLUMBLINE_AC_ALL:-}" == 1 ]] && all=1
   RUN_CHECKS_FAILED="" RUN_CHECKS_ERROR="" RUN_CHECKS_TIMING="" RUN_CHECKS_LOG=$(mktemp)
   typecheck=$(check_command PLUMBLINE_TYPECHECK "$surface" "npm run -s typecheck") \
     && lint=$(check_command PLUMBLINE_LINT "$surface" "npm run -s lint") \
     || { RUN_CHECKS_FAILED=surface; return 1; }
-  if [[ -n "$ids" ]]; then
+  if [[ -n "$ids" || -n "$all" ]]; then
     test_ac=$(check_command PLUMBLINE_TEST_AC "$surface" "npm run -s test:ac --") || rc=$?
     case "$rc" in
       0) ;;
@@ -421,7 +467,14 @@ run_checks() { # "<IDs separated by |>" [surface]
   run_check typecheck "$typecheck" || return 1
   run_check lint "$lint" || return 1
   if [[ -n "$test_ac" ]]; then
-    run_check tests "$test_ac \"\$ids\"" || return 1
+    cmd="$test_ac \"\$ids\""
+    if [[ -n "$all" ]]; then
+      cmd="$test_ac"; [[ -n "$ids" ]] && cmd="$test_ac \"\$ids\""
+      if [[ "$test_ac" != */ac-tests/* ]]; then   # not an adapter: no IDs to pass, no counts to read
+        cmd="echo 'ac-check: warning: a raw AC tests command in all-tests mode runs with no IDs; the exit status is the result' >&2; $test_ac"
+      fi
+    fi
+    run_check tests "$cmd" || run_checks_xfail || return 1
   fi
   return 0
 }
@@ -440,10 +493,20 @@ approved_line() { # head ERE [keep]
     | grep -iE "$1[^[:space:]].*\\(approved by [^)]*[^) ][^)]*\\)[[:space:]]*\$"
 }
 
-# security.md in the active feature folder (it may not exist).
-security_file() {
+# A feature folder as an absolute path: the optional argument (absolute, or relative
+# to the repo root), else the active phase. Returns 1 when there is neither.
+security_dir() { # [feature folder]
+  case "${1:-}" in
+    "") phase_dir ;;
+    /*|[A-Za-z]:*) printf '%s\n' "${1%/}" ;;
+    *) printf '%s\n' "$PROJECT_DIR/${1%/}" ;;
+  esac
+}
+
+# security.md in the given feature folder, default the active one (it may not exist).
+security_file() { # [feature folder]
   local dir
-  dir=$(phase_dir) || return 1
+  dir=$(security_dir "${1:-}") || return 1
   printf '%s\n' "$dir/security.md"
 }
 
@@ -537,9 +600,9 @@ security_required() { # [level]
 # a row with the wrong cell count (a | in a cell), a bad SEC ID or severity, a
 # missing section or header is a gap, so nothing is dropped silently. Returns 1,
 # printing nothing, when the file doesn't exist.
-security_rows() { # plan|own|findings
+security_rows() { # plan|own|findings [feature folder]
   local dir file h hdr
-  dir=$(phase_dir) || return 1
+  dir=$(security_dir "${2:-}") || return 1
   case "${1:-}" in
     plan)     file="$dir/dev-plan.md"; h="Attack plan"; hdr="SEC ID|Surface|Attack|Must happen|Checked" ;;
     own)      file="$dir/security.md"; h="Own attacks"; hdr="SEC ID|Surface|Attack|Must happen" ;;
@@ -625,9 +688,9 @@ security_squeeze() { # string [fold]
 # since, is not covered. The subject is the row's own text and may hold <id> or a
 # path with a <; only what follows it (the reason and the approval) must be free of
 # <placeholders>.
-security_accepted() { # subject fold
+security_accepted() { # subject fold [feature folder]
   local f line body want re='^([[:space:]]+(-|—)|[[:space:]]*:)[[:space:]]*[^[:space:]]'
-  f=$(security_file) && [[ -f "$f" ]] || return 1
+  f=$(security_file "${3:-}") && [[ -f "$f" ]] || return 1
   want=$(security_squeeze "$1" "$2")
   while IFS= read -r line; do
     body=$(security_squeeze "${line#*:}" "$2")
@@ -637,6 +700,47 @@ security_accepted() { # subject fold
     [[ "$body" =~ $re ]] && return 0
   done < <(approved_line '^Risk accepted:[[:space:]]*' keep < "$f")
   return 1
+}
+
+# The own-attack SEC IDs, in any feature of the repo, an expected failure is allowed
+# for, one per line. A finding covers the own attacks its Finding or Evidence cell
+# names when it isn't verified and is medium or low (open, fixed or deferred), or is
+# critical or high and the user accepted the risk (a Risk accepted: line, as
+# security_accepted checks). A verified finding covers nothing, and neither does any
+# finding for a plan SEC ID of that same feature: the plan's attacks stay strict.
+# Each feature is read from its own dev-plan.md and security.md, so an earlier
+# feature's deferred test, still in the suite, stays covered. run_checks and
+# security_run both decide an expected failure from this list.
+security_covered_ids() {
+  local d dirs cur planids ownids kind a b c st ev n sev txt named num base fn US=$'\037'
+  dirs=$(feature_dirs)
+  cur=$(phase_dir 2>/dev/null); cur="${cur%/}"
+  [[ -n "$cur" && -d "$cur" ]] && ! grep -qxF -- "$cur" <<<"$dirs" && dirs="$dirs"$'\n'"$cur"
+  while IFS= read -r d; do
+    [[ -n "$d" && -f "$d/security.md" ]] || continue
+    # A feature covers only its own SEC IDs (SEC-<its number>-...), so one feature's
+    # security.md can't vouch for another's tests. The number is the folder's.
+    num=""; base="${d##*/}"
+    if [[ "$base" =~ ^([0-9]+)- ]]; then num="${BASH_REMATCH[1]}"
+    elif [[ "$base" =~ ^phase-([0-9]+)$ ]]; then num="${BASH_REMATCH[1]}"; fi
+    planids=" $(security_rows plan "$d" 2>/dev/null | awk -F"$US" '$1 == "row" { print $2 }' | paste -sd' ' -) "
+    ownids=" $(security_rows own "$d" 2>/dev/null | awk -F"$US" '$1 == "row" { print $2 }' | paste -sd' ' -) "
+    while IFS=$US read -r kind a b c st ev; do
+      [[ "$kind" == row ]] || continue
+      n="${a#\#}"; sev="$b"; txt="$c"   # security_rows lowercases severity and status
+      [[ "$st" == verified ]] && continue
+      if [[ "$sev" == critical || "$sev" == high ]]; then
+        security_accepted "#$n $sev $txt" 1 "$d" || continue
+      fi
+      for named in $(grep -oE 'SEC-[0-9]+-[0-9]+' <<<"$txt $ev" | sort -u); do
+        if [[ -n "$num" ]]; then
+          fn="${named#SEC-}"; fn="${fn%%-*}"
+          (( 10#$fn == 10#$num )) || continue
+        fi
+        [[ "$ownids" == *" $named "* && "$planids" != *" $named "* ]] && printf '%s\n' "$named"
+      done
+    done < <(security_rows findings "$d" 2>/dev/null)
+  done <<<"$dirs" | sort -u
 }
 
 # The commit the feature branched from: the merge base of HEAD with
@@ -691,9 +795,13 @@ secrets_scan() {
 #   - the third argument lists the attacker's own attacks, one "<ID>" or
 #     "<ID><US><finding>" per line. The attacker writes each so it fails while the
 #     hole is open, so a failing one that a finding covers (<finding>) is a note,
-#     and one nothing covers is a gap that says to record a finding or fix it.
+#     and one nothing covers is a gap that says to record a finding or fix it. A
+#     covered failure is a note that asks for the expected-failure marker;
+#   - an "xfail" result (a marked expected failure) on an own attack that a deferred or
+#     accepted finding covers, in this feature or another, is a note; on any other ID
+#     (a plan SEC ID, an AC ID, an own attack nothing covers) it is a gap.
 security_run() { # surface "<ID>|<ID>" ["<own attack lines>"]
-  local s="$1" ids="$2" owns="${3:-}" out rc id line re ctx args seen=0 US=$'\037' label own cover nt hint
+  local s="$1" ids="$2" owns="${3:-}" out rc id line re ctx args seen=0 US=$'\037' label own cover nt hint covered_all=""
   label="${s:-the default surface}"
   if [[ -n "$s" ]]; then
     profile_surface "$s" >/dev/null; rc=$?
@@ -707,7 +815,7 @@ security_run() { # surface "<ID>|<ID>" ["<own attack lines>"]
     return 0
   fi
   args=("$ids"); [[ -n "$s" ]] && args+=(--surface "$s")
-  out=$(cd "$PROJECT_DIR" && PLUMBLINE_TYPECHECK= PLUMBLINE_LINT= CLAUDE_PROJECT_DIR="$PROJECT_DIR" \
+  out=$(cd "$PROJECT_DIR" && PLUMBLINE_TYPECHECK= PLUMBLINE_LINT= PLUMBLINE_AC_ALL= CLAUDE_PROJECT_DIR="$PROJECT_DIR" \
     bash "$PLUMBLINE_SCRIPTS/ac-check.sh" "${args[@]}" 2>&1); rc=$?
   out=$(tr -d '\r' <<<"$out")
   # Why a run gave nothing: ac-check's own first line when it failed, else the last line.
@@ -734,12 +842,27 @@ security_run() { # surface "<ID>|<ID>" ["<own attack lines>"]
     own=$(awk -F"$US" -v id="$id" '$1 == id { print 1; exit }' <<<"$owns")
     cover=$(awk -F"$US" -v id="$id" '$1 == id { print $2; exit }' <<<"$owns")
     re="^$id: fail"
-    nt=""; [[ -n "$own" && -n "$cover" && "$line" =~ $re ]] && nt="$id fails: $cover"
+    nt=""; [[ -n "$own" && -n "$cover" && "$line" =~ $re ]] && nt="$id fails: $cover; mark it as an expected failure naming the finding so the suite stays green"
+    # An expected failure is allowed for an own attack under a deferred or accepted
+    # finding: this feature's (cover), or another feature's (security_covered_ids).
+    re="^$id: xfail"
+    if [[ -n "$own" && "$line" =~ $re ]]; then
+      if [[ -n "$cover" ]]; then nt="$id expected failure: $cover"
+      else
+        [[ -n "$covered_all" ]] || covered_all=$(security_covered_ids; echo .)
+        grep -qxF -- "$id" <<<"$covered_all" && nt="$id expected failure: a deferred or accepted finding in another feature names it"
+      fi
+    fi
     [[ -n "${SECURITY_RESULTS_FILE:-}" ]] && printf '%s%s%s%s%s%s\n' "$id" "$US" "$s" "$US" "${line:+${line#"$id: "}}" "${nt:+$US$nt}" >> "$SECURITY_RESULTS_FILE"
     re="^$id: pass( |\(|\$)"
     [[ "$line" =~ $re ]] && continue
     [[ -n "$nt" ]] && continue
     if [[ -n "$line" ]]; then
+      re="^$id: xfail"
+      if [[ "$line" =~ $re ]]; then
+        echo "$id is an expected failure but no deferred or accepted finding names it; only an own attack under a deferred or accepted finding may be an expected failure"
+        continue
+      fi
       hint=""; re="^$id: fail"
       [[ -n "$own" && "$line" =~ $re ]] && hint=" (own attack: record a finding in security.md that names $id, or fix it)"
       echo "attack test did not pass on $label: $line$hint"
@@ -820,9 +943,12 @@ security_gaps() { # [--no-run]
     # A critical or high finding stays open until it is verified or the user accepts it.
     # Each own attack is written to fail while its hole is open, so a failing one is not
     # a gap when a finding naming it (in its Finding or Evidence cell) covers it: a
-    # medium or low finding, or a critical or high one the user accepted. A verified
-    # finding covers nothing (the fix is claimed, so the test must pass). An open
-    # critical or high finding is a gap of its own; the failing test is only noted.
+    # medium or low finding (open, fixed or deferred), or a critical or high one the user
+    # accepted. A verified finding covers nothing (the fix is claimed, so the test must
+    # pass). An open critical or high finding is a gap of its own, and so is a deferred
+    # one (only the user can accept that risk); the failing test is only noted. A covered
+    # own attack should be marked as an expected failure (it then reports xfail, a note);
+    # security_covered_ids is the same coverage across every feature, for run_checks.
     while IFS=$US read -r kind a b c d e; do
       if [[ "$kind" == gap ]]; then echo "$a"; continue; fi
       n="${a#\#}"; sev="$b"; txt="$c"; st="$d"   # security_rows lowercases severity and status
@@ -830,10 +956,15 @@ security_gaps() { # [--no-run]
       if [[ "$sev" == critical || "$sev" == high ]]; then
         if [[ "$st" == verified ]]; then :
         elif security_accepted "#$n $sev $txt" 1; then note="finding #$n (accepted)"
+        elif [[ "$st" == deferred ]]; then
+          note="finding #$n ($sev, deferred; its own gap)"
+          echo "open $sev finding #$n: $txt (security.md); a $sev finding can't be deferred: have it fixed and verified, or ask the user to accept the risk"
         else
           note="finding #$n ($sev, open; its own gap)"
           echo "open $sev finding #$n: $txt (security.md); have it fixed and verified, or ask the user to accept the risk"
         fi
+      elif [[ "$st" == deferred ]]; then
+        note="finding #$n ($sev, deferred)"
       elif [[ "$st" != verified ]]; then
         note="finding #$n ($sev)"
       fi
