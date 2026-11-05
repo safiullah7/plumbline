@@ -11,8 +11,9 @@ instinct.
    <plugin> is the folder two levels above this SKILL.md. It lists, for every
    feature of the module (new `<nn>-<slug>` folders and legacy `phases/` folders
    alike), unmet success metrics, bugs shipped or waived, open findings,
-   Non-Goals and blockers. If you can't run it, read each feature's signoff.md,
-   qa-report.md, spec.md and progress.md for the same things.
+   deferred and accepted security findings, Non-Goals and blockers. If you
+   can't run it, read each feature's signoff.md, qa-report.md, security.md,
+   spec.md and progress.md for the same things.
 2. Read the module's vision.md (who it's for, the problem, the Features table;
    a legacy area's vision.md calls it the Phases table) and decisions.md (what's
    settled and must not be reopened).

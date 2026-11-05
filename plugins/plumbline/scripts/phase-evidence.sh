@@ -3,7 +3,9 @@
 # (new <nn>-<slug>/ folders and legacy phases/<phase>/ folders alike, in number
 # order): what shipped with known problems (open medium/low bugs and design findings,
 # WONTFIX bugs), what was deliberately left out (Non-Goals), success metrics
-# that weren't met, and recorded blockers. Prints raw text, at most 80 lines,
+# that weren't met, and recorded blockers, plus the security findings left deferred
+# (medium and low) or accepted (critical and high) in any feature of the repo, with
+# the feature folder and finding number. Prints raw text, at most 80 lines,
 # for /plumbline:phase-next. Read-only.
 source "$(dirname "${0//\\//}")/lib.sh"
 module=$(module_dir) || { echo "No active phase: .claude/current-phase is missing."; exit 1; }
@@ -21,8 +23,29 @@ features() {
   done | LC_ALL=C sort -s -k1,1n | cut -d' ' -f2-
 }
 
+# Security findings that shipped unfixed, from every feature in the repo (their
+# attack tests stay in the suite as expected failures): medium and low ones not
+# verified (deferred, or still open), and critical and high ones the user accepted.
+security_followups() {
+  local d US=$'\037' kind n sev txt st
+  while IFS= read -r d; do
+    [[ -f "$d/security.md" ]] || continue
+    while IFS=$US read -r kind n sev txt st _; do
+      [[ "$kind" == row ]] || continue
+      n="${n#\#}"
+      if [[ "$sev" == critical || "$sev" == high ]]; then
+        [[ "$st" != verified ]] && security_accepted "#$n $sev $txt" 1 "$d" && printf -- '- %s #%s (%s, accepted risk): %s\n' "${d#"$PROJECT_DIR"/}" "$n" "$sev" "$txt"
+      elif [[ "$st" == deferred || "$st" == open ]]; then
+        printf -- '- %s #%s (%s, %s): %s\n' "${d#"$PROJECT_DIR"/}" "$n" "$sev" "$st" "$txt"
+      fi
+    done < <(security_rows findings "$d" 2>/dev/null)
+  done < <(feature_dirs)
+}
+
 {
   echo "Evidence for the next feature in $rel_module. Also read $rel_module/vision.md and $rel_module/decisions.md."
+  sec=$(security_followups | head -n 20)
+  [[ -n "$sec" ]] && { echo; echo "Security findings deferred or accepted (all features; each has an expected-failure test in the suite):"; echo "$sec"; }
   while IFS= read -r p; do
     bugs=$(md_table "$p/qa-report.md" Bugs 2>/dev/null | awk -F'\t' -v c="$closed" '
       $1 != "" { s = toupper($4); v = tolower($3) }

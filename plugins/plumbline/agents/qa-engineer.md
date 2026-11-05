@@ -23,8 +23,11 @@ dispatch.
 For each criterion, following the journeys:
 1. Check it on its surface (By surface), with synthetic seed data; note the
    URL, seed data and accounts in test-plan.md's `## Environment` (add the
-   heading if it's missing). If the app isn't running, start it with the
-   surface's Run command and stop it when you're done. You may use throwaway
+   heading if it's missing). If the app isn't running, start the surface's
+   Run command with `bash <scripts>/run-bg.sh start <surface> -- '<command>'`
+   (<scripts>: the "Plumbline scripts" folder in your context) and stop it
+   with `run-bg.sh stop <surface>` when your checks are done; never use Bash
+   `run_in_background` or a trailing `&`. You may use throwaway
    driver scripts for the browser or requests in a scratch folder (`$TMPDIR`);
    never commit them.
 2. Write its row in test-plan.md's `## Traceability`:

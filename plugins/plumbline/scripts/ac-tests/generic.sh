@@ -10,6 +10,9 @@
 # The block runs with bash -c in the repo root (or --dir, relative to it), so
 # quote a placeholder that holds | or brackets: go test ./... -run '{ids_regex}'.
 # Its output passes through unchanged.
+# With PLUMBLINE_AC_ALL=1 (all-tests mode) the IDs are optional: {ids} and
+# {ids_underscored} become empty and {ids_regex} ".", so the command runs the whole
+# suite; the result is the exit status and no counts line is printed.
 # Exit = the command's exit code; 1 = no such block or folder; 2 = usage.
 # Unlike the other adapters, a pass here doesn't prove each ID has a passing
 # test, so a warning saying so always goes to stderr.
@@ -41,13 +44,20 @@ for tok in $(printf '%s\n' "$raw" | tr -d '\r' | tr '|,' '  '); do
   case " $ids " in *" $id "*) ;; *) ids="${ids:+$ids }$id" ;; esac
 done
 set +f
-[[ -n "$ids" ]] || usage
+ALL=0
+[[ "${PLUMBLINE_AC_ALL:-}" == 1 ]] && ALL=1
+[[ -n "$ids" || "$ALL" == 1 ]] || usage
 ids_regex="" ids_underscored=""
 for id in $ids; do
   IFS=- read -r p a b <<<"$id"
   ids_regex="${ids_regex:+$ids_regex|}$p[-_]$a[-_]$b"
   ids_underscored="${ids_underscored:+$ids_underscored }${p}_${a}_$b"
 done
+# All-tests mode (PLUMBLINE_AC_ALL=1): the command runs the whole suite. {ids}
+# becomes empty and {ids_regex} "." (matches every name); {ids_underscored} is
+# empty too. The result is the exit status, with no counts line.
+ids_list="$ids"
+if [[ "$ALL" == 1 ]]; then ids_regex="."; ids_underscored=""; ids_list=""; fi
 
 run_dir="$PROJECT_DIR"
 if [[ -n "$dir" ]]; then
@@ -89,6 +99,7 @@ subst() { # text, placeholder, value
   while [[ "$s" == *"$2"* ]]; do out="$out${s%%"$2"*}$3"; s="${s#*"$2"}"; done
   printf '%s' "$out$s"
 }
+cmd=$(subst "$cmd" '{ids}' "$ids_list")
 cmd=$(subst "$cmd" '{ids_regex}' "$ids_regex")
 cmd=$(subst "$cmd" '{ids_underscored}' "$ids_underscored")
 

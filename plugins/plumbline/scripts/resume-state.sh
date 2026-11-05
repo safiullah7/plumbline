@@ -7,7 +7,7 @@
 #   Plan: <status> · <n> tasks (<owner> <n>, ...)        or: unreadable (<why>)
 #   Task list: none | <open> of <total> open (<owner> <n>, ...)
 #   Signoff: integration review <yes|no> · QA verdict <...> · product verification <yes|no> · PR <link|none> · merged <yes|no>
-#   Security: independent pass "<text>" · findings: #<n> <severity> <status>, ...   (only above none)
+#   Security: independent pass "<text>" · findings: #<n> <severity> <status>, ... · deferred <n>   (only above none)
 #   Bugs: <id> <severity> <status>, ... | none open
 #   Questions: for the user: <#>, ... · for agents: <#> (<to>), ... · escalated: <#>, ...
 #   Uncommitted: none | <n> files (by owner: <name> <n>, ...; unowned <n>)
@@ -16,8 +16,9 @@
 # Next is the first stage not finished: spec (no AC IDs in acceptance-criteria.md),
 # plan (dev plan not READY), build (Integration review unticked in signoff.md),
 # attack (the independent pass is required and isn't "complete (round <n>)", or a
-# finding is fixed but not verified, or a critical or high one is open and not
-# accepted), verify (QA verdict not PASS, an open high or critical bug, or Product
+# finding is fixed but not verified, or a critical or high one is open or deferred
+# and not accepted; a medium or low finding marked deferred never sends it back,
+# since it is follow-up work), verify (QA verdict not PASS, an open high or critical bug, or Product
 # verification unticked), signoff (no PR link), merge (PR open, not merged), done.
 # Exit 0 = printed; 1 = no active phase (.claude/current-phase is missing).
 source "$(dirname "${0//\\//}")/lib.sh"
@@ -88,7 +89,8 @@ attack_left=""
 if [[ "$lvl" != none ]]; then
   st=$(security_independent_state)
   f=$(security_rows findings 2>/dev/null | awk -F"$US" '$1 == "row" { n = $2; sub(/^#/, "", n); printf "#%s %s %s\n", n, tolower($3), tolower($5) }')
-  echo "Security: independent pass \"${st:-none}\" · findings: $( [[ -n "$f" ]] && join <<<"$f" || echo none)"
+  ndef=$(grep -c ' deferred$' <<<"$f")
+  echo "Security: independent pass \"${st:-none}\" · findings: $( [[ -n "$f" ]] && join <<<"$f" || echo none) · deferred $ndef"
   if [[ " $req " == *" independent "* ]]; then
     [[ "$st" =~ ^[Cc]omplete[[:space:]]*\(round[[:space:]]+[0-9]+\)$ ]] || attack_left=1
   fi

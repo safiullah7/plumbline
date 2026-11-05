@@ -82,6 +82,11 @@ Dev plan (dev-plan.md):
   API the UI calls) is planned against the contract with a mock (MSW, a
   fixture server, a stub module), not blocked on it; that engineer gets one
   final "switch to the real API" task, `Blocked by:` the API task.
+- When a task sets up e2e tests (fixtures, a test database, servers), plan
+  it so the suite can run with several workers: a database or schema, and
+  ports, per worker. When the last `--all` run on a surface took over 10
+  minutes, add a `[chore]` task to speed it up (sessions signed in once and
+  saved, workers, per-worker data).
 - Leave the plan at "Status: DRAFT". Change it to "Status: READY" only after the
   user approves the plan. From then on the hooks enforce ownership and task gates.
 - Setup, once the user approves (in a team your teammate name is `lead`; the
@@ -163,7 +168,8 @@ versioning and pagination.
 During build:
 - Running as the main session, before spawning, list for the user the commands
   teammates will need (each surface's typecheck, lint, unit and e2e test
-  commands from project.md, git add/commit) so they can approve them up front.
+  commands from project.md, `bash <scripts>/run-bg.sh`, git add/commit) so
+  they can approve them up front.
   As a subagent you can't ask: the build skill already told the user. Never
   edit permission settings.
 - Dispatch or spawn each engineer as plumbline:senior-engineer with model
@@ -218,6 +224,8 @@ During build:
   row's `Checked` cell: `matches` or `mismatch: <what>`. A mismatch goes back
   to the author as a task; a catalogue item it reports missing becomes a new
   row and task. Then re-check.
+- When every workstream is accepted (its ac-check) and reviewed, tick
+  "Integration review" in signoff.md; it needs no full suite run.
 - Attack round (only at `independent`; `bash <scripts>/security-check.sh
   --no-run` shows the required level, without a part the user waived): after
   every workstream is accepted and before you report the build done (QA comes
@@ -225,16 +233,41 @@ During build:
   effort high and no name. Give it "Attack round", the round number, the
   `## Attack plan` section with its `Attack surface:` and `Attack fixtures:`
   lines, each workstream's summary for that surface, and each surface's Run
-  command from project.md. Send each open Critical or High finding in
-  security.md to the engineer who owns the code (the fix starts with a
-  failing attack test), set its Status to `fixed` when they report it, then
-  dispatch the attacker again to verify. After three rounds with Critical or
-  High rows still open, stop and return "Needs user" with those rows; the
-  build skill asks the user and dispatches you again.
-- Wait for teammates to finish. Do not declare the build done until every task is
-  complete and the full test suite passes; then report it done to the main
-  session. /plumbline:status shows coverage, uncommitted work and, in a team,
-  each teammate's open and ready tasks.
+  command from project.md. Then act on security.md's findings by severity:
+  - Medium or low: no fix task and no "Needs user"; they are deferred. Check
+    each is `deferred` with its attack test marked as an expected failure
+    naming the finding (if not, have the surface's engineer mark it), and list
+    them in your build-done report as follow-up work.
+  - Critical or high: send each open one to the engineer who owns the code
+    (the fix starts with a failing attack test), set its Status to `fixed`
+    when they report it, then dispatch the attacker again to verify. That
+    re-run checks the fix; a fix gets a code review only when it touches a
+    contract, the schema, migrations or auth code. After three rounds with
+    Critical or High rows still open, stop and return "Needs user" with
+    those rows; the build skill asks the user and dispatches you again. Once
+    the user accepts one (a `Risk accepted:` line), have the surface's
+    engineer mark its attack test as an expected failure naming the finding.
+- Wait for teammates to finish. Then, with every task complete (and at
+  `independent`, after the attack round, with every Critical or High finding
+  verified or accepted), run the whole suite once per surface:
+  `bash <scripts>/ac-check.sh --all "<the feature's AC and SEC IDs on that surface>" --surface <s>`
+  (typecheck, lint and every test; drop `--surface` with no project.md).
+  Always run it through run-bg, since a Bash call stops at 10 minutes:
+  `bash <scripts>/run-bg.sh start all-<s> -- '<that command>'`, then
+  `run-bg.sh wait all-<s>` until it finishes. Run it once, not per fix
+  batch; when it fails, send each failing test to its owner and run it again
+  once they're fixed. A failing own attack of an earlier feature whose medium
+  or low finding isn't verified (written before Plumbline deferred them): set
+  that finding `deferred` in its security.md and have the test's owner mark
+  it, as for this feature's. Do not declare the build done until it passes;
+  then report it done to the main session, with the deferred findings. /plumbline:status
+  shows coverage, uncommitted work and, in a team, each teammate's open and
+  ready tasks.
+- Servers and long runs go through run-bg, never Bash `run_in_background` or
+  a trailing `&`: `bash <scripts>/run-bg.sh start <name> -- '<command>'`,
+  then `run-bg.sh wait <name>` (Bash timeout 600000; call it again while it
+  says still running) and `run-bg.sh stop <name>`. Stop what you started
+  before you report.
 - Work on the branch kickoff or the build skill created (e.g.
   feature/03-report-export). Open the PR; never merge it.
 

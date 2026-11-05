@@ -75,3 +75,42 @@ v0.6 measures the speed.
 Cost of all v0.6 eval runs: about $95 at list price, of which about $16 was
 the four last lead cases running twice by mistake (a run stopped for low
 memory kept going while it was restarted).
+
+## v0.6.2
+
+Run on branch `v0.6.2` (2026-11-04) with the same command, one case at a
+time, on the final prompts (after the Opus review's fixes). Rerun: every case
+that loads a prompt v0.6.2 changed (senior, lead, QA, the build, resume,
+signoff and phase-next skills, the project template) plus the new case. Not
+rerun: triage, product, kickoff and discover (their lines didn't change).
+
+| Case | v0.6 | v0.6.2 | Note |
+| --- | :---: | :---: | --- |
+| attacker-defers-low-finding (new) | — | 1.00 (first 0.97) | the low finding is `deferred`, its test gets a `todo:` naming the finding, no critical row; see below |
+| attacker-finds-planted-hole | 1.00 | 1.00 (first 0.92) | two new graders: the critical row isn't `deferred`, its test isn't marked; see below |
+| build-quick-dispatches | 1.00 | 1.00 |  |
+| lead-labels-and-dependencies | 1.00 | 1.00 |  |
+| lead-plans-mock-first | 1.00 | 1.00 |  |
+| lead-plans-tdd-unit-e2e | 1.00 | 1.00 |  |
+| lead-writes-attack-plan | 1.00 | 1.00 |  |
+| lead-writes-plan | 1.00 | 1.00 |  |
+| phase-next-proposes | 1.00 | 1.00 |  |
+| qa-checks-functionality | 1.00 | 1.00 |  |
+| quick-by-id-gets-attacks | 1.00 | 1.00 |  |
+| quick-review-loop | 1.00 | 1.00 |  |
+| reviewer-flags-soft-attack-test | 1.00 | 1.00 |  |
+| senior-continues-to-next-task | 1.00 | 1.00 |  |
+| senior-keeps-tests | 1.00 | 1.00 |  |
+| senior-respects-contracts | 1.00 | 1.00 |  |
+| senior-writes-attack-tests-first | 1.00 | 1.00 | 0.97 once on the pre-review prompts: one judge split (FAIL PASS FAIL) on a report that ran nothing and edited only apps/api |
+| senior-writes-unit-and-e2e | 1.00 | 1.00 |  |
+| signoff-stops-on-gaps | 1.00 | 1.00 |  |
+
+**Result:** every rerun case holds its v0.6 score, and the new case scores 1.00.
+
+**Two grader fixes, both in graders written for v0.6.2:**
+- `critical-test-not-marked` failed all three runs at first. The attacker was right: it kept the critical by-id read `open` with an unmarked test, and it deferred extra low and medium findings, writing their `todo:` markers in the same file. The grader matched any SEC ID and any `todo:` in one write. It now matches only a single test call that has a `todo:` and calls `getRoom` as clinic B. It was checked against ten sample traces, Windows and POSIX quoting included. One catch was that `\b` never matches after a JSON-escaped `\n`.
+- `defers-honestly` failed one run of nine, unanimously. That report named the unbounded description as low and deferred, claimed no run and changed no code. It also deferred a second low finding and advised running the tests once to confirm they fail. The rubric didn't say whether either is allowed. It now says both are fine, and its FAIL conditions are unchanged. The rerun scored 3 of 3.
+
+Cost of the v0.6.2 eval runs: about $38 at list price, including a first pass
+stopped part-way for the review's prompt fixes.

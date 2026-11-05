@@ -22,9 +22,13 @@ argument. Join two parts with `+` to run both (`node --dir storefront + playwrig
 those, or `none`. No cell may contain a `|`. Rows marked "(check)" are guesses
 the gates ignore: keep them without the mark, or delete them.
 
-With jest or vitest, an expected failure (`test.failing`, `test.fails`) that
-fails as expected reports like any passing test, so it counts as the AC's
-passing test; don't name one after an AC ID.
+An expected failure (Playwright `test.fail`, Vitest `test.fails`, Jest
+`test.failing`, node:test `todo`, pytest `xfail`, Go `t.Skip("xfail: ...")`)
+that names a finding in its reason or title (`finding #8 deferred`) reports
+as `xfail`, never as a pass. Only an own attack under a deferred or accepted
+security finding may be one; anywhere else an `xfail` fails the check. One
+that names no finding counts as skipped. Don't name an expected failure after
+an AC ID.
 
 `Confirm:` is `auto` (decide, and ask only when unclear) or `always` (confirm
 every triage). `Multi-tenant:` and `Sensitive data:` are read by the reviewer

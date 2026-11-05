@@ -10,6 +10,9 @@
 #     from the user, through the lead's main session. The guard judges the file
 #     the edit would produce, so a waiver can't be pieced together from fragments,
 #     and waiver lines the file already holds may stay.
+#   - .git/plumbline/ is the check record ac-check.sh keeps to reuse a full test run
+#     (v0.6.2); only its scripts write it, so Write and Edit to a path in it, and
+#     Bash commands naming it, are refused;
 #   - in a file named security.md, the lines "Security waived:" and "Risk accepted:"
 #     are the user's too (v0.5), with their own message. Other files (an ADR, a
 #     SECURITY.md) and commands that only mention the phrase are untouched.
@@ -41,6 +44,7 @@ meta_msg="Plumbline: .plumbline is feature metadata written by kickoff.sh; ask t
 profile_msg="Plumbline: docs/product/project.md lists the commands the gates run; only the user changes it (through the main session). Tell the lead what should change."
 waiver_msg="Only the user can approve a waiver. Tell the lead which evidence is missing and why; the build skill will ask the user."
 security_msg="Only the user can waive security work or accept a risk. Tell the lead; the build skill will ask the user."
+record_msg="Ownership guard: .git/plumbline/ is Plumbline's check record and run-bg's runs; only its scripts write it. Read a run with run-bg.sh log|status|list."
 level_msg="Plumbline: only the build skill (the main session) sets a feature's security level with kickoff.sh --set-security or --security. Tell the lead what level the work needs."
 
 if [[ "$tool" == Bash ]]; then
@@ -48,6 +52,13 @@ if [[ "$tool" == Bash ]]; then
   cmd="${cmd//$'\\\n'/ }"                         # join continued lines
   if grep -qiE '(evidence|accessibility)[^[:alnum:]]*waived[[:space:]]*:' <<<"$cmd"; then
     echo "$waiver_msg To search for one, grep for \"waived\" without the colon." >&2
+    exit 2
+  fi
+  # The check record (reuse of a full test run) is written by ac-check.sh alone: a
+  # command that names the folder is refused, whatever it does with it.
+  # Also .git/./plumbline, and the record's files by name (a $(git rev-parse --git-dir) path).
+  if grep -qiE '\.git[/\\]+(\.[/\\]+)*plumbline([^[:alnum:]_-]|$)|plumbline[/\\]+(checks\.(tsv|lock)|procs)([^[:alnum:]_-]|$)' <<<"$cmd"; then
+    echo "$record_msg" >&2
     exit 2
   fi
   # One simple command per line; a write is a redirect, tee, an in-place sed or
@@ -101,6 +112,13 @@ base="${file//\\//}"; base="${base##*/}"; base="${base%%:*}"
 while [[ "$base" == *[.\ ] ]]; do base="${base%?}"; done
 if [[ "$(printf '%s' "$base" | tr 'A-Z' 'a-z')" == .plumbline ]]; then
   echo "$meta_msg" >&2
+  exit 2
+fi
+
+# Nothing under .git/plumbline/ (the check record) is an agent's to write.
+rec=$(printf '%s' "${file//\\//}" | tr 'A-Z' 'a-z')
+if [[ "$rec" == .git/plumbline || "$rec" == .git/plumbline/* || "$rec" == */.git/plumbline || "$rec" == */.git/plumbline/* ]]; then
+  echo "$record_msg" >&2
   exit 2
 fi
 

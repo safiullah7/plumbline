@@ -140,6 +140,20 @@ sed -i 's/| 1 | medium | Clerk called before the order check | open |/| 1 | medi
 expect_next "a fixed finding awaits verification: attack" attack
 sed -i 's/| fixed |/| verified |/' "$F/security.md"
 expect_next "verified: verify" verify
+expect_line "security line: no deferred findings" "· deferred 0"
+# Deferred (v0.6.2): medium and low are follow-up work and never send resume back to attack.
+sed -i 's/| verified |/| deferred |/' "$F/security.md"
+expect_next "a deferred medium finding: verify, not attack" verify
+printf '| 3 | low | Verbose error text | deferred | SEC-02-043: xfail |\n' >> "$F/security.md"
+expect_next "a deferred low finding too: verify" verify
+expect_line "security line counts the deferred findings" "· deferred 2"
+printf '| 4 | critical | Token never expires | deferred | SEC-02-044: xfail |\n' >> "$F/security.md"
+expect_next "a deferred critical finding nobody accepted: attack" attack
+expect_line "...and the count includes it" "· deferred 3"
+printf 'Risk accepted: #4 critical Token never expires - internal demo (approved by Safi)\n' >> "$F/security.md"
+expect_next "...accepted by the user: verify" verify
+sed -i -e '/^| [34] |/d' -e '/^Risk accepted: #4/d' -e 's/| deferred |/| verified |/' "$F/security.md"
+expect_next "back to verified: verify" verify
 printf '| 2 | high | Another tenant reads an order | open | SEC-02-041: fail |\n' >> "$F/security.md"
 expect_next "open high finding: attack" attack
 printf '\nRisk accepted: #2 high Another tenant reads an order - demo data only (approved by Safi)\n' >> "$F/security.md"

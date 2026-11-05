@@ -390,3 +390,125 @@ before a session ends, and `/plumbline:status` only shows state.
   round had written "complete (round 1) - api surface. Web-ui-portal surface
   not attacked", which read as done to a person and as not done to signoff.
 - Self-test: `tests/resume-selftest.sh` walks a feature through every stage.
+
+## 0.6.2: a short security loop, one test run, processes agents can stop
+
+The DineFlow staff-portal resume (feature 02, on v0.6.1) took 14.8 hours
+(00:22 to 15:09 merged, 2026-11-02) for work estimated at 1.5-2.5 hours:
+
+| Slice | Time | Cause |
+| --- | --- | --- |
+| Fixing 11 medium/low findings in the feature (attack rounds 3-6, 19 fix tasks, 5 Opus reviews) | 9 h 53 m | Each finding's attack test fails by design and sits in the normal suite, and the lead may not report "build done" until the suite passes. The build question recommended "Fix". |
+| Full test runs repeated (lead per fix batch, a "clean verification", signoff's three runs) | about 2 h | Each step re-ran everything; the portal e2e takes about 45 min. |
+| Waiting on the user | 92 min | A leftover test run held ports and memory; a broad kill script was refused and TaskStop killed only the shell. |
+
+The scripts already didn't block on medium or low findings. What blocked was
+prose that required a fully green suite, and expected-failure markers the
+adapters could not tell apart from a pass or a gap.
+
+**Decision (user, 2026-11-03):** only critical and high findings are fixed in
+the feature. Medium and low are deferred with no question.
+
+**Goal:** the same work in about 4 hours (a target until measured): one attack
+round, QA and product, one full run before signoff. Every gate stays.
+
+### Design in brief
+
+- **Deferral.** The attacker marks a medium or low finding `deferred`, runs its
+  test red once as evidence, then marks it as the stack's expected failure with
+  a reason naming the finding. When unsure between high and medium, it chooses
+  high. The lead checks the markers and lists deferred findings in the
+  build-done report; it creates no fix task. Critical and high stay as before
+  (fix, verify, three rounds, then the user). A fix is re-checked by the
+  attacker's re-run, and gets a code review only for contract, schema,
+  migration or auth changes.
+- **Expected failures as `xfail`.** Adapters report a test as `xfail` only when
+  its marker or title names a finding; other markers behave as before. The run
+  passes when every `xfail` is an own attack under a deferred or accepted
+  finding, in this or an earlier feature; anything else fails, so the task
+  gate, `ac-check` and signoff agree. A critical or high row marked `deferred`
+  is a gap. A marked test that passes is a fail, with a line naming it ("its
+  hole looks closed: remove the marker and have the finding set to fixed").
+- **One full run.** `ac-check --all` runs typecheck, lint and the surface's
+  whole suite, and reports passed, expected-failure, failed and skipped counts.
+  The lead runs it once per surface after the attack round; signoff runs it
+  again. A pass is recorded against the committed code without Plumbline's own
+  documents, so signoff reuses it when only those changed. The record keeps
+  each ID's result (a reused `xfail` still reads `xfail`) and the run's
+  expected failures; it isn't reused once one of those is no longer covered by
+  a deferred or accepted finding. Failures are never reused, gates never
+  reuse, `--fresh` and `PLUMBLINE_REUSE=0` override, and agents cannot write
+  the record.
+- **Processes agents can stop.** `scripts/run-bg.sh` (`start`, `wait`,
+  `status`, `list`, `log`, `stop`) starts a detached wrapper, records its
+  process and start time, and stops it and its children by that record, never
+  by name. Servers and long runs go through it, not Bash background mode.
+  Whoever starts a process stops it before reporting; the main session lists
+  leftovers at signoff.
+- **Faster e2e, no extra steps.** Engineers sign in once per role and reuse the
+  session; the lead plans e2e setup for several workers and adds a chore when a
+  full run exceeds 10 minutes. The main session adds no "clean verification"
+  run and no attack round for a deferred finding.
+- **Follow-up.** `/plumbline:phase-next` proposes deferred and accepted
+  findings from every feature. Status and resume show the deferred count; a
+  deferred medium or low never sends resume back to `attack`.
+
+### Defaults this plan sets
+
+- **D1** Only critical and high findings are fixed in the feature. Medium and
+  low are deferred, their tests marked as expected failures naming the finding,
+  and phase-next proposes them. No question to the user.
+- **D2** The full suite runs once after the attack round and once at signoff.
+  Signoff reuses the first run when only Plumbline's own documents changed.
+- **D3** run-bg stops only processes it started, by recorded PID and start
+  time, with their children, never by name.
+- **D4** A fix is re-checked by the attacker; it gets a code review only for
+  contract, schema, migration or auth changes.
+
+### Verification
+
+- Self-tests, each suite on its own (hooks in both TMPDIR modes), against
+  v0.6.1's 2,090 checks and 0 failed: adapters (`xfail` per runner,
+  placeholders unchanged, all-tests mode), security and checks (deferred rows
+  by severity, covered and uncovered `xfail`), `ac-check --all` and reuse,
+  run-bg (start, wait, stop of grandchildren, a reused PID is not killed),
+  resume and phase-evidence. Result, after the review fixes below: 2,554
+  checks, 0 failed (adapters 387, hooks 345 in each TMPDIR mode, security 396,
+  kickoff 255, scripts 233, lib 231, profile 145, tasks 117, run-bg 54,
+  resume 46). An end-to-end run on the
+  `attacker-defers-low-finding` fixture with a real node:test own attack
+  confirmed: covered `xfail` passes, uncovered fails with the hint, a deferred
+  critical is a gap, a closed hole reports `fail` with the hint, and `--all`
+  reuse survives a docs-only commit but not a contracts change.
+- One Opus review of the whole diff. Fixed from it:
+  - run-bg failed when called by a drive-letter path (how skills call it);
+  - an ID-less test marked as an expected failure passed `--all` silently
+    (now a fail, named);
+  - a trailer a test printed into a failing run's output was accepted (now
+    only the adapter's last line, after no failure);
+  - in all-tests mode, combine passed the IDs to raw parts (a filter, not the
+    whole suite);
+  - a jest `.failing` or vitest `.fails` naming no finding read as a pass (now
+    skipped);
+  - an engineer had no rule allowing it to mark a deferred test;
+  - `--all` is now always run through run-bg;
+  - a feature's security.md covers only its own SEC IDs.
+
+  run-bg now kills by PID without taskkill's tree walk, stops what a finished
+  or dead run left behind, and refuses a name while such processes live.
+  Testing that showed one more case. A process created between the two
+  process listings has no creation time yet. When it reuses a dead parent's
+  PID, it adopted that parent's old children: on this machine, the user's own
+  `pnpm run dev` tree from the night before, which `stop` would have killed.
+  The descendant filter now refuses any link with an unknown time, and no
+  descendant may be older than the wrapper.
+- Evals (`--runs 3 --no-publish`): new `attacker-defers-low-finding`; a new
+  grader on `attacker-finds-planted-hole` (the high row is not deferred);
+  reruns of the attacker, senior, lead, build, review and phase-next cases,
+  each holding its v0.6 score. Result: all 19 cases at 1.00
+  (`docs/evals/eval-v0.6.md`, section v0.6.2).
+- `claude plugin validate`, strict and for the marketplace.
+- Live check after merge: DineFlow feature 05 picks up 0.6.2 via
+  `/plumbline:resume`. Measure attack-loop time and rounds, full runs per
+  surface, user waits and leftover processes at signoff; record in
+  `docs/evals/eval-v0.6.md`.

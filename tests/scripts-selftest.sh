@@ -11,6 +11,7 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/repo" && cd "$T/repo"
 export HOME="$T" CLAUDE_PROJECT_DIR="$T/repo"
 unset CLAUDE_CONFIG_DIR CLAUDE_PLUGIN_DATA PLUMBLINE_TEST_GLOBS
+export PLUMBLINE_REUSE=0   # no run here reuses a recorded pass
 source "$ROOT/plugins/plumbline/evals/_fixture/clinic.sh" >/dev/null
 set +e   # the fixture sets -e; the checks below expect non-zero exits
 ready_plan
@@ -300,6 +301,28 @@ assert "phase-evidence: open medium design finding" has "$out" "design #1 (mediu
 assert "phase-evidence: Non-Goals (Out of scope in older specs)" has "$out" "Booking appointments into rooms (phase 03)"
 assert "phase-evidence: leaves out verified high bugs" test -z "$(grep BUG-01-001 <<<"$out")"
 assert "phase-evidence: at most 80 lines" test "$(wc -l <<<"$out")" -le 80
+assert "phase-evidence: no security section without security findings" test -z "$(grep -i 'security' <<<"$out")"
+
+# phase-evidence and status (v0.6.2): security findings left deferred (medium, low) or
+# accepted (critical, high), from every feature of the repo, with folder and number.
+printf 'module=clinic\nnumber=01\nprofile=full\nux=yes\nsecurity=attacks\n' > "$P/.plumbline"
+sec_file() { # folder, findings rows (one per line)
+  printf '# Feature security\n\nIndependent pass: not needed\n\n## Own attacks\n| SEC ID | Surface | Attack | Must happen |\n| --- | --- | --- | --- |\n\n## Findings\n| # | Severity | Finding | Status | Evidence |\n| --- | --- | --- | --- |\n%s\n' "$2" > "$1/security.md"
+}
+sec_file "$P" '| 1 | medium | Verbose errors leak the stack | deferred | SEC-01-010 |'$'\n''| 2 | low | Old cookie name | verified | x |'$'\n''| 3 | high | Admin export is unthrottled | open | x |'$'\n''| 4 | high | Demo token never expires | open | x |'$'\n''| 5 | low | Typo in header | open | x |'
+printf '\nRisk accepted: #3 high Admin export is unthrottled - internal tool (approved by Sam)\n' >> "$P/security.md"
+mkdir -p docs/product/clinic/06-later; printf 'module=clinic\nnumber=06\nprofile=full\nux=yes\nsecurity=attacks\n' > docs/product/clinic/06-later/.plumbline
+sec_file docs/product/clinic/06-later '| 1 | low | Late finding | deferred | SEC-06-001 |'
+out=$(bash "$G/phase-evidence.sh")
+assert "phase-evidence: a security section is there" has "$out" "Security findings deferred or accepted"
+assert "phase-evidence: a deferred medium finding, with its feature folder and number" has "$out" "- docs/product/clinic/phases/phase-01 #1 (medium, deferred): Verbose errors leak the stack"
+assert "phase-evidence: an accepted high finding" has "$out" "- docs/product/clinic/phases/phase-01 #3 (high, accepted risk): Admin export is unthrottled"
+assert "phase-evidence: a medium or low one still open" has "$out" "- docs/product/clinic/phases/phase-01 #5 (low, open): Typo in header"
+assert "phase-evidence: findings of another feature are listed too" has "$out" "- docs/product/clinic/06-later #1 (low, deferred): Late finding"
+assert "phase-evidence: a verified finding and an unaccepted high one are left out" test -z "$(grep -E 'phase-01 #(2|4) ' <<<"$out")"
+out=$(bash "$G/status.sh")
+assert "status: the security line counts the deferred findings" has "$out" "· deferred 1 · independent pass not needed"
+rm -rf docs/product/clinic/06-later "$P/security.md" "$P/.plumbline"
 
 # phase-evidence on the new layout (<module>/<nn>-<slug>/) and on a mixed module
 # (legacy phases/phase-01 beside 02-x), listed in number order.

@@ -10,9 +10,11 @@ phase (.claude/current-phase).
 You run in the main session, as in /plumbline:build (<plugin>/skills/build/SKILL.md,
 "build" below; <plugin> is the folder two levels above this SKILL.md). Its rules
 hold here: ask with AskUserQuestion (your recommended option first), dispatch in
-the foreground and wait, give no model to the lead or product, engineers on
-sonnet with their Effort, and only the user writes waiver and risk lines
-(build step 8). Never redo finished work: what's committed and passing stays.
+the foreground and wait, add no steps of your own, give no model to the lead or
+product, engineers on sonnet with their Effort, and build step 8's rules: only
+the user writes waiver and risk lines, medium and low findings are never asked
+about, and leftover runs are stopped with run-bg.sh, never by the user. Never
+redo finished work: what's committed and passing stays.
 
 1. **Settings.** Do build step 1 (shell, repo root, teams, profile, confirm
    mode). Without a shell, stop: resuming reads git and runs the checks.
@@ -41,7 +43,8 @@ sonnet with their Effort, and only the user writes waiver and risk lines
    what's done (from the Signoff, Plan and Security lines and the progress
    notes, in a few lines); what's left, as the stages from `Next:` to the PR,
    each with its owner (attack round: lead and an attacker; QA; product
-   verification; signoff: you); the open findings and bugs; the uncommitted
+   verification; signoff: you); the open findings and bugs (a `deferred`
+   finding isn't left to do: list it as follow-up work); the uncommitted
    files by owner. In one AskUserQuestion call ask:
    - Resume from <stage> (recommended), or stop.
    - Uncommitted files, when there are any: hand each to its owner to finish
@@ -82,14 +85,20 @@ sonnet with their Effort, and only the user writes waiver and risk lines
      Independent pass: <the Security line's text>. Findings: <the list>.
      Dispatch the attacker as your attack round says, for every attack-plan
      surface not attacked yet, and to verify each finding marked fixed (set a
-     finding to fixed first when its fix is committed). Send new Critical or
-     High findings to their owners as fix tasks, as there. Report when
-     `Independent pass: complete (round <n>)` is written, or Needs user."
-     Handle Needs user as in build step 8.
-   - `verify`: make sure each surface's Run command from project.md is up (QA,
-     the e2e tests and signoff's attack tests use it). Dispatch QA and product
-     together, two foreground Agent calls in one message (they write different
-     files): plumbline:qa-engineer with build 6.5's QA brief ("Full:" or
+     finding to fixed first when its fix is committed). Act on the findings
+     as there: Critical or High ones go to their owners as fix tasks, medium
+     and low ones are deferred. Then run the whole suite once per surface
+     (`ac-check.sh --all`). Report when
+     `Independent pass: complete (round <n>)` is written and that run
+     passes, or Needs user." Handle Needs user as in build step 8.
+   - A medium or low finding still `open` (written before Plumbline deferred
+     them) is deferred before `verify` or `signoff`: dispatch
+     plumbline:lead-engineer to set it `deferred` and have the surface's
+     engineer mark its attack test as an expected failure naming the finding.
+     At `attack`, add this to that dispatch instead.
+   - `verify`: dispatch QA and product together, two foreground Agent calls
+     in one message (they write different files): plumbline:qa-engineer with
+     build 6.5's QA brief ("Full:" or
      "Standard:" as the size), plus its uncommitted files to finish and commit
      and the bugs to re-test (FIXED rows, and fixes named in git log);
      plumbline:product-engineer to walk the finished journeys as in 6.5. Route
@@ -99,6 +108,7 @@ sonnet with their Effort, and only the user writes waiver and risk lines
      Gaps go to their owners; run it again until it passes and the PR is open.
    - `merge`: the PR is open; the user merges it. Say so and stop.
 5. **Report**: the PR link, what this session finished (stages, commits, the
-   attack round and QA results), anything still open, and any waiver or risk
-   line the user approved. If the user stops part-way, run /plumbline:handoff
-   so the next resume starts from notes.
+   attack round and QA results), anything still open, the deferred findings
+   as follow-up work, and any waiver or risk line the user approved. If the
+   user stops part-way, run /plumbline:handoff so the next resume starts from
+   notes.

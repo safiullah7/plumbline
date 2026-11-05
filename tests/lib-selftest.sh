@@ -12,7 +12,8 @@ T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 mkdir -p "$T/repo/.claude" "$T/bin" "$T/tmp" && cd "$T/repo"
 export HOME="$T" CLAUDE_PROJECT_DIR="$T/repo" TMPDIR="$T/tmp"
 unset CLAUDE_CONFIG_DIR CLAUDE_PLUGIN_DATA PLUMBLINE_HOOK_TIMING
-unset PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC
+unset PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC PLUMBLINE_AC_ALL
+export PLUMBLINE_REUSE=0   # a recorded pass never stands in for a run, except in the reuse cases below
 export PLUMBLINE_TASK_CHECKS=full   # the task gate's default is tests-only; these cases assert its typecheck and lint
 source "$G/lib.sh"
 R="$PROJECT_DIR"   # the repo root as lib.sh spells it
@@ -437,6 +438,13 @@ eq "ac-check: no surface and several rows exits 2, nothing run" "$rc/$(trace)/$(
   "2///ac-check: several surfaces in docs/product/project.md; pass --surface <one of: api, web-ui, worker>"
 out=$(PLUMBLINE_TEST_AC=true acs AC-07-001); rc=$?
 eq "ac-check: ...also when only typecheck and lint come from the profile" "$rc/$(trace)" "2/"
+# --all walks the feature's surfaces= (api,web-ui here); IDs belong to one surface,
+# so with IDs and several surfaces it needs --surface.
+out=$(acs --all AC-07-001); rc=$?
+eq "ac-check --all: IDs, several surfaces and no --surface exits 2, nothing run" "$rc/$(trace)" "2/"
+assert "ac-check --all: ...naming the surfaces" has "$out" "needs --surface <one of: api, web-ui>"
+out=$(acs --all); rc=$?
+assert "ac-check --all: without IDs it runs every surface of the feature in turn" test "$rc" = 0 -a -n "$(grep -x 'api-tests *' "$TRACE")" -a -n "$(grep -x 'web-tests *' "$TRACE")"
 out=$(acs AC-07-001 --surface worker); rc=$?
 eq "ac-check: a surface with an empty AC tests cell is refused" "$rc/$out" \
   "1/ac-check: AC tests: no command for surface worker in docs/product/project.md; write one (an adapter, generic, or a command), or none to skip"
@@ -518,6 +526,238 @@ assert "make-briefs: ...with the surface from column 4" has "$b" "Surface: api"
 assert "make-briefs: ...its AC tests cell" has "$b" "AC tests: bash $T/stubs/api.sh"
 assert "make-briefs: ...and the Effort value isn't taken for the surface" test -z "$(grep -E 'Surface: medium' <<<"$b")"
 assert "make-briefs: ...the second brief has its own surface" has "$(cat "$P/briefs/eng-web.md")" "--surface web-ui"
+
+# --- Expected failures: run_checks reads the adapters' xfail-only trailer (v0.6.2) ---
+current docs/product/rooms/07-room-schedules
+S07=docs/product/rooms/07-room-schedules/security.md
+write_sec07() { # own attack rows, findings rows (one per line)
+  { printf '# Feature 07 security\n\nIndependent pass: not needed\n\n## Own attacks\n| SEC ID | Surface | Attack | Must happen |\n| --- | --- | --- | --- |\n%s\n\n' "$1"
+    printf '## Findings\n| # | Severity | Finding | Status | Evidence |\n| --- | --- | --- | --- | --- |\n%s\n' "$2"; } > "$S07"
+}
+write_sec07 '| SEC-07-001 | api | a | b |'$'\n''| SEC-07-002 | api | a | b |'$'\n''| SEC-07-003 | api | a | b |' \
+  '| 1 | medium | Replay | deferred | SEC-07-001 |'$'\n''| 2 | low | Other | verified | SEC-07-002 |'$'\n''| 3 | high | Open one | open | SEC-07-003 |'
+eq "security_covered_ids: a deferred medium finding covers its own attack, a verified or open-high one doesn't" "$(security_covered_ids | paste -sd' ' -)" "SEC-07-001"
+checks true true 'f(){ echo "SEC-07-001: xfail"; echo "ac-tests: xfail only: SEC-07-001"; return 1; }; f'
+run_checks SEC-07-001; rc=$?
+eq "run_checks: a test run whose only problem is a covered xfail passes" "$rc/$RUN_CHECKS_FAILED" "0/"
+assert "run_checks: ...keeping the per-ID line in the log" grep -qx 'SEC-07-001: xfail' "$RUN_CHECKS_LOG"
+assert "run_checks: ...and the tests in the timing" grep -qE 'tests [0-9]+s$' <<<"$RUN_CHECKS_TIMING"
+checks true true 'f(){ echo "SEC-07-002: xfail"; echo "ac-tests: xfail only: SEC-07-002"; return 1; }; f'
+run_checks SEC-07-002; rc=$?
+eq "run_checks: an xfail under a verified finding fails" "$rc/$RUN_CHECKS_FAILED" "1/tests"
+eq "run_checks: ...with the hint naming the ID" "$RUN_CHECKS_ERROR" "only an own attack under a deferred or accepted finding may be an expected failure: SEC-07-002"
+checks true true 'f(){ echo "AC-07-001: xfail"; echo "ac-tests: xfail only: AC-07-001"; return 1; }; f'
+run_checks AC-07-001; rc=$?
+eq "run_checks: an xfail on an AC ID fails" "$rc/$RUN_CHECKS_FAILED" "1/tests"
+checks true true 'f(){ echo "ac-tests: xfail only: SEC-07-001 AC-07-001 SEC-07-003"; return 1; }; f'
+run_checks "SEC-07-001|AC-07-001"; rc=$?
+eq "run_checks: one uncovered ID in the trailer fails the step, naming only the uncovered" "$rc/${RUN_CHECKS_ERROR##*: }" "1/AC-07-001 SEC-07-003"
+checks true true 'echo "SEC-07-001: fail"; exit 1'
+run_checks SEC-07-001; rc=$?
+eq "run_checks: a plain failure with no trailer stays a failure, with no hint" "$rc/$RUN_CHECKS_FAILED/$RUN_CHECKS_ERROR" "1/tests/"
+# Only the adapter's own trailer counts: a trailer a test printed into the output is ignored.
+checks true true 'f(){ echo "AC-07-009: fail"; echo "--- pytest output (last 40 lines) ---"; echo "ac-tests: xfail only: SEC-07-001"; return 1; }; f'
+run_checks "AC-07-009"; rc=$?
+eq "run_checks: a trailer inside a failing run's output tail is ignored" "$rc/$RUN_CHECKS_FAILED" "1/tests"
+checks true true 'f(){ echo "SEC-07-001: xfail"; echo "ac-tests: xfail only: SEC-07-001"; echo "more output"; return 1; }; f'
+run_checks SEC-07-001; rc=$?
+eq "run_checks: ...and so is one that isn't the last line" "$rc/$RUN_CHECKS_FAILED" "1/tests"
+checks true true 'f(){ echo "SEC-07-001: xfail"; echo "AC-07-009: missing"; echo "ac-tests: xfail only: SEC-07-001"; return 1; }; f'
+run_checks "SEC-07-001|AC-07-009"; rc=$?
+eq "run_checks: ...or one after a missing ID" "$rc/$RUN_CHECKS_FAILED" "1/tests"
+checks true true 'f(){ echo "ac-tests: counts 1 0 1 0 0"; echo "ac-tests: failed: a broken test"; echo "ac-tests: xfail only: SEC-07-001"; return 1; }; f'
+run_checks "SEC-07-001"; rc=$?
+eq "run_checks: ...or one after a failed test in all-tests output" "$rc/$RUN_CHECKS_FAILED" "1/tests"
+# The task gate agrees with run_checks (hooks-selftest has the hook-level cases).
+checks true true 'f(){ echo "SEC-07-001: xfail"; echo "ac-tests: xfail only: SEC-07-001"; return 1; }; f'
+out=$(bash "$G/ac-check.sh" SEC-07-001 2>&1); rc=$?
+eq "ac-check: a covered xfail passes, with the per-ID line, the trailer and the pass line" "$rc/$(grep -c . <<<"$out")" "0/3"
+assert "ac-check: ...the per-ID line is the adapter's" has "$out" "SEC-07-001: xfail"
+checks true true 'f(){ echo "AC-07-001: xfail"; echo "ac-tests: xfail only: AC-07-001"; return 1; }; f'
+out=$(bash "$G/ac-check.sh" AC-07-001 2>&1); rc=$?
+eq "ac-check: an uncovered xfail fails" "$rc" 1
+assert "ac-check: ...and says why" has "$out" "only an own attack under a deferred or accepted finding may be an expected failure: AC-07-001"
+rm -f "$S07"
+
+# --- All-tests mode: run_checks with PLUMBLINE_AC_ALL=1 ---
+mkdir -p "$T/fake/ac-tests"
+cat > "$T/fake/ac-tests/fake.sh" <<'EOF'
+#!/usr/bin/env bash
+# A stand-in adapter (its path has /ac-tests/): the per-ID lines for the IDs given, then
+# the counts line. FAKE_MISSING lists IDs that print missing, FAKE_FAIL=1 exits 1,
+# FAKE_COMMIT=1 commits mid-run, FAKE_COUNTS overrides the counts. Each run is logged.
+echo "run args=$# all=${PLUMBLINE_AC_ALL:-}" >> "$FAKE_LOG"
+rc=0
+for id in ${1//|/ }; do
+  if [[ " ${FAKE_MISSING:-} " == *" $id "* ]]; then echo "$id: missing"; rc=1
+  elif [[ " ${FAKE_XFAIL:-} " == *" $id "* ]]; then echo "$id: xfail"
+  else echo "$id: pass (1)"; fi
+done
+echo "ac-tests: counts ${FAKE_COUNTS:-5 1 0 2 3}"
+[[ -n "${FAKE_XFAIL:-}" && $rc == 0 ]] && { echo "ac-tests: xfail only: $FAKE_XFAIL"; rc=1; }
+[[ "${FAKE_FAIL:-}" == 1 ]] && { echo "ac-tests: failed: the broken test"; rc=1; }
+[[ "${FAKE_COMMIT:-}" == 1 ]] && git -C "$CLAUDE_PROJECT_DIR" commit -q --allow-empty -m "moved during the run"
+exit $rc
+EOF
+export FAKE_LOG="$T/fake.log"; : > "$FAKE_LOG"
+FAKE="bash $T/fake/ac-tests/fake.sh"
+checks true true "$FAKE"
+run_checks ""; rc=$?
+eq "run_checks: empty IDs skip the tests outside all-tests mode" "$rc/$(wc -l < "$FAKE_LOG" | tr -d ' ')" "0/0"
+(export PLUMBLINE_AC_ALL=1; run_checks ""; echo "$? ${RUN_CHECKS_TIMING}") > "$T/all.out"
+assert "run_checks: all-tests mode runs the tests with empty IDs, passing no argument" test "$(tail -n1 "$FAKE_LOG")" = "run args=0 all=1"
+assert "run_checks: ...and times them" grep -qE '^0 typecheck [0-9]+s · lint [0-9]+s · tests [0-9]+s$' "$T/all.out"
+(export PLUMBLINE_AC_ALL=1; run_checks "AC-01-001|AC-01-002"; echo "$?")  > "$T/all.out"
+eq "run_checks: all-tests mode with IDs hands them to the adapter" "$(tail -n1 "$FAKE_LOG")" "run args=1 all=1"
+checks true true 'f(){ [ $# -eq 0 ]; }; f'
+(export PLUMBLINE_AC_ALL=1; run_checks "AC-01-001"; echo "$?/$(grep -c 'warning' "$RUN_CHECKS_LOG")") > "$T/all.out"
+eq "run_checks: a raw command in all-tests mode runs with no IDs, after a warning" "$(cat "$T/all.out")" "0/1"
+checks true true 'false'
+(export PLUMBLINE_AC_ALL=1; run_checks ""; echo "$?/$RUN_CHECKS_FAILED") > "$T/all.out"
+eq "run_checks: ...and is judged by its exit status" "$(cat "$T/all.out")" "1/tests"
+checks true true ""
+(export PLUMBLINE_AC_ALL=1; run_checks ""; echo "$?/$RUN_CHECKS_TIMING") > "$T/all.out"
+eq "run_checks: a none AC tests cell runs typecheck and lint only" "$(sed -E 's/ [0-9]+s/ Ns/g' "$T/all.out")" "0/typecheck Ns · lint Ns"
+unset PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC
+
+# --- ac-check --all: the summary, per-ID results and the reuse of a full pass ---
+RR="$T/rr"; mkdir -p "$RR/src" "$RR/docs/product/m/01-x/qa" "$RR/docs/product/m/01-x/contracts"
+(cd "$RR" && git init -q && git config user.email t@t && git config user.name t && git config core.autocrlf false \
+  && echo 'one' > src/a.js && echo 'spec v1' > docs/product/m/01-x/spec.md && echo 'shot' > docs/product/m/01-x/qa/shot.txt \
+  && echo 'contract v1' > docs/product/m/01-x/contracts/api.md && git add -A && git commit -q -m first) >/dev/null 2>&1
+aa() { (cd "$RR" && CLAUDE_PROJECT_DIR="$RR" bash "$G/ac-check.sh" "$@"); }   # stdout and stderr both reach the caller
+fakeruns() { wc -l < "$FAKE_LOG" | tr -d ' '; }
+recs() { local f="$RR/.git/plumbline/checks.tsv"; if [[ -f "$f" ]]; then wc -l < "$f" | tr -d ' '; else echo 0; fi; }
+export PLUMBLINE_TYPECHECK=true PLUMBLINE_LINT=true PLUMBLINE_TEST_AC="$FAKE" PLUMBLINE_REUSE=0
+: > "$FAKE_LOG"
+out=$(aa --all AC-01-001 2>&1); rc=$?
+eq "ac-check --all: a pass exits 0" "$rc" 0
+assert "ac-check --all: the summary line from the counts" grep -qE '^ac-check: all tests on default: 5 passed, 1 expected failure, 0 failed, 2 skipped \(3 without an ID\) in [0-9]+m [0-9]+s$' <<<"$out"
+assert "ac-check --all: the adapter's per-ID and counts lines are shown" test -n "$(grep -x 'AC-01-001: pass (1)' <<<"$out")" -a -n "$(grep -x 'ac-tests: counts 5 1 0 2 3' <<<"$out")"
+eq "ac-check --all: the adapter got PLUMBLINE_AC_ALL=1 and the IDs" "$(tail -n1 "$FAKE_LOG")" "run args=1 all=1"
+out=$(aa --all 2>&1); rc=$?
+eq "ac-check --all: IDs are optional" "$rc/$(tail -n1 "$FAKE_LOG")" "0/run args=0 all=1"
+out=$(FAKE_MISSING=AC-01-002 aa --all "AC-01-001|AC-01-002" 2>&1); rc=$?
+eq "ac-check --all: a missing ID fails the run" "$rc" 1
+assert "ac-check --all: ...naming it" has "$out" "AC-01-002: missing"
+assert "ac-check --all: ...and saying which tests failed" has "$out" "ac-check: tests for AC-01-001|AC-01-002 failed"
+out=$(FAKE_FAIL=1 aa --all 2>&1)
+assert "ac-check --all: with no IDs it says all tests failed" has "$out" "ac-check: all tests failed"
+out=$(FAKE_FAIL=1 aa --all 2>&1); rc=$?
+eq "ac-check --all: a failing suite exits 1" "$rc" 1
+assert "ac-check --all: ...and the failed test is named" has "$out" "ac-tests: failed: the broken test"
+out=$(PLUMBLINE_TEST_AC='true' aa --all 2>&1); rc=$?
+eq "ac-check --all: a raw command passes by exit status, with the warning" "$rc/$(grep -c 'warning' <<<"$out")" "0/1"
+assert "ac-check --all: ...and the summary says the counts are unknown" has "$out" "counts unknown (generic)"
+out=$(PLUMBLINE_TEST_AC='' aa --all 2>&1); rc=$?
+eq "ac-check --all: a none AC tests command runs typecheck and lint only" "$rc" 0
+assert "ac-check --all: ...and says so" has "$out" "skipped"
+out=$(PLUMBLINE_TEST_AC='' aa AC-01-001 2>&1); rc=$?
+eq "ac-check: without --all an empty AC test command is still refused" "$rc" 1
+aa --fresh >/dev/null 2>&1; rc=$?
+eq "ac-check: --fresh without --all or IDs is a usage error" "$rc" 2
+eq "ac-check: nothing was recorded with PLUMBLINE_REUSE=0" "$(recs)" 0
+
+# Reuse (PLUMBLINE_REUSE unset again): only --all records and reuses.
+unset PLUMBLINE_REUSE
+: > "$FAKE_LOG"
+aa AC-01-001 >/dev/null 2>&1
+eq "reuse: a plain ac-check run records nothing" "$(recs)" 0
+out=$(aa --all "AC-01-001" 2>&1); rc=$?
+eq "reuse: a first --all pass runs the tests and records one line" "$rc/$(fakeruns)/$(recs)" "0/2/1"
+rec=$(cat "$RR/.git/plumbline/checks.tsv")
+eq "reuse: the record has eight tab-separated fields" "$(awk -F'\t' '{ print NF }' <<<"$rec")" 8
+eq "reuse: ...surface, per-ID results, sha and no expected failures" "$(awk -F'\t' '{ print $2 "/" $4 "/" $5 "/" $8 }' <<<"$rec")" "default/AC-01-001=pass/$(git -C "$RR" rev-parse --short=7 HEAD)/-"
+before=$(fakeruns)
+out=$(aa --all AC-01-001 2>&1); rc=$?
+eq "reuse: the same --all at the same code is reused, nothing runs" "$rc/$(fakeruns)" "0/$before"
+assert "reuse: ...with the reusing line and the per-ID line" grep -qE '^ac-check: reusing the full pass from [0-9a-f]{7} \([0-9]+s ago\)$' <<<"$out"
+assert "reuse: ...and AC-01-001: pass" has "$out" "AC-01-001: pass"
+out=$(aa --all 2>&1); rc=$?
+eq "reuse: an --all with no IDs is a subset too" "$rc/$(fakeruns)" "0/$before"
+out=$(aa --all AC-01-009 2>&1); rc=$?
+assert "reuse: an ID the pass didn't cover runs the tests" test "$rc" = 0 -a "$(fakeruns)" = $((before + 1))
+before=$(fakeruns)
+out=$(aa --all AC-01-001 --fresh 2>&1)
+eq "reuse: --fresh runs again" "$(fakeruns)" "$((before + 1))"
+before=$(fakeruns); n=$(recs)
+out=$(PLUMBLINE_REUSE=0 aa --all AC-01-001 2>&1)
+eq "reuse: PLUMBLINE_REUSE=0 runs again, and records nothing" "$(fakeruns)/$(recs)" "$((before + 1))/$n"
+before=$(fakeruns)
+out=$(PLUMBLINE_LINT='true ' aa --all AC-01-001 2>&1)
+eq "reuse: a changed command isn't reused" "$(fakeruns)" "$((before + 1))"
+# Plumbline's own documents are not part of the code.
+echo 'spec v2' >> "$RR/docs/product/m/01-x/spec.md"; echo 'more' >> "$RR/docs/product/m/01-x/qa/shot.txt"; echo new > "$RR/docs/product/m/01-x/notes.md"
+before=$(fakeruns); out=$(aa --all AC-01-001 2>&1)
+eq "reuse: uncommitted changes to docs/product documents and qa/ don't stop it" "$(fakeruns)" "$before"
+git -C "$RR" add -A && git -C "$RR" commit -q -m "docs only"
+out=$(aa --all AC-01-001 2>&1)
+eq "reuse: ...nor a commit that changes only them" "$(fakeruns)" "$before"
+assert "reuse: ...it still says reusing" has "$out" "reusing the full pass"
+echo 'contract v2' > "$RR/docs/product/m/01-x/contracts/api.md"; git -C "$RR" add -A && git -C "$RR" commit -q -m "contract"
+out=$(aa --all AC-01-001 2>&1)
+eq "reuse: a contracts/ change is code, no reuse" "$(fakeruns)" "$((before + 1))"
+before=$(fakeruns)
+echo 'two' > "$RR/src/a.js"; git -C "$RR" add -A && git -C "$RR" commit -q -m "code"
+out=$(aa --all AC-01-001 2>&1)
+eq "reuse: a code commit, no reuse" "$(fakeruns)" "$((before + 1))"
+before=$(fakeruns); n=$(recs)
+echo 'three' > "$RR/src/a.js"
+out=$(aa --all AC-01-001 2>&1)
+eq "reuse: uncommitted code, no reuse" "$(fakeruns)" "$((before + 1))"
+eq "reuse: ...and the pass isn't recorded" "$(recs)" "$n"
+git -C "$RR" add -A && git -C "$RR" commit -q -m "code 3"
+before=$(fakeruns)
+out=$(FAKE_FAIL=1 aa --all AC-01-001 2>&1); rc=$?
+n=$(recs)
+out=$(FAKE_FAIL=1 aa --all AC-01-001 2>&1)
+eq "reuse: a failure is never recorded or reused (it runs both times)" "$rc/$(fakeruns)" "1/$((before + 2))"
+out=$(aa --all AC-01-001 2>&1); rc=$?
+eq "reuse: ...so the next pass runs and is recorded" "$rc/$(fakeruns)/$(recs)" "0/$((before + 3))/$((n + 1))"
+n=$(recs); before=$(fakeruns)
+out=$(FAKE_COMMIT=1 aa --all AC-01-001 --fresh 2>&1); rc=$?
+eq "reuse: a run during which HEAD moved passes but isn't recorded" "$rc/$(recs)" "0/$n"
+out=$(aa --all AC-01-001 2>&1)
+eq "reuse: ...and the new HEAD (an empty commit, same tree) is the same code, so the earlier pass is reused" "$(fakeruns)" "$((before + 1))"
+# 20 records at most.
+for i in $(seq 1 22); do echo "$i" > "$RR/src/a.js"; git -C "$RR" add -A; git -C "$RR" commit -q -m "c$i"; aa --all AC-01-001 >/dev/null 2>&1; done
+eq "reuse: the record keeps the last 20 lines" "$(recs)" 20
+# An expected failure is recorded and reused as xfail, and only while a deferred or
+# accepted finding still covers it (security.md is a document, outside the code key).
+F1="$RR/docs/product/m/01-x"
+printf 'security=attacks\n' > "$F1/.plumbline"
+cat > "$F1/security.md" <<'EOF'
+# Security
+
+## Own attacks
+| SEC ID | Surface | Attack | Must happen |
+| --- | --- | --- | --- |
+| SEC-01-005 | api | a huge description | 400 |
+
+## Findings
+| # | Severity | Finding | Status | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | low | description has no length limit | deferred | SEC-01-005: fail, got 201 |
+EOF
+git -C "$RR" add -A && git -C "$RR" commit -q -m "a deferred finding"
+before=$(fakeruns)
+out=$(FAKE_XFAIL=SEC-01-005 aa --all "AC-01-001|SEC-01-005" 2>&1); rc=$?
+eq "reuse: a covered xfail run passes and is recorded" "$rc/$(fakeruns)" "0/$((before + 1))"
+eq "reuse: ...with each ID's result and the run's expected failures" "$(tail -n1 "$RR/.git/plumbline/checks.tsv" | awk -F'\t' '{ print $4 "/" $8 }')" "AC-01-001=pass|SEC-01-005=xfail/SEC-01-005"
+out=$(FAKE_XFAIL=SEC-01-005 aa --all "SEC-01-005" 2>&1); rc=$?
+eq "reuse: the same --all is reused" "$rc/$(fakeruns)" "0/$((before + 1))"
+assert "reuse: ...and says SEC-01-005: xfail, not pass" test -n "$(grep -x 'SEC-01-005: xfail' <<<"$out")"
+sed -i 's/| deferred |/| verified |/' "$F1/security.md"
+out=$(FAKE_XFAIL=SEC-01-005 aa --all "SEC-01-005" 2>&1); rc=$?
+eq "reuse: once the finding is verified (a document change) the suite runs again, and the uncovered xfail fails" "$rc/$(fakeruns)" "1/$((before + 2))"
+assert "reuse: ...with the expected-failure hint" has "$out" "only an own attack under a deferred or accepted finding may be an expected failure: SEC-01-005"
+# A raw command proves no ID: its pass records ID=- and is never reused for that ID.
+out=$(PLUMBLINE_TEST_AC="echo raw >> $FAKE_LOG" aa --all "AC-01-001" 2>&1)
+eq "reuse: a raw command's pass is recorded with the ID unproven" "$(tail -n1 "$RR/.git/plumbline/checks.tsv" | awk -F'\t' '{ print $4 }')" "AC-01-001=-"
+before=$(fakeruns)
+out=$(PLUMBLINE_TEST_AC="echo raw >> $FAKE_LOG" aa --all "AC-01-001" 2>&1)
+eq "reuse: ...so the same --all runs it again" "$(fakeruns)" "$((before + 1))"
+unset PLUMBLINE_TYPECHECK PLUMBLINE_LINT PLUMBLINE_TEST_AC
 
 echo "$pass passed, $failed failed"
 [[ $failed -eq 0 ]]
